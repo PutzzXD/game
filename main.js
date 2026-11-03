@@ -5,17 +5,57 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const FIREBASE_URL = "https://game3d-66134-default-rtdb.asia-southeast1.firebasedatabase.app/";
 const DEV_USERNAME = "putzzdev"; 
 
-let playerData = { username: "", isDev: false };
+let playerData = { 
+  username: "", 
+  isDev: false, 
+  coins: 0, 
+  inventory: ['baju_default', 'celana_default', 'sepatu_default', 'efek_lari_default', 'efek_lompat_default'],
+  equipped: {
+    baju: 'baju_default',
+    celana: 'celana_default',
+    sepatu: 'sepatu_default',
+    efek_lari: 'efek_lari_default',
+    efek_lompat: 'efek_lompat_default'
+  }
+};
+
 let gameState = 'LOGIN'; 
 let isGameStarted = false; 
+
+// Daftar Barang di Shop
+const SHOP_ITEMS = {
+  baju: [
+    { id: 'baju_default', name: 'Baju Biru Tua', price: 0, color: 0x2c3e50 },
+    { id: 'baju_merah', name: 'Baju Merah', price: 150, color: 0xff0000 },
+    { id: 'baju_hijau', name: 'Baju Hijau', price: 150, color: 0x00ff00 },
+    { id: 'baju_emas', name: 'Baju Emas', price: 300, color: 0xffd700 }
+  ],
+  celana: [
+    { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
+    { id: 'celana_biru', name: 'Celana Jeans', price: 150, color: 0x1e3a8a },
+    { id: 'celana_putih', name: 'Celana Putih', price: 150, color: 0xffffff }
+  ],
+  sepatu: [
+    { id: 'sepatu_default', name: 'Sepatu Merah', price: 0, color: 0xa61c2b },
+    { id: 'sepatu_neon', name: 'Sepatu Neon', price: 200, color: 0x00ffcc },
+    { id: 'sepatu_emas', name: 'Sepatu Emas', price: 400, color: 0xffd700 }
+  ],
+  efek: [
+    { id: 'efek_lari_default', name: 'Tanpa Efek Lari', price: 0, type: 'lari' },
+    { id: 'efek_lari_api', name: 'Jejak Api', price: 300, type: 'lari', color: 0xff3300 },
+    { id: 'efek_lompat_default', name: 'Tanpa Efek Lompat', price: 0, type: 'lompat' },
+    { id: 'efek_lompat_es', name: 'Ledakan Es', price: 300, type: 'lompat', color: 0x00ffff }
+  ]
+};
 
 // ============ 2. SETUP DOM & EVENT LISTENER ============
 window.addEventListener('DOMContentLoaded', () => {
   const loginMsg = document.getElementById('login-msg');
   const regMsg = document.getElementById('reg-msg');
   const profileModal = document.getElementById('profile-modal');
+  const shopModal = document.getElementById('shop-modal');
   
-  // --- CHAT UI TOGGLE (Buka/Tutup) ---
+  // --- CHAT UI TOGGLE ---
   const chatBox = document.getElementById('chat-box');
   const chatToggle = document.getElementById('chat-toggle');
   
@@ -31,65 +71,54 @@ window.addEventListener('DOMContentLoaded', () => {
     const text = input.value.trim();
     if (text.length === 0) return;
     
-    const payload = {
-      name: playerData.username,
-      isDev: playerData.isDev,
-      text: text,
-      time: Date.now()
-    };
-    
-    fetch(`${FIREBASE_URL}chats.json`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    
+    const payload = { name: playerData.username, isDev: playerData.isDev, text: text, time: Date.now() };
+    fetch(`${FIREBASE_URL}chats.json`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     input.value = '';
   });
 
-  // Enter key untuk kirim chat
   document.getElementById('chat-input').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') document.getElementById('chat-send').click();
   });
 
-  // Buka/Tutup Modal Profil
+  // Profil UI
   document.getElementById('btn-profile').addEventListener('click', () => {
     profileModal.style.display = profileModal.style.display === 'block' ? 'none' : 'block';
   });
+  document.getElementById('close-modal').addEventListener('click', () => { profileModal.style.display = 'none'; });
+  document.getElementById('btn-logout').addEventListener('click', () => { localStorage.removeItem('parkour_user'); location.reload(); });
 
-  // Logout
-  document.getElementById('btn-logout').addEventListener('click', () => {
-    localStorage.removeItem('parkour_user');
-    location.reload();
+  // --- LOGIKA SHOP (BUKA/TUTUP & TAB) ---
+  document.getElementById('btn-shop').addEventListener('click', () => {
+    shopModal.style.display = 'flex';
+    renderShopTab('baju'); // Default buka tab baju
+  });
+  document.getElementById('close-shop').addEventListener('click', () => { shopModal.style.display = 'none'; });
+
+  document.querySelectorAll('.shop-tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      renderShopTab(e.target.dataset.cat);
+    });
   });
 
-  // ==========================================
-  // KLIK MULAI GAME (FULLSCREEN DIPICU DARI SINI)
-  // ==========================================
+  // --- KLIK MULAI GAME ---
   document.getElementById('btn-start-game').addEventListener('click', () => {
-    // 1. Pemicu Fullscreen & Lock Landscape (Karena dipicu oleh klik user, browser akan mengizinkan)
     requestFullscreenAndLock();
-
-    // 2. Ubah UI
     document.getElementById('btn-start-game').style.display = 'none';
+    document.getElementById('btn-shop').style.display = 'none';
     document.getElementById('in-game-controls').style.display = 'block';
-    
-    // Sembunyikan kotak chat saat mulai main (tapi tombolnya tetap ada)
     chatBox.style.display = 'none'; 
     chatToggle.textContent = '💬 Chat Global';
-
     isGameStarted = true;
     gameState = 'PLAYING';
-    
-    // Sembunyikan modal profil jika kebetulan terbuka
     profileModal.style.display = 'none';
-
-    // 3. Reset Posisi Kamera ke Belakang Karakter
+    shopModal.style.display = 'none';
     camera.position.set(0, 4, 8);
     controls.target.set(0, 1.5, 0);
   });
 
-  // --- PROSES REGISTRASI ---
+  // --- PROSES REGISTRASI & LOGIN ---
   document.getElementById('btn-register').addEventListener('click', async () => {
     const username = document.getElementById('reg-username').value.trim();
     const pin = document.getElementById('reg-pin').value.trim();
@@ -113,9 +142,14 @@ window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-register').disabled = false; return;
       }
 
+      const newPlayerData = { 
+        username, pin, isDev: (userKey === DEV_USERNAME), coins: 0, 
+        inventory: playerData.inventory, equipped: playerData.equipped 
+      };
+
       await fetch(firebaseUrl, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, pin, isDev: (userKey === DEV_USERNAME), createdAt: Date.now() })
+        body: JSON.stringify(newPlayerData)
       });
 
       regMsg.textContent = "Registrasi berhasil! Silakan Masuk."; regMsg.className = "msg success";
@@ -130,7 +164,6 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-register').disabled = false;
   });
 
-  // --- PROSES LOGIN ---
   document.getElementById('btn-login').addEventListener('click', async () => {
     const username = document.getElementById('login-username').value.trim();
     const pin = document.getElementById('login-pin').value.trim();
@@ -157,8 +190,16 @@ window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-login').disabled = false; return;
       }
 
+      // Gabungkan data dari Firebase dengan state default jika ada yang kosong
+      playerData = { 
+        ...playerData, 
+        ...data,
+        inventory: data.inventory || playerData.inventory,
+        equipped: data.equipped || playerData.equipped
+      };
+
       localStorage.setItem('parkour_user', JSON.stringify({ username, isDev: data.isDev }));
-      startLobby(username, data.isDev);
+      startLobby();
 
     } catch(e) {
       loginMsg.textContent = "Gagal konek ke server."; loginMsg.className = "msg error";
@@ -166,31 +207,38 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Cek Auto-Login
+  // Auto Login
   const savedSession = localStorage.getItem('parkour_user');
   if (savedSession) {
     try {
       const session = JSON.parse(savedSession);
-      startLobby(session.username, session.isDev);
-    } catch(e) {
-      localStorage.removeItem('parkour_user');
-    }
+      // Tarik data terbaru dari Firebase
+      fetch(`${FIREBASE_URL}players/${session.username.toLowerCase()}.json`)
+        .then(res => res.json())
+        .then(data => {
+          if (data) {
+            playerData = { ...playerData, ...data, inventory: data.inventory || playerData.inventory, equipped: data.equipped || playerData.equipped };
+            startLobby();
+          } else {
+            localStorage.removeItem('parkour_user');
+          }
+        });
+    } catch(e) { localStorage.removeItem('parkour_user'); }
   }
 });
 
-// ============ 3. FUNGSI LOBI & CHAT FETCHING ============
-function startLobby(username, isDev) {
+// ============ 3. FUNGSI LOBI, CHAT, & SHOP ============
+function startLobby() {
   document.getElementById('auth-container').style.display = 'none';
   document.getElementById('game-ui').style.display = 'block';
 
-  playerData.username = username;
-  playerData.isDev = isDev;
   gameState = 'LOBBY'; 
 
-  document.getElementById('hud-username').textContent = username;
-  document.getElementById('modal-username').textContent = username;
+  document.getElementById('hud-username').textContent = playerData.username;
+  document.getElementById('coin-amount').textContent = playerData.coins || 0;
+  document.getElementById('modal-username').textContent = playerData.username;
   
-  if (isDev) {
+  if (playerData.isDev) {
     document.getElementById('hud-verified').style.display = 'flex';
     document.getElementById('modal-status').textContent = "Developer ✔";
   } else {
@@ -199,79 +247,160 @@ function startLobby(username, isDev) {
   }
 
   document.getElementById('btn-start-game').style.display = 'flex';
+  document.getElementById('btn-shop').style.display = 'flex';
   document.getElementById('in-game-controls').style.display = 'none';
   document.getElementById('chat-container').style.display = 'flex';
 
-  // Ambil chat dan ulangi tiap 3 detik
   fetchGlobalChat();
   setInterval(fetchGlobalChat, 3000);
 
   init3DGame();
   
-  // Posisi kamera Lobby (Menghadap karakter dari depan)
   camera.position.set(0, 3, -5);
   controls.target.set(0, 1.5, 0);
 }
 
-// Fungsi Ambil Chat dari Firebase
+function renderShopTab(category) {
+  const container = document.getElementById('shop-items-container');
+  container.innerHTML = '';
+  
+  SHOP_ITEMS[category].forEach(item => {
+    const isOwned = playerData.inventory.includes(item.id);
+    const isEquipped = Object.values(playerData.equipped).includes(item.id);
+    
+    const div = document.createElement('div');
+    div.className = 'shop-item';
+    
+    let previewHTML = '';
+    if (item.color) {
+      previewHTML = `<div class="color-preview" style="background: #${item.color.toString(16).padStart(6, '0')}"></div>`;
+    } else {
+      previewHTML = `<div class="color-preview" style="background: #444; display: flex; align-items: center; justify-content: center; font-size: 24px;">✨</div>`;
+    }
+
+    let btnHTML = '';
+    if (isEquipped) {
+      btnHTML = `<button class="shop-buy-btn" disabled>DIPAKAI</button>`;
+    } else if (isOwned) {
+      btnHTML = `<button class="shop-buy-btn" onclick="equipItem('${category}', '${item.id}')">PAKAI</button>`;
+    } else {
+      btnHTML = `<button class="shop-buy-btn" onclick="buyItem('${category}', '${item.id}', ${item.price})">BELI (${item.price})</button>`;
+    }
+
+    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? `<div class="item-price">🪙 ${item.price}</div>` : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
+    container.appendChild(div);
+  });
+}
+
+// Fungsi Beli Item
+window.buyItem = async function(category, itemId, price) {
+  if (playerData.coins < price) {
+    alert("Koin kamu tidak cukup!");
+    return;
+  }
+  
+  playerData.coins -= price;
+  playerData.inventory.push(itemId);
+  
+  // Simpan ke Firebase
+  await updatePlayerFirebase();
+  
+  // Update UI
+  document.getElementById('coin-amount').textContent = playerData.coins;
+  renderShopTab(category);
+  alert("Berhasil dibeli!");
+};
+
+// Fungsi Pakai Item
+window.equipItem = async function(category, itemId) {
+  // Mapping kategori ke key equipped
+  let equipKey = category;
+  if (category === 'efek') {
+    equipKey = itemId.includes('lari') ? 'efek_lari' : 'efek_lompat';
+  }
+  
+  playerData.equipped[equipKey] = itemId;
+  await updatePlayerFirebase();
+  updateCharacterVisuals();
+  renderShopTab(category);
+};
+
+// Simpan Data ke Firebase
+async function updatePlayerFirebase() {
+  const userKey = playerData.username.toLowerCase();
+  const firebaseUrl = `${FIREBASE_URL}players/${userKey}.json`;
+  
+  await fetch(firebaseUrl, {
+    method: 'PATCH', // PATCH agar tidak menimpa PIN
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      coins: playerData.coins, 
+      inventory: playerData.inventory, 
+      equipped: playerData.equipped 
+    })
+  });
+}
+
+// Fungsi Update Visual Karakter (Dipanggil saat pakai item baru)
+function updateCharacterVisuals() {
+  if (!character) return;
+  
+  // Ambil warna dari list SHOP_ITEMS
+  const getColor = (cat, id, defaultColor) => {
+    const item = SHOP_ITEMS[cat].find(i => i.id === id);
+    return item && item.color ? item.color : defaultColor;
+  };
+
+  const bajuColor = getColor('baju', playerData.equipped.baju, 0x2c3e50);
+  const celanaColor = getColor('celana', playerData.equipped.celana, 0x1a1a1c);
+  const sepatuColor = getColor('sepatu', playerData.equipped.sepatu, 0xa61c2b);
+
+  character.traverse((child) => {
+    if (child.isMesh) {
+      if (child.userData.type === 'baju') child.material.color.setHex(bajuColor);
+      if (child.userData.type === 'celana') child.material.color.setHex(celanaColor);
+      if (child.userData.type === 'sepatu') child.material.color.setHex(sepatuColor);
+    }
+  });
+}
+
 async function fetchGlobalChat() {
   try {
     const res = await fetch(`${FIREBASE_URL}chats.json`);
     const data = await res.json();
-    
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
     chatMessages.innerHTML = ''; 
 
     if (data) {
       const messages = Object.values(data).sort((a, b) => a.time - b.time);
-      const recentMessages = messages.slice(-30);
-
-      recentMessages.forEach(msg => {
+      messages.slice(-30).forEach(msg => {
         const div = document.createElement('div');
         div.className = 'chat-msg';
-        
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'name' + (msg.isDev ? ' dev' : '');
-        nameSpan.textContent = msg.name + (msg.isDev ? ' ✔' : '') + ': ';
-        
-        const textSpan = document.createElement('span');
-        textSpan.className = 'text';
-        textSpan.textContent = msg.text;
-        
-        div.appendChild(nameSpan);
-        div.appendChild(textSpan);
+        div.innerHTML = `<span class="name ${msg.isDev ? 'dev' : ''}">${msg.name} ${msg.isDev ? '✔' : ''}: </span><span class="text">${msg.text}</span>`;
         chatMessages.appendChild(div);
       });
-
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
-  } catch (e) {
-    console.log("Gagal load chat");
-  }
+  } catch (e) { console.log("Gagal load chat"); }
 }
 
-// ============ 4. FUNGSI FULLSCREEN KHUSUS GAME ============
-function requestFullscreenAndLock() {
-  const elem = document.documentElement;
-  if (elem.requestFullscreen) {
-    elem.requestFullscreen().then(() => {
-      // Hanya kunci orientasi jika dipanggil dari tombol Start
-      if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('landscape').catch(e => console.log('Lock orientation failed:', e));
-      }
-    }).catch(e => console.log('Fullscreen failed:', e));
-  } else if (elem.webkitRequestFullscreen) { 
-    elem.webkitRequestFullscreen();
-  }
-}
-
-// ============ 5. SETUP GAME 3D ============
+// ============ 4. SETUP 3D ============
 let scene, camera, renderer, character, nameSprite, controls;
 let platforms = [], physics, lavaMat;
 let leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot, headGroup;
 let joystickVector = new THREE.Vector2(0, 0);
 let isRunning = false;
+let trailParticles = [], jumpParticles = [];
+
+function requestFullscreenAndLock() {
+  const elem = document.documentElement;
+  if (elem.requestFullscreen) {
+    elem.requestFullscreen().then(() => {
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(e => console.log(e));
+    }).catch(e => console.log(e));
+  }
+}
 
 function init3DGame() {
   scene = new THREE.Scene();
@@ -363,7 +492,8 @@ function init3DGame() {
   const matPupil = new THREE.MeshStandardMaterial({ color: 0x000000 });
   const matHair = new THREE.MeshStandardMaterial({ color: 0xd1d1d6, roughness: 0.6 });
 
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.8, 4, 16), matShirt); torso.position.y = 1.4; torso.castShadow = true; character.add(torso);
+  // Beri tanda userData.type agar bisa diubah warnanya di Shop
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.8, 4, 16), matShirt); torso.position.y = 1.4; torso.castShadow = true; torso.userData.type = 'baju'; character.add(torso);
   headGroup = new THREE.Group(); headGroup.position.y = 2.2; character.add(headGroup);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 32), matSkin); head.castShadow = true; headGroup.add(head);
 
@@ -382,17 +512,20 @@ function init3DGame() {
   const bangRight = new THREE.Mesh(bangGeo, matHair); bangRight.position.set(0.15, 0.15, 0.24); bangRight.rotation.set(0.2, 0, 0.3); hairGroup.add(bangRight);
 
   leftArmPivot = new THREE.Group(); leftArmPivot.position.set(-0.4, 1.8, 0); character.add(leftArmPivot);
-  const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.6, 4, 8), matShirt); leftArm.position.y = -0.4; leftArm.castShadow = true; leftArmPivot.add(leftArm);
+  const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.6, 4, 8), matShirt); leftArm.position.y = -0.4; leftArm.castShadow = true; leftArm.userData.type = 'baju'; leftArmPivot.add(leftArm);
   rightArmPivot = new THREE.Group(); rightArmPivot.position.set(0.4, 1.8, 0); character.add(rightArmPivot);
-  const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.6, 4, 8), matShirt); rightArm.position.y = -0.4; rightArm.castShadow = true; rightArmPivot.add(rightArm);
+  const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.6, 4, 8), matShirt); rightArm.position.y = -0.4; rightArm.castShadow = true; rightArm.userData.type = 'baju'; rightArmPivot.add(rightArm);
 
   leftLegPivot = new THREE.Group(); leftLegPivot.position.set(-0.15, 0.9, 0); character.add(leftLegPivot);
-  const leftLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.7, 4, 8), matPants); leftLeg.position.y = -0.4; leftLeg.castShadow = true; leftLegPivot.add(leftLeg);
-  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); leftShoe.position.set(0, -0.8, 0.05); leftLegPivot.add(leftShoe);
+  const leftLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.7, 4, 8), matPants); leftLeg.position.y = -0.4; leftLeg.castShadow = true; leftLeg.userData.type = 'celana'; leftLegPivot.add(leftLeg);
+  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); leftShoe.position.set(0, -0.8, 0.05); leftShoe.userData.type = 'sepatu'; leftLegPivot.add(leftShoe);
 
   rightLegPivot = new THREE.Group(); rightLegPivot.position.set(0.15, 0.9, 0); character.add(rightLegPivot);
-  const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.7, 4, 8), matPants); rightLeg.position.y = -0.4; rightLeg.castShadow = true; rightLegPivot.add(rightLeg);
-  const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); rightShoe.position.set(0, -0.8, 0.05); rightLegPivot.add(rightShoe);
+  const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.7, 4, 8), matPants); rightLeg.position.y = -0.4; rightLeg.castShadow = true; rightLeg.userData.type = 'celana'; rightLegPivot.add(rightLeg);
+  const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); rightShoe.position.set(0, -0.8, 0.05); rightShoe.userData.type = 'sepatu'; rightLegPivot.add(rightShoe);
+
+  // Terapkan warna dari shop saat inisialisasi
+  updateCharacterVisuals();
 
   // --- KAMERA ---
   controls = new OrbitControls(camera, renderer.domElement);
@@ -440,8 +573,10 @@ function init3DGame() {
     e.preventDefault();
     if (physics.isGrounded) {
       physics.jumpCount = 1; physics.velocityY = physics.jumpForce; physics.isGrounded = false;
+      createJumpEffect();
     } else if (physics.jumpCount < physics.maxJumps) {
       physics.jumpCount++; physics.velocityY = physics.jumpForce;
+      createJumpEffect();
     }
   });
 
@@ -459,7 +594,48 @@ function init3DGame() {
   animate();
 }
 
-// ============ 6. LOGIKA COLLISION & ANIMASI ============
+// --- EFEK PARTIKEL (LARI & LOMPAT) ---
+function createTrailEffect() {
+  if (playerData.equipped.efek_lari === 'efek_lari_default') return;
+  const item = SHOP_ITEMS.efek.find(i => i.id === playerData.equipped.efek_lari);
+  if (!item || !item.color) return;
+
+  const geo = new THREE.SphereGeometry(0.15, 8, 8);
+  const mat = new THREE.MeshBasicMaterial({ color: item.color, transparent: true, opacity: 0.8 });
+  const particle = new THREE.Mesh(geo, mat);
+  particle.position.copy(character.position);
+  particle.position.y += 0.5;
+  particle.position.x += (Math.random() - 0.5) * 0.3;
+  particle.position.z += (Math.random() - 0.5) * 0.3;
+  scene.add(particle);
+  trailParticles.push({ mesh: particle, life: 0.5 });
+}
+
+function createJumpEffect() {
+  if (playerData.equipped.efek_lompat === 'efek_lompat_default') return;
+  const item = SHOP_ITEMS.efek.find(i => i.id === playerData.equipped.efek_lompat);
+  if (!item || !item.color) return;
+
+  for(let i=0; i<10; i++) {
+    const geo = new THREE.SphereGeometry(0.1, 6, 6);
+    const mat = new THREE.MeshBasicMaterial({ color: item.color, transparent: true, opacity: 1 });
+    const particle = new THREE.Mesh(geo, mat);
+    particle.position.copy(character.position);
+    particle.position.y += 0.2;
+    
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 2 + 1;
+    particle.userData = {
+      vx: Math.cos(angle) * speed,
+      vy: 1,
+      vz: Math.sin(angle) * speed
+    };
+    scene.add(particle);
+    jumpParticles.push({ mesh: particle, life: 0.6 });
+  }
+}
+
+// ============ 5. LOGIKA COLLISION & ANIMASI ============
 function checkGroundCollision(x, z, y) {
   const feetY = y; const tolerance = 0.3;
   for (let p of platforms) {
@@ -534,6 +710,27 @@ function animate() {
   
   if (scene && camera) renderer.render(scene, camera);
 
+  // Update Efek Partikel Lari
+  for (let i = trailParticles.length - 1; i >= 0; i--) {
+    let p = trailParticles[i];
+    p.life -= delta;
+    p.mesh.material.opacity = p.life * 2;
+    p.mesh.scale.multiplyScalar(1 - delta * 2);
+    if (p.life <= 0) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); trailParticles.splice(i, 1); }
+  }
+
+  // Update Efek Partikel Lompat
+  for (let i = jumpParticles.length - 1; i >= 0; i--) {
+    let p = jumpParticles[i];
+    p.life -= delta;
+    p.mesh.position.x += p.mesh.userData.vx * delta;
+    p.mesh.position.y += p.mesh.userData.vy * delta;
+    p.mesh.position.z += p.mesh.userData.vz * delta;
+    p.mesh.userData.vy -= 5 * delta; // Gravitasi efek
+    p.mesh.material.opacity = p.life * 1.5;
+    if (p.life <= 0) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); jumpParticles.splice(i, 1); }
+  }
+
   if (gameState === 'LOBBY') {
     character.position.y = 0.25 + Math.sin(t * 2) * 0.02;
     headGroup.rotation.y = Math.sin(t * 0.5) * 0.3;
@@ -568,6 +765,9 @@ function animate() {
     const len = Math.sqrt(moveX*moveX + moveZ*moveZ);
     nextX += (moveX / len) * speed * delta; nextZ += (moveZ / len) * speed * delta;
     isMoving = true; character.rotation.y = Math.atan2(moveX, moveZ);
+
+    // Efek Lari
+    if (isRunning && Math.random() < 0.3) createTrailEffect();
   }
 
   if (!checkWallCollision(nextX, character.position.z, character.position.y)) character.position.x = nextX;
@@ -599,8 +799,14 @@ function animate() {
     gameState = 'GAMEOVER'; showOverlay('GAME OVER', 'Kamu jatuh ke lava panas!', '#ff3333');
   }
 
+  // ============ MENANG & DAPAT KOIN ============
   if (character.position.z < -53 && character.position.y > 6) {
-    gameState = 'WIN'; showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago!', '#00ff00');
+    gameState = 'WIN'; 
+    playerData.coins = (playerData.coins || 0) + 100; // Tambah 100 Koin
+    updatePlayerFirebase();
+    document.getElementById('coin-amount').textContent = playerData.coins;
+    
+    showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago! +100 🪙', '#00ff00');
   }
 
   if (!physics.isGrounded) {
