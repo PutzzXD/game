@@ -9,10 +9,6 @@ let playerData = { username: "", isDev: false };
 let gameState = 'LOGIN'; 
 let isGameStarted = false; 
 
-// Referensi Chat
-const chatRef = `${FIREBASE_URL}chats.json`;
-let lastChatTimestamp = 0;
-
 // ============ 2. SETUP DOM & EVENT LISTENER ============
 window.addEventListener('DOMContentLoaded', () => {
   const loginMsg = document.getElementById('login-msg');
@@ -20,12 +16,11 @@ window.addEventListener('DOMContentLoaded', () => {
   const profileModal = document.getElementById('profile-modal');
   
   // --- CHAT UI TOGGLE (Buka/Tutup) ---
-  const chatContainer = document.getElementById('chat-container');
   const chatBox = document.getElementById('chat-box');
   const chatToggle = document.getElementById('chat-toggle');
   
   chatToggle.addEventListener('click', () => {
-    const isHidden = chatBox.style.display === 'none';
+    const isHidden = chatBox.style.display === 'none' || chatBox.style.display === '';
     chatBox.style.display = isHidden ? 'flex' : 'none';
     chatToggle.textContent = isHidden ? '❌ Tutup Chat' : '💬 Chat Global';
   });
@@ -36,7 +31,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const text = input.value.trim();
     if (text.length === 0) return;
     
-    // Kirim ke Firebase
     const payload = {
       name: playerData.username,
       isDev: playerData.isDev,
@@ -69,15 +63,28 @@ window.addEventListener('DOMContentLoaded', () => {
     location.reload();
   });
 
-  // Klik Mulai Game
+  // ==========================================
+  // KLIK MULAI GAME (FULLSCREEN DIPICU DARI SINI)
+  // ==========================================
   document.getElementById('btn-start-game').addEventListener('click', () => {
+    // 1. Pemicu Fullscreen & Lock Landscape (Karena dipicu oleh klik user, browser akan mengizinkan)
+    requestFullscreenAndLock();
+
+    // 2. Ubah UI
     document.getElementById('btn-start-game').style.display = 'none';
     document.getElementById('in-game-controls').style.display = 'block';
-    document.getElementById('chat-container').style.display = 'none'; // Sembunyikan chat saat main
+    
+    // Sembunyikan kotak chat saat mulai main (tapi tombolnya tetap ada)
+    chatBox.style.display = 'none'; 
+    chatToggle.textContent = '💬 Chat Global';
+
     isGameStarted = true;
     gameState = 'PLAYING';
     
+    // Sembunyikan modal profil jika kebetulan terbuka
     profileModal.style.display = 'none';
+
+    // 3. Reset Posisi Kamera ke Belakang Karakter
     camera.position.set(0, 4, 8);
     controls.target.set(0, 1.5, 0);
   });
@@ -193,35 +200,31 @@ function startLobby(username, isDev) {
 
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('in-game-controls').style.display = 'none';
-  document.getElementById('chat-container').style.display = 'flex'; // Tampilkan Chat
+  document.getElementById('chat-container').style.display = 'flex';
 
-  // Mulai ambil chat secara berkala (Polling tiap 3 detik)
-  setInterval(fetchGlobalChat, 3000);
+  // Ambil chat dan ulangi tiap 3 detik
   fetchGlobalChat();
+  setInterval(fetchGlobalChat, 3000);
 
   init3DGame();
   
+  // Posisi kamera Lobby (Menghadap karakter dari depan)
   camera.position.set(0, 3, -5);
   controls.target.set(0, 1.5, 0);
-
-  requestFullscreenAndLock();
 }
 
 // Fungsi Ambil Chat dari Firebase
 async function fetchGlobalChat() {
-  if (gameState !== 'LOBBY') return; // Hanya tarik chat saat di lobi
   try {
     const res = await fetch(`${FIREBASE_URL}chats.json`);
     const data = await res.json();
     
     const chatMessages = document.getElementById('chat-messages');
-    chatMessages.innerHTML = ''; // Bersihkan chat lama
+    if (!chatMessages) return;
+    chatMessages.innerHTML = ''; 
 
     if (data) {
-      // Ubah object jadi array dan urutkan berdasarkan waktu
       const messages = Object.values(data).sort((a, b) => a.time - b.time);
-      
-      // Batasi hanya tampilkan 30 pesan terakhir agar ringan
       const recentMessages = messages.slice(-30);
 
       recentMessages.forEach(msg => {
@@ -241,7 +244,6 @@ async function fetchGlobalChat() {
         chatMessages.appendChild(div);
       });
 
-      // Auto scroll ke bawah
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
   } catch (e) {
@@ -249,16 +251,22 @@ async function fetchGlobalChat() {
   }
 }
 
+// ============ 4. FUNGSI FULLSCREEN KHUSUS GAME ============
 function requestFullscreenAndLock() {
   const elem = document.documentElement;
   if (elem.requestFullscreen) {
     elem.requestFullscreen().then(() => {
-      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(e => console.log(e));
-    }).catch(e => console.log(e));
+      // Hanya kunci orientasi jika dipanggil dari tombol Start
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(e => console.log('Lock orientation failed:', e));
+      }
+    }).catch(e => console.log('Fullscreen failed:', e));
+  } else if (elem.webkitRequestFullscreen) { 
+    elem.webkitRequestFullscreen();
   }
 }
 
-// ============ 4. SETUP GAME 3D ============
+// ============ 5. SETUP GAME 3D ============
 let scene, camera, renderer, character, nameSprite, controls;
 let platforms = [], physics, lavaMat;
 let leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot, headGroup;
@@ -451,7 +459,7 @@ function init3DGame() {
   animate();
 }
 
-// ============ 5. LOGIKA COLLISION & ANIMASI ============
+// ============ 6. LOGIKA COLLISION & ANIMASI ============
 function checkGroundCollision(x, z, y) {
   const feetY = y; const tolerance = 0.3;
   for (let p of platforms) {
@@ -527,7 +535,6 @@ function animate() {
   if (scene && camera) renderer.render(scene, camera);
 
   if (gameState === 'LOBBY') {
-    // Animasi Idle di Lobby (Karakter diam)
     character.position.y = 0.25 + Math.sin(t * 2) * 0.02;
     headGroup.rotation.y = Math.sin(t * 0.5) * 0.3;
     controls.update();
