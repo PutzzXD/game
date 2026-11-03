@@ -22,7 +22,6 @@ let playerData = {
 let gameState = 'LOGIN'; 
 let isGameStarted = false; 
 
-// Daftar Barang di Shop
 const SHOP_ITEMS = {
   baju: [
     { id: 'baju_default', name: 'Baju Biru Tua', price: 0, color: 0x2c3e50 },
@@ -48,14 +47,22 @@ const SHOP_ITEMS = {
   ]
 };
 
-// ============ 2. SETUP DOM & EVENT LISTENER ============
+// ============ 2. FUNGSI NOTIFIKASI CUSTOM (TOAST) ============
+function showToast(message) {
+  const toast = document.getElementById('custom-toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => { toast.classList.remove('show'); }, 2000); 
+}
+
+// ============ 3. SETUP DOM & EVENT LISTENER ============
 window.addEventListener('DOMContentLoaded', () => {
   const loginMsg = document.getElementById('login-msg');
   const regMsg = document.getElementById('reg-msg');
   const profileModal = document.getElementById('profile-modal');
   const shopModal = document.getElementById('shop-modal');
   
-  // --- CHAT UI TOGGLE ---
   const chatBox = document.getElementById('chat-box');
   const chatToggle = document.getElementById('chat-toggle');
   
@@ -65,32 +72,26 @@ window.addEventListener('DOMContentLoaded', () => {
     chatToggle.textContent = isHidden ? '❌ Tutup Chat' : '💬 Chat Global';
   });
 
-  // Kirim Pesan Chat
   document.getElementById('chat-send').addEventListener('click', () => {
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
     if (text.length === 0) return;
-    
     const payload = { name: playerData.username, isDev: playerData.isDev, text: text, time: Date.now() };
     fetch(`${FIREBASE_URL}chats.json`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     input.value = '';
   });
 
-  document.getElementById('chat-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') document.getElementById('chat-send').click();
-  });
+  document.getElementById('chat-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('chat-send').click(); });
 
-  // Profil UI
   document.getElementById('btn-profile').addEventListener('click', () => {
     profileModal.style.display = profileModal.style.display === 'block' ? 'none' : 'block';
   });
   document.getElementById('close-modal').addEventListener('click', () => { profileModal.style.display = 'none'; });
   document.getElementById('btn-logout').addEventListener('click', () => { localStorage.removeItem('parkour_user'); location.reload(); });
 
-  // --- LOGIKA SHOP (BUKA/TUTUP & TAB) ---
   document.getElementById('btn-shop').addEventListener('click', () => {
     shopModal.style.display = 'flex';
-    renderShopTab('baju'); // Default buka tab baju
+    renderShopTab('baju'); 
   });
   document.getElementById('close-shop').addEventListener('click', () => { shopModal.style.display = 'none'; });
 
@@ -102,7 +103,6 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // --- KLIK MULAI GAME ---
   document.getElementById('btn-start-game').addEventListener('click', () => {
     requestFullscreenAndLock();
     document.getElementById('btn-start-game').style.display = 'none';
@@ -118,7 +118,6 @@ window.addEventListener('DOMContentLoaded', () => {
     controls.target.set(0, 1.5, 0);
   });
 
-  // --- PROSES REGISTRASI & LOGIN ---
   document.getElementById('btn-register').addEventListener('click', async () => {
     const username = document.getElementById('reg-username').value.trim();
     const pin = document.getElementById('reg-pin').value.trim();
@@ -141,23 +140,14 @@ window.addEventListener('DOMContentLoaded', () => {
         regMsg.textContent = "Username sudah dipakai!"; regMsg.className = "msg error";
         document.getElementById('btn-register').disabled = false; return;
       }
-
-      const newPlayerData = { 
-        username, pin, isDev: (userKey === DEV_USERNAME), coins: 0, 
-        inventory: playerData.inventory, equipped: playerData.equipped 
-      };
-
-      await fetch(firebaseUrl, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newPlayerData)
-      });
+      const newPlayerData = { username, pin, isDev: (userKey === DEV_USERNAME), coins: 0, inventory: playerData.inventory, equipped: playerData.equipped };
+      await fetch(firebaseUrl, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newPlayerData) });
 
       regMsg.textContent = "Registrasi berhasil! Silakan Masuk."; regMsg.className = "msg success";
       document.getElementById('reg-username').value = '';
       document.getElementById('reg-pin').value = '';
       document.getElementById('reg-pin-confirm').value = '';
       setTimeout(() => { document.getElementById('tab1').checked = true; }, 1500);
-
     } catch(e) {
       regMsg.textContent = "Gagal daftar. Cek koneksi."; regMsg.className = "msg error";
     }
@@ -180,7 +170,6 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(firebaseUrl);
       const data = await res.json();
-
       if (!data) {
         loginMsg.textContent = "Akun tidak ditemukan. Silakan Daftar."; loginMsg.className = "msg error";
         document.getElementById('btn-login').disabled = false; return;
@@ -189,51 +178,37 @@ window.addEventListener('DOMContentLoaded', () => {
         loginMsg.textContent = "PIN salah! Coba lagi."; loginMsg.className = "msg error";
         document.getElementById('btn-login').disabled = false; return;
       }
-
-      // Gabungkan data dari Firebase dengan state default jika ada yang kosong
-      playerData = { 
-        ...playerData, 
-        ...data,
-        inventory: data.inventory || playerData.inventory,
-        equipped: data.equipped || playerData.equipped
-      };
-
+      playerData = { ...playerData, ...data, inventory: data.inventory || playerData.inventory, equipped: data.equipped || playerData.equipped };
       localStorage.setItem('parkour_user', JSON.stringify({ username, isDev: data.isDev }));
       startLobby();
-
     } catch(e) {
       loginMsg.textContent = "Gagal konek ke server."; loginMsg.className = "msg error";
       document.getElementById('btn-login').disabled = false;
     }
   });
 
-  // Auto Login
+  // AUTO LOGIN
   const savedSession = localStorage.getItem('parkour_user');
   if (savedSession) {
     try {
       const session = JSON.parse(savedSession);
-      // Tarik data terbaru dari Firebase
       fetch(`${FIREBASE_URL}players/${session.username.toLowerCase()}.json`)
         .then(res => res.json())
         .then(data => {
           if (data) {
             playerData = { ...playerData, ...data, inventory: data.inventory || playerData.inventory, equipped: data.equipped || playerData.equipped };
             startLobby();
-          } else {
-            localStorage.removeItem('parkour_user');
-          }
+          } else { localStorage.removeItem('parkour_user'); }
         });
     } catch(e) { localStorage.removeItem('parkour_user'); }
   }
 });
 
-// ============ 3. FUNGSI LOBI, CHAT, & SHOP ============
+// ============ 4. FUNGSI LOBI & SHOP ============
 function startLobby() {
   document.getElementById('auth-container').style.display = 'none';
   document.getElementById('game-ui').style.display = 'block';
-
   gameState = 'LOBBY'; 
-
   document.getElementById('hud-username').textContent = playerData.username;
   document.getElementById('coin-amount').textContent = playerData.coins || 0;
   document.getElementById('modal-username').textContent = playerData.username;
@@ -245,7 +220,6 @@ function startLobby() {
     document.getElementById('modal-status').textContent = "Player Biasa";
     document.getElementById('modal-status').style.color = "#ccc";
   }
-
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('btn-shop').style.display = 'flex';
   document.getElementById('in-game-controls').style.display = 'none';
@@ -255,7 +229,6 @@ function startLobby() {
   setInterval(fetchGlobalChat, 3000);
 
   init3DGame();
-  
   camera.position.set(0, 3, -5);
   controls.target.set(0, 1.5, 0);
 }
@@ -267,7 +240,6 @@ function renderShopTab(category) {
   SHOP_ITEMS[category].forEach(item => {
     const isOwned = playerData.inventory.includes(item.id);
     const isEquipped = Object.values(playerData.equipped).includes(item.id);
-    
     const div = document.createElement('div');
     div.className = 'shop-item';
     
@@ -292,69 +264,44 @@ function renderShopTab(category) {
   });
 }
 
-// Fungsi Beli Item
 window.buyItem = async function(category, itemId, price) {
-  if (playerData.coins < price) {
-    alert("Koin kamu tidak cukup!");
-    return;
-  }
-  
+  if (playerData.coins < price) { showToast("❌ Koin kamu tidak cukup!"); return; }
   playerData.coins -= price;
   playerData.inventory.push(itemId);
-  
-  // Simpan ke Firebase
   await updatePlayerFirebase();
-  
-  // Update UI
   document.getElementById('coin-amount').textContent = playerData.coins;
   renderShopTab(category);
-  alert("Berhasil dibeli!");
+  showToast("✅ Berhasil dibeli!");
 };
 
-// Fungsi Pakai Item
 window.equipItem = async function(category, itemId) {
-  // Mapping kategori ke key equipped
   let equipKey = category;
-  if (category === 'efek') {
-    equipKey = itemId.includes('lari') ? 'efek_lari' : 'efek_lompat';
-  }
-  
+  if (category === 'efek') equipKey = itemId.includes('lari') ? 'efek_lari' : 'efek_lompat';
   playerData.equipped[equipKey] = itemId;
   await updatePlayerFirebase();
   updateCharacterVisuals();
   renderShopTab(category);
+  showToast("✅ Item berhasil dipakai!");
 };
 
-// Simpan Data ke Firebase
 async function updatePlayerFirebase() {
   const userKey = playerData.username.toLowerCase();
   const firebaseUrl = `${FIREBASE_URL}players/${userKey}.json`;
-  
   await fetch(firebaseUrl, {
-    method: 'PATCH', // PATCH agar tidak menimpa PIN
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ 
-      coins: playerData.coins, 
-      inventory: playerData.inventory, 
-      equipped: playerData.equipped 
-    })
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ coins: playerData.coins, inventory: playerData.inventory, equipped: playerData.equipped })
   });
 }
 
-// Fungsi Update Visual Karakter (Dipanggil saat pakai item baru)
 function updateCharacterVisuals() {
   if (!character) return;
-  
-  // Ambil warna dari list SHOP_ITEMS
   const getColor = (cat, id, defaultColor) => {
     const item = SHOP_ITEMS[cat].find(i => i.id === id);
     return item && item.color ? item.color : defaultColor;
   };
-
   const bajuColor = getColor('baju', playerData.equipped.baju, 0x2c3e50);
   const celanaColor = getColor('celana', playerData.equipped.celana, 0x1a1a1c);
   const sepatuColor = getColor('sepatu', playerData.equipped.sepatu, 0xa61c2b);
-
   character.traverse((child) => {
     if (child.isMesh) {
       if (child.userData.type === 'baju') child.material.color.setHex(bajuColor);
@@ -371,7 +318,6 @@ async function fetchGlobalChat() {
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
     chatMessages.innerHTML = ''; 
-
     if (data) {
       const messages = Object.values(data).sort((a, b) => a.time - b.time);
       messages.slice(-30).forEach(msg => {
@@ -385,7 +331,7 @@ async function fetchGlobalChat() {
   } catch (e) { console.log("Gagal load chat"); }
 }
 
-// ============ 4. SETUP 3D ============
+// ============ 5. SETUP 3D ============
 let scene, camera, renderer, character, nameSprite, controls;
 let platforms = [], physics, lavaMat;
 let leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot, headGroup;
@@ -427,7 +373,6 @@ function init3DGame() {
   lava.position.y = -8;
   scene.add(lava);
 
-  // --- PLATFORMS ---
   const platformMat = new THREE.MeshStandardMaterial({ color: 0x444455, roughness: 0.8 });
   const breakableMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9 });
   const movingMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.7 });
@@ -477,7 +422,6 @@ function init3DGame() {
   const board = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide, emissive: 0x00ff00, emissiveIntensity: 0.2 }));
   board.position.set(0, 11.5, -56); scene.add(board);
 
-  // --- KARAKTER ---
   character = new THREE.Group();
   character.position.set(0, 0.25, 0);
   scene.add(character);
@@ -492,7 +436,6 @@ function init3DGame() {
   const matPupil = new THREE.MeshStandardMaterial({ color: 0x000000 });
   const matHair = new THREE.MeshStandardMaterial({ color: 0xd1d1d6, roughness: 0.6 });
 
-  // Beri tanda userData.type agar bisa diubah warnanya di Shop
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.8, 4, 16), matShirt); torso.position.y = 1.4; torso.castShadow = true; torso.userData.type = 'baju'; character.add(torso);
   headGroup = new THREE.Group(); headGroup.position.y = 2.2; character.add(headGroup);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 32), matSkin); head.castShadow = true; headGroup.add(head);
@@ -524,10 +467,8 @@ function init3DGame() {
   const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.7, 4, 8), matPants); rightLeg.position.y = -0.4; rightLeg.castShadow = true; rightLeg.userData.type = 'celana'; rightLegPivot.add(rightLeg);
   const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); rightShoe.position.set(0, -0.8, 0.05); rightShoe.userData.type = 'sepatu'; rightLegPivot.add(rightShoe);
 
-  // Terapkan warna dari shop saat inisialisasi
   updateCharacterVisuals();
 
-  // --- KAMERA ---
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enablePan = false; controls.minDistance = 3; controls.maxDistance = 15;
   controls.maxPolarAngle = Math.PI / 2 - 0.1;
@@ -539,7 +480,6 @@ function init3DGame() {
     if ((x < 180 && y > h - 180) || (x > w - 220 && y > h - 160)) e.stopImmediatePropagation();
   }, { capture: true });
 
-  // --- INPUT GAMEPLAY ---
   const joystickArea = document.getElementById('joystick-area');
   const joystickKnob = document.getElementById('joystick-knob');
   let joystickActive = false;
@@ -594,12 +534,10 @@ function init3DGame() {
   animate();
 }
 
-// --- EFEK PARTIKEL (LARI & LOMPAT) ---
 function createTrailEffect() {
   if (playerData.equipped.efek_lari === 'efek_lari_default') return;
   const item = SHOP_ITEMS.efek.find(i => i.id === playerData.equipped.efek_lari);
   if (!item || !item.color) return;
-
   const geo = new THREE.SphereGeometry(0.15, 8, 8);
   const mat = new THREE.MeshBasicMaterial({ color: item.color, transparent: true, opacity: 0.8 });
   const particle = new THREE.Mesh(geo, mat);
@@ -615,27 +553,20 @@ function createJumpEffect() {
   if (playerData.equipped.efek_lompat === 'efek_lompat_default') return;
   const item = SHOP_ITEMS.efek.find(i => i.id === playerData.equipped.efek_lompat);
   if (!item || !item.color) return;
-
   for(let i=0; i<10; i++) {
     const geo = new THREE.SphereGeometry(0.1, 6, 6);
     const mat = new THREE.MeshBasicMaterial({ color: item.color, transparent: true, opacity: 1 });
     const particle = new THREE.Mesh(geo, mat);
     particle.position.copy(character.position);
     particle.position.y += 0.2;
-    
     const angle = Math.random() * Math.PI * 2;
     const speed = Math.random() * 2 + 1;
-    particle.userData = {
-      vx: Math.cos(angle) * speed,
-      vy: 1,
-      vz: Math.sin(angle) * speed
-    };
+    particle.userData = { vx: Math.cos(angle) * speed, vy: 1, vz: Math.sin(angle) * speed };
     scene.add(particle);
     jumpParticles.push({ mesh: particle, life: 0.6 });
   }
 }
 
-// ============ 5. LOGIKA COLLISION & ANIMASI ============
 function checkGroundCollision(x, z, y) {
   const feetY = y; const tolerance = 0.3;
   for (let p of platforms) {
@@ -672,24 +603,19 @@ function showOverlay(title, desc, color) {
 
 function updateCharacterNameSprite(username, isDev) {
   if (nameSprite) { scene.remove(nameSprite); nameSprite.material.map.dispose(); nameSprite.material.dispose(); }
-
   const canvasName = document.createElement('canvas');
   canvasName.width = 512; canvasName.height = 128;
   const ctxName = canvasName.getContext('2d');
-
   ctxName.clearRect(0, 0, canvasName.width, canvasName.height);
   ctxName.fillStyle = 'rgba(0, 0, 0, 0.6)';
   ctxName.beginPath(); ctxName.roundRect(10, 20, 492, 88, 20); ctxName.fill();
-
   ctxName.font = 'bold 50px sans-serif'; ctxName.fillStyle = '#ffffff'; ctxName.textAlign = 'center'; ctxName.textBaseline = 'middle';
   ctxName.fillText(username, 256, 64);
-
   if (isDev) {
     ctxName.beginPath(); ctxName.arc(430, 64, 28, 0, Math.PI * 2); ctxName.fillStyle = '#1DA1F2'; ctxName.fill();
     ctxName.strokeStyle = '#ffffff'; ctxName.lineWidth = 4; ctxName.stroke();
     ctxName.beginPath(); ctxName.moveTo(418, 64); ctxName.lineTo(426, 74); ctxName.lineTo(444, 54); ctxName.strokeStyle = '#ffffff'; ctxName.lineWidth = 6; ctxName.lineCap = 'round'; ctxName.lineJoin = 'round'; ctxName.stroke();
   }
-
   const textureName = new THREE.CanvasTexture(canvasName);
   textureName.needsUpdate = true;
   nameSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: textureName, depthTest: false, depthWrite: false }));
@@ -704,13 +630,10 @@ let walkTime = 0;
 function animate() {
   requestAnimationFrame(animate);
   if (!renderer) return;
-
   const delta = Math.min(clock.getDelta(), 0.1);
   const t = clock.getElapsedTime();
-  
   if (scene && camera) renderer.render(scene, camera);
 
-  // Update Efek Partikel Lari
   for (let i = trailParticles.length - 1; i >= 0; i--) {
     let p = trailParticles[i];
     p.life -= delta;
@@ -719,14 +642,13 @@ function animate() {
     if (p.life <= 0) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); trailParticles.splice(i, 1); }
   }
 
-  // Update Efek Partikel Lompat
   for (let i = jumpParticles.length - 1; i >= 0; i--) {
     let p = jumpParticles[i];
     p.life -= delta;
     p.mesh.position.x += p.mesh.userData.vx * delta;
     p.mesh.position.y += p.mesh.userData.vy * delta;
     p.mesh.position.z += p.mesh.userData.vz * delta;
-    p.mesh.userData.vy -= 5 * delta; // Gravitasi efek
+    p.mesh.userData.vy -= 5 * delta;
     p.mesh.material.opacity = p.life * 1.5;
     if (p.life <= 0) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); jumpParticles.splice(i, 1); }
   }
@@ -765,8 +687,6 @@ function animate() {
     const len = Math.sqrt(moveX*moveX + moveZ*moveZ);
     nextX += (moveX / len) * speed * delta; nextZ += (moveZ / len) * speed * delta;
     isMoving = true; character.rotation.y = Math.atan2(moveX, moveZ);
-
-    // Efek Lari
     if (isRunning && Math.random() < 0.3) createTrailEffect();
   }
 
@@ -799,13 +719,11 @@ function animate() {
     gameState = 'GAMEOVER'; showOverlay('GAME OVER', 'Kamu jatuh ke lava panas!', '#ff3333');
   }
 
-  // ============ MENANG & DAPAT KOIN ============
   if (character.position.z < -53 && character.position.y > 6) {
     gameState = 'WIN'; 
-    playerData.coins = (playerData.coins || 0) + 100; // Tambah 100 Koin
+    playerData.coins = (playerData.coins || 0) + 100;
     updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins;
-    
     showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago! +100 🪙', '#00ff00');
   }
 
@@ -845,7 +763,3 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
   }
 });
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(e => console.log(e)));
-}

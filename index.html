@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#1a1a24">
-  <title>Parkour 3D - Akses</title>
-  
-  <link rel="manifest" href="./manifest.json">
+  <title>Parkour 3D - Putzzdev</title>
   
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap');
@@ -80,7 +78,7 @@
     #profile-modal .dev-badge { color: #1DA1F2; font-weight: bold; }
     .btn-logout { width: 100%; padding: 10px; margin-top: 15px; background: #ff3333; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-family: sans-serif; }
 
-    /* --- UI SHOP MODAL (BARU) --- */
+    /* --- UI SHOP MODAL --- */
     #shop-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a24; border: 2px solid #9d4edd; border-radius: 15px; width: 90%; max-width: 600px; padding: 20px; z-index: 50; display: none; flex-direction: column; pointer-events: auto; box-shadow: 0 0 30px rgba(157,78,221,0.3); max-height: 80vh; overflow-y: auto; }
     #shop-modal h2 { margin: 0 0 15px 0; text-align: center; color: #e0aaff; font-family: 'Rajdhani', sans-serif; letter-spacing: 2px; }
     .shop-tabs { display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
@@ -136,6 +134,16 @@
     #chat-input-area { display: flex; border-top: 1px solid #444; padding: 5px; }
     #chat-input { flex: 1; background: transparent; border: none; color: white; padding: 5px; outline: none; font-family: sans-serif; font-size: 13px; }
     #chat-send { background: #9d4edd; border: none; color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold; cursor: pointer; }
+
+    /* --- NOTIFIKASI CUSTOM (TOAST) --- */
+    #custom-toast {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
+      background: rgba(20, 20, 30, 0.95); border: 2px solid #9d4edd; border-radius: 15px;
+      padding: 20px 40px; color: white; font-family: 'Rajdhani', sans-serif; font-size: 24px; font-weight: bold;
+      z-index: 99999; display: none; opacity: 0; transition: all 0.3s ease; text-align: center;
+      box-shadow: 0 0 20px rgba(157, 78, 221, 0.6); pointer-events: none;
+    }
+    #custom-toast.show { display: block; opacity: 1; transform: translate(-50%, -50%) scale(1); }
   </style>
 </head>
 <body>
@@ -176,10 +184,9 @@
     </div>
   </div>
 
-  <!-- LAYAR GAME 3D (LOBBY & PARKOUR) -->
+  <!-- LAYAR GAME 3D -->
   <div id="game-ui">
     
-    <!-- HUD Kiri Atas -->
     <div id="top-hud">
       <div id="btn-profile">
         <span id="hud-username">Player</span>
@@ -187,13 +194,11 @@
       </div>
     </div>
     
-    <!-- HUD Koin Kanan Atas -->
     <div id="coin-hud">
       <span id="coin-icon">🪙</span>
       <span id="coin-amount">0</span>
     </div>
 
-    <!-- Chat Global -->
     <div id="chat-container">
       <button id="chat-toggle">💬 Chat Global</button>
       <div id="chat-box">
@@ -205,7 +210,6 @@
       </div>
     </div>
 
-    <!-- Modal Profil -->
     <div id="profile-modal">
       <h3>INFO AKUN <span id="close-modal">✖</span></h3>
       <p>Username: <b id="modal-username">Player</b></p>
@@ -213,7 +217,6 @@
       <button class="btn-logout" id="btn-logout">LOGOUT</button>
     </div>
 
-    <!-- Modal Shop (Baru) -->
     <div id="shop-modal">
       <span class="btn-close-shop" id="close-shop">✖</span>
       <h2>🛒 TOKO KARAKTER</h2>
@@ -223,38 +226,35 @@
         <button class="shop-tab-btn" data-cat="sepatu">Sepatu</button>
         <button class="shop-tab-btn" data-cat="efek">Efek</button>
       </div>
-      <div class="shop-items" id="shop-items-container">
-        <!-- Item akan di-generate oleh JS -->
-      </div>
+      <div class="shop-items" id="shop-items-container"></div>
     </div>
 
-    <!-- Tombol Bawah Kanan -->
     <div id="bottom-controls">
       <div id="btn-shop" style="display: none;">🛒</div>
       <div id="btn-start-game" style="display: flex;">MULAI</div>
     </div>
 
-    <!-- Kontrol Game -->
     <div id="in-game-controls">
       <div id="joystick-area"><div id="joystick-zone"><div id="joystick-knob"></div></div></div>
       <div id="btn-jump">LOMPAT</div>
       <div id="btn-run">LARI</div>
     </div>
 
-    <!-- Overlay Putar HP -->
     <div id="rotate-overlay">
       <div class="icon">📱</div>
       <h2 style="margin:0 0 10px 0;">Putar HP Kamu</h2>
       <p style="margin:0; opacity:0.7;">Mainkan game ini dalam mode Landscape (Miring)</p>
     </div>
 
-    <!-- Overlay Win/GameOver -->
     <div id="overlay">
       <h1 id="overlay-title">GAME OVER</h1>
       <p id="overlay-desc">Kamu gagal!</p>
       <button id="btn-restart" type="button">COBA LAGI</button>
     </div>
   </div>
+
+  <!-- Toast Element -->
+  <div id="custom-toast"></div>
 
   <script type="importmap">
   {
@@ -265,6 +265,7 @@
   }
   </script>
 
+  <!-- CUKUP IMPORT FILE INI SAJA -->
   <script type="module" src="./main.js"></script>
 </body>
 </html>
