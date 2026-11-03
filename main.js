@@ -7,14 +7,41 @@ const DEV_USERNAME = "putzzdev";
 
 let playerData = { username: "", isDev: false };
 let gameState = 'LOGIN'; 
-let gameInitialized = false; 
+let isGameStarted = false; // Untuk cek sudah masuk parkour atau masih di lobby
 
 // ============ 2. SETUP DOM & EVENT LISTENER ============
 window.addEventListener('DOMContentLoaded', () => {
   const loginMsg = document.getElementById('login-msg');
   const regMsg = document.getElementById('reg-msg');
+  const profileModal = document.getElementById('profile-modal');
 
-  // --- PROSES REGISTRASI (DAFTAR) ---
+  // Buka/Tutup Modal Profil
+  document.getElementById('btn-profile').addEventListener('click', () => {
+    profileModal.style.display = profileModal.style.display === 'block' ? 'none' : 'block';
+  });
+
+  // Logout
+  document.getElementById('btn-logout').addEventListener('click', () => {
+    localStorage.removeItem('parkour_user');
+    location.reload();
+  });
+
+  // Klik Mulai Game
+  document.getElementById('btn-start-game').addEventListener('click', () => {
+    document.getElementById('btn-start-game').style.display = 'none';
+    document.getElementById('in-game-controls').style.display = 'block';
+    isGameStarted = true;
+    gameState = 'PLAYING';
+    
+    // Sembunyikan modal profil jika terbuka
+    profileModal.style.display = 'none';
+
+    // Pindahkan kamera ke sudut pandang belakang karakter
+    camera.position.set(0, 4, 8);
+    controls.target.set(0, 1.5, 0);
+  });
+
+  // --- PROSES REGISTRASI ---
   document.getElementById('btn-register').addEventListener('click', async () => {
     const username = document.getElementById('reg-username').value.trim();
     const pin = document.getElementById('reg-pin').value.trim();
@@ -24,8 +51,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (pin.length !== 6 || isNaN(pin)) { regMsg.textContent = "PIN harus 6 angka!"; regMsg.className = "msg error"; return; }
     if (pin !== pinConfirm) { regMsg.textContent = "PIN tidak cocok!"; regMsg.className = "msg error"; return; }
 
-    regMsg.textContent = "Mendaftarkan...";
-    regMsg.className = "msg";
+    regMsg.textContent = "Mendaftarkan..."; regMsg.className = "msg";
     document.getElementById('btn-register').disabled = true;
 
     const userKey = username.toLowerCase();
@@ -35,37 +61,28 @@ window.addEventListener('DOMContentLoaded', () => {
       const checkRes = await fetch(firebaseUrl);
       const existing = await checkRes.json();
       if (existing) {
-        regMsg.textContent = "Username sudah dipakai!";
-        regMsg.className = "msg error";
-        document.getElementById('btn-register').disabled = false;
-        return;
+        regMsg.textContent = "Username sudah dipakai!"; regMsg.className = "msg error";
+        document.getElementById('btn-register').disabled = false; return;
       }
 
       await fetch(firebaseUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, pin, isDev: (userKey === DEV_USERNAME), createdAt: Date.now() })
       });
 
-      regMsg.textContent = "Registrasi berhasil! Silakan Masuk.";
-      regMsg.className = "msg success";
-      
-      // Kosongkan form
+      regMsg.textContent = "Registrasi berhasil! Silakan Masuk."; regMsg.className = "msg success";
       document.getElementById('reg-username').value = '';
       document.getElementById('reg-pin').value = '';
       document.getElementById('reg-pin-confirm').value = '';
-      
-      // Pindah otomatis ke Tab Login setelah 1.5 detik
       setTimeout(() => { document.getElementById('tab1').checked = true; }, 1500);
 
     } catch(e) {
-      regMsg.textContent = "Gagal daftar. Cek koneksi.";
-      regMsg.className = "msg error";
+      regMsg.textContent = "Gagal daftar. Cek koneksi."; regMsg.className = "msg error";
     }
     document.getElementById('btn-register').disabled = false;
   });
 
-  // --- PROSES LOGIN (MASUK) ---
+  // --- PROSES LOGIN ---
   document.getElementById('btn-login').addEventListener('click', async () => {
     const username = document.getElementById('login-username').value.trim();
     const pin = document.getElementById('login-pin').value.trim();
@@ -73,8 +90,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (username.length < 3) { loginMsg.textContent = "Username minimal 3 karakter!"; loginMsg.className = "msg error"; return; }
     if (pin.length !== 6 || isNaN(pin)) { loginMsg.textContent = "PIN harus 6 angka!"; loginMsg.className = "msg error"; return; }
 
-    loginMsg.textContent = "Memproses...";
-    loginMsg.className = "msg";
+    loginMsg.textContent = "Memproses..."; loginMsg.className = "msg";
     document.getElementById('btn-login').disabled = true;
 
     const userKey = username.toLowerCase();
@@ -85,25 +101,19 @@ window.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
 
       if (!data) {
-        loginMsg.textContent = "Akun tidak ditemukan. Silakan Daftar.";
-        loginMsg.className = "msg error";
-        document.getElementById('btn-login').disabled = false;
-        return;
+        loginMsg.textContent = "Akun tidak ditemukan. Silakan Daftar."; loginMsg.className = "msg error";
+        document.getElementById('btn-login').disabled = false; return;
       }
-
       if (data.pin !== pin) {
-        loginMsg.textContent = "PIN salah! Coba lagi.";
-        loginMsg.className = "msg error";
-        document.getElementById('btn-login').disabled = false;
-        return;
+        loginMsg.textContent = "PIN salah! Coba lagi."; loginMsg.className = "msg error";
+        document.getElementById('btn-login').disabled = false; return;
       }
 
       localStorage.setItem('parkour_user', JSON.stringify({ username, isDev: data.isDev }));
-      startGame(username, data.isDev);
+      startLobby(username, data.isDev);
 
     } catch(e) {
-      loginMsg.textContent = "Gagal konek ke server.";
-      loginMsg.className = "msg error";
+      loginMsg.textContent = "Gagal konek ke server."; loginMsg.className = "msg error";
       document.getElementById('btn-login').disabled = false;
     }
   });
@@ -113,40 +123,47 @@ window.addEventListener('DOMContentLoaded', () => {
   if (savedSession) {
     try {
       const session = JSON.parse(savedSession);
-      startGame(session.username, session.isDev);
+      startLobby(session.username, session.isDev);
     } catch(e) {
       localStorage.removeItem('parkour_user');
     }
   }
 });
 
-// ============ 3. FUNGSI MULAI GAME & LOGOUT ============
-function startGame(username, isDev) {
+// ============ 3. FUNGSI MASUK LOBI ============
+function startLobby(username, isDev) {
   document.getElementById('auth-container').style.display = 'none';
   document.getElementById('game-ui').style.display = 'block';
 
   playerData.username = username;
   playerData.isDev = isDev;
-  gameState = 'PLAYING';
+  gameState = 'LOBBY'; // Set state ke LOBBY
 
+  // Update UI
   document.getElementById('hud-username').textContent = username;
-  if (isDev) document.getElementById('hud-verified').style.display = 'flex';
-
-  if (!gameInitialized) {
-    init3DGame(); // Panggil setup 3D hanya sekali
-    gameInitialized = true;
+  document.getElementById('modal-username').textContent = username;
+  
+  if (isDev) {
+    document.getElementById('hud-verified').style.display = 'flex';
+    document.getElementById('modal-status').textContent = "Developer ✔";
+  } else {
+    document.getElementById('modal-status').textContent = "Player Biasa";
+    document.getElementById('modal-status').style.color = "#ccc";
   }
 
-  updateCharacterNameSprite(username, isDev);
+  // Tampilkan Tombol Mulai (Tapi kontrol game disembunyikan)
+  document.getElementById('btn-start-game').style.display = 'flex';
+  document.getElementById('in-game-controls').style.display = 'none';
+
+  // Inisialisasi 3D
+  init3DGame();
+  
+  // Kamera Lobby (Agak jauh ke depan melihat karakter)
+  camera.position.set(0, 3, -5);
+  controls.target.set(0, 1.5, 0);
+
   requestFullscreenAndLock();
 }
-
-document.addEventListener('keydown', (e) => {
-  if (e.key.toLowerCase() === 'l' && gameState === 'PLAYING') {
-    localStorage.removeItem('parkour_user');
-    location.reload();
-  }
-});
 
 function requestFullscreenAndLock() {
   const elem = document.documentElement;
@@ -183,10 +200,6 @@ function init3DGame() {
   sun.castShadow = true;
   scene.add(sun);
 
-  const lavaLight = new THREE.PointLight(0xff3300, 2, 50);
-  lavaLight.position.set(0, -5, -40);
-  scene.add(lavaLight);
-
   lavaMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
   const lava = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), lavaMat);
   lava.rotation.x = -Math.PI / 2;
@@ -213,7 +226,7 @@ function init3DGame() {
     platforms.push({ mesh, width, depth, type, startX: x, startY: y, startZ: z, range: 2, speed: 1.5, phase: Math.random() * Math.PI * 2, isBreaking: false, breakTimer: 0, isFallen: false });
   }
 
-  createPlatform(0, 0, 0, 8, 8, 'static');
+  createPlatform(0, 0, 0, 8, 8, 'static'); // Lobby platform
   createPlatform(0, 0, -7, 5, 5, 'static');
   createPlatform(3, 1, -13, 5, 5, 'moving_x');
   createPlatform(0, 2, -19, 6, 6, 'static');
@@ -242,8 +255,6 @@ function init3DGame() {
   const texture = new THREE.CanvasTexture(canvas); texture.needsUpdate = true;
   const board = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide, emissive: 0x00ff00, emissiveIntensity: 0.2 }));
   board.position.set(0, 11.5, -56); scene.add(board);
-
-  const finishLight = new THREE.PointLight(0x00ff00, 3, 15); finishLight.position.set(0, 9, -56); scene.add(finishLight);
 
   // --- KARAKTER ---
   character = new THREE.Group();
@@ -293,18 +304,18 @@ function init3DGame() {
 
   // --- KAMERA ---
   controls = new OrbitControls(camera, renderer.domElement);
-  controls.enablePan = false; controls.minDistance = 5; controls.maxDistance = 15;
+  controls.enablePan = false; controls.minDistance = 3; controls.maxDistance = 15;
   controls.maxPolarAngle = Math.PI / 2 - 0.1;
-  camera.position.set(0, 4, 8);
-  controls.target.set(0, 1.5, 0);
 
+  // Block input kamera di area kontrol
   controls.domElement.addEventListener('pointerdown', function(e) {
+    if (!isGameStarted) return; // Jangan blokir di lobby
     const x = e.clientX, y = e.clientY;
     const w = window.innerWidth, h = window.innerHeight;
     if ((x < 180 && y > h - 180) || (x > w - 220 && y > h - 160)) e.stopImmediatePropagation();
   }, { capture: true });
 
-  // --- INPUT ---
+  // --- INPUT GAMEPLAY ---
   const joystickArea = document.getElementById('joystick-area');
   const joystickKnob = document.getElementById('joystick-knob');
   let joystickActive = false;
@@ -353,6 +364,7 @@ function init3DGame() {
   document.getElementById('btn-restart').addEventListener('click', () => { location.reload(); });
   document.getElementById('overlay').style.display = 'none';
 
+  updateCharacterNameSprite(playerData.username, playerData.isDev);
   animate();
 }
 
@@ -424,10 +436,25 @@ let walkTime = 0;
 
 function animate() {
   requestAnimationFrame(animate);
-  if (gameState !== 'PLAYING' || !renderer) { return; }
+  if (!renderer) return;
 
   const delta = Math.min(clock.getDelta(), 0.1);
   const t = clock.getElapsedTime();
+  
+  // Selalu render scene
+  if (scene && camera) renderer.render(scene, camera);
+
+  if (gameState === 'LOBBY') {
+    // Animasi Idle di Lobby
+    character.position.y = 0.25 + Math.sin(t * 2) * 0.02;
+    headGroup.rotation.y = Math.sin(t * 0.5) * 0.3;
+    controls.update();
+    return;
+  }
+
+  if (gameState !== 'PLAYING' && gameState !== 'LOBBY') return;
+
+  // Logika Gameplay (Hanya jalan saat PLAYING)
   const speed = isRunning ? 9 : 5;
   let isMoving = false;
 
@@ -480,11 +507,11 @@ function animate() {
     }
   }
 
-  if (character.position.y < -3) {
+  if (character.position.y < -3 && gameState === 'PLAYING') {
     gameState = 'GAMEOVER'; showOverlay('GAME OVER', 'Kamu jatuh ke lava panas!', '#ff3333');
   }
 
-  if (character.position.z < -53 && character.position.y > 6) {
+  if (character.position.z < -53 && character.position.y > 6 && gameState === 'PLAYING') {
     gameState = 'WIN'; showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago!', '#00ff00');
   }
 
@@ -506,6 +533,7 @@ function animate() {
     headGroup.rotation.y = Math.sin(t * 0.5) * 0.2;
   }
 
+  // Kamera mengikuti pemain (hanya saat main)
   const targetPos = character.position.clone(); targetPos.y += 1.5;
   controls.target.lerp(targetPos, 0.1);
   const camDir = camera.position.clone().sub(controls.target).normalize();
@@ -515,7 +543,6 @@ function animate() {
   controls.update();
 
   lavaMat.color.setHSL(0.03 + Math.sin(t * 2) * 0.02, 1, 0.5);
-  renderer.render(scene, camera);
 }
 
 window.addEventListener('resize', () => {
