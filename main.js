@@ -7,13 +7,56 @@ const DEV_USERNAME = "putzzdev";
 
 let playerData = { username: "", isDev: false };
 let gameState = 'LOGIN'; 
-let isGameStarted = false; // Untuk cek sudah masuk parkour atau masih di lobby
+let isGameStarted = false; 
+
+// Referensi Chat
+const chatRef = `${FIREBASE_URL}chats.json`;
+let lastChatTimestamp = 0;
 
 // ============ 2. SETUP DOM & EVENT LISTENER ============
 window.addEventListener('DOMContentLoaded', () => {
   const loginMsg = document.getElementById('login-msg');
   const regMsg = document.getElementById('reg-msg');
   const profileModal = document.getElementById('profile-modal');
+  
+  // --- CHAT UI TOGGLE (Buka/Tutup) ---
+  const chatContainer = document.getElementById('chat-container');
+  const chatBox = document.getElementById('chat-box');
+  const chatToggle = document.getElementById('chat-toggle');
+  
+  chatToggle.addEventListener('click', () => {
+    const isHidden = chatBox.style.display === 'none';
+    chatBox.style.display = isHidden ? 'flex' : 'none';
+    chatToggle.textContent = isHidden ? '❌ Tutup Chat' : '💬 Chat Global';
+  });
+
+  // Kirim Pesan Chat
+  document.getElementById('chat-send').addEventListener('click', () => {
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (text.length === 0) return;
+    
+    // Kirim ke Firebase
+    const payload = {
+      name: playerData.username,
+      isDev: playerData.isDev,
+      text: text,
+      time: Date.now()
+    };
+    
+    fetch(`${FIREBASE_URL}chats.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    
+    input.value = '';
+  });
+
+  // Enter key untuk kirim chat
+  document.getElementById('chat-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') document.getElementById('chat-send').click();
+  });
 
   // Buka/Tutup Modal Profil
   document.getElementById('btn-profile').addEventListener('click', () => {
@@ -30,13 +73,11 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-start-game').addEventListener('click', () => {
     document.getElementById('btn-start-game').style.display = 'none';
     document.getElementById('in-game-controls').style.display = 'block';
+    document.getElementById('chat-container').style.display = 'none'; // Sembunyikan chat saat main
     isGameStarted = true;
     gameState = 'PLAYING';
     
-    // Sembunyikan modal profil jika terbuka
     profileModal.style.display = 'none';
-
-    // Pindahkan kamera ke sudut pandang belakang karakter
     camera.position.set(0, 4, 8);
     controls.target.set(0, 1.5, 0);
   });
@@ -130,16 +171,15 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// ============ 3. FUNGSI MASUK LOBI ============
+// ============ 3. FUNGSI LOBI & CHAT FETCHING ============
 function startLobby(username, isDev) {
   document.getElementById('auth-container').style.display = 'none';
   document.getElementById('game-ui').style.display = 'block';
 
   playerData.username = username;
   playerData.isDev = isDev;
-  gameState = 'LOBBY'; // Set state ke LOBBY
+  gameState = 'LOBBY'; 
 
-  // Update UI
   document.getElementById('hud-username').textContent = username;
   document.getElementById('modal-username').textContent = username;
   
@@ -151,18 +191,62 @@ function startLobby(username, isDev) {
     document.getElementById('modal-status').style.color = "#ccc";
   }
 
-  // Tampilkan Tombol Mulai (Tapi kontrol game disembunyikan)
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('in-game-controls').style.display = 'none';
+  document.getElementById('chat-container').style.display = 'flex'; // Tampilkan Chat
 
-  // Inisialisasi 3D
+  // Mulai ambil chat secara berkala (Polling tiap 3 detik)
+  setInterval(fetchGlobalChat, 3000);
+  fetchGlobalChat();
+
   init3DGame();
   
-  // Kamera Lobby (Agak jauh ke depan melihat karakter)
   camera.position.set(0, 3, -5);
   controls.target.set(0, 1.5, 0);
 
   requestFullscreenAndLock();
+}
+
+// Fungsi Ambil Chat dari Firebase
+async function fetchGlobalChat() {
+  if (gameState !== 'LOBBY') return; // Hanya tarik chat saat di lobi
+  try {
+    const res = await fetch(`${FIREBASE_URL}chats.json`);
+    const data = await res.json();
+    
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.innerHTML = ''; // Bersihkan chat lama
+
+    if (data) {
+      // Ubah object jadi array dan urutkan berdasarkan waktu
+      const messages = Object.values(data).sort((a, b) => a.time - b.time);
+      
+      // Batasi hanya tampilkan 30 pesan terakhir agar ringan
+      const recentMessages = messages.slice(-30);
+
+      recentMessages.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = 'chat-msg';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'name' + (msg.isDev ? ' dev' : '');
+        nameSpan.textContent = msg.name + (msg.isDev ? ' ✔' : '') + ': ';
+        
+        const textSpan = document.createElement('span');
+        textSpan.className = 'text';
+        textSpan.textContent = msg.text;
+        
+        div.appendChild(nameSpan);
+        div.appendChild(textSpan);
+        chatMessages.appendChild(div);
+      });
+
+      // Auto scroll ke bawah
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+  } catch (e) {
+    console.log("Gagal load chat");
+  }
 }
 
 function requestFullscreenAndLock() {
@@ -226,7 +310,7 @@ function init3DGame() {
     platforms.push({ mesh, width, depth, type, startX: x, startY: y, startZ: z, range: 2, speed: 1.5, phase: Math.random() * Math.PI * 2, isBreaking: false, breakTimer: 0, isFallen: false });
   }
 
-  createPlatform(0, 0, 0, 8, 8, 'static'); // Lobby platform
+  createPlatform(0, 0, 0, 8, 8, 'static');
   createPlatform(0, 0, -7, 5, 5, 'static');
   createPlatform(3, 1, -13, 5, 5, 'moving_x');
   createPlatform(0, 2, -19, 6, 6, 'static');
@@ -307,9 +391,8 @@ function init3DGame() {
   controls.enablePan = false; controls.minDistance = 3; controls.maxDistance = 15;
   controls.maxPolarAngle = Math.PI / 2 - 0.1;
 
-  // Block input kamera di area kontrol
   controls.domElement.addEventListener('pointerdown', function(e) {
-    if (!isGameStarted) return; // Jangan blokir di lobby
+    if (!isGameStarted) return;
     const x = e.clientX, y = e.clientY;
     const w = window.innerWidth, h = window.innerHeight;
     if ((x < 180 && y > h - 180) || (x > w - 220 && y > h - 160)) e.stopImmediatePropagation();
@@ -441,20 +524,18 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.1);
   const t = clock.getElapsedTime();
   
-  // Selalu render scene
   if (scene && camera) renderer.render(scene, camera);
 
   if (gameState === 'LOBBY') {
-    // Animasi Idle di Lobby
+    // Animasi Idle di Lobby (Karakter diam)
     character.position.y = 0.25 + Math.sin(t * 2) * 0.02;
     headGroup.rotation.y = Math.sin(t * 0.5) * 0.3;
     controls.update();
     return;
   }
 
-  if (gameState !== 'PLAYING' && gameState !== 'LOBBY') return;
+  if (gameState !== 'PLAYING') return;
 
-  // Logika Gameplay (Hanya jalan saat PLAYING)
   const speed = isRunning ? 9 : 5;
   let isMoving = false;
 
@@ -507,11 +588,11 @@ function animate() {
     }
   }
 
-  if (character.position.y < -3 && gameState === 'PLAYING') {
+  if (character.position.y < -3) {
     gameState = 'GAMEOVER'; showOverlay('GAME OVER', 'Kamu jatuh ke lava panas!', '#ff3333');
   }
 
-  if (character.position.z < -53 && character.position.y > 6 && gameState === 'PLAYING') {
+  if (character.position.z < -53 && character.position.y > 6) {
     gameState = 'WIN'; showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago!', '#00ff00');
   }
 
@@ -533,7 +614,6 @@ function animate() {
     headGroup.rotation.y = Math.sin(t * 0.5) * 0.2;
   }
 
-  // Kamera mengikuti pemain (hanya saat main)
   const targetPos = character.position.clone(); targetPos.y += 1.5;
   controls.target.lerp(targetPos, 0.1);
   const camDir = camera.position.clone().sub(controls.target).normalize();
