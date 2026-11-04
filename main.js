@@ -330,10 +330,11 @@ async function updatePlayerFirebase() {
   });
 }
 
-// ============ 5. UPDATE VISUAL KARAKTER ============
+// ============ 5. UPDATE VISUAL KARAKTER (DIPERBAIKI) ============
 let currentGlassesMesh = null;
 
 function updateCharacterVisuals() {
+  // Pastikan karakter sudah dibuat sebelum mengubah visual
   if (!character || !headGroup) return;
   
   const getColor = (cat, id, defaultColor) => {
@@ -372,6 +373,7 @@ function updateCharacterVisuals() {
       const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.08), glassMat); bridge.rotation.z = Math.PI/2; bridge.position.set(0, 0.05, 0.31);
       currentGlassesMesh.add(leftLens, rightLens, bridge);
     } else if (kacamataItem.shape === 'visor') {
+      // Perbaikan visor pakai BoxGeometry (bukan Torus)
       const visorGeo = new THREE.BoxGeometry(0.35, 0.08, 0.05);
       const visor = new THREE.Mesh(visorGeo, glassMat);
       visor.position.set(0, 0.08, 0.28);
