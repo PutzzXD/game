@@ -391,6 +391,59 @@ let laserBeam = null; // Objek Laser NPC
 let rig, leftElbow, rightElbow, leftKnee, rightKnee, embers;
 let sq = { x: 0, v: 0 }, moveVel = new THREE.Vector2(0, 0), wasGrounded = true, laserState = 'off';
 const LASER_Z = -44, LASER_Y = 9.3;
+let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
+let flyMode = false, godMode = false, flyUp = false, flyDown = false, flySpeed = 14;
+
+function respawn() {
+  character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z);
+  physics.velocityY = 0; moveVel.set(0, 0); gameState = 'PLAYING';
+  document.getElementById('overlay').style.display = 'none';
+}
+
+// ===== ADMIN PANEL (khusus Putzzdev) =====
+function setupAdminPanel() {
+  if (playerData.username.toLowerCase() !== DEV_USERNAME || document.getElementById('admin-btn')) return;
+  const css = document.createElement('style');
+  css.textContent = '#admin-btn,#admin-panel,#fly-ctrl{position:fixed;z-index:9999;font-family:sans-serif}#admin-btn{top:10px;right:10px;padding:8px 12px;border:0;border-radius:10px;background:#ff3366;color:#fff;font-weight:700}#admin-panel{top:52px;right:10px;width:210px;padding:12px;border-radius:12px;background:rgba(15,15,25,.92);color:#fff;display:none;flex-direction:column;gap:8px;font-size:13px}#admin-panel button{padding:8px;border:0;border-radius:8px;background:#2d3550;color:#fff}#admin-panel button.on{background:#00b86b}#fly-ctrl{right:14px;top:45%;display:none;flex-direction:column;gap:10px}#fly-ctrl button{width:56px;height:56px;border-radius:50%;border:0;background:rgba(255,255,255,.25);color:#fff;font-size:24px}';
+  document.head.appendChild(css);
+  const btn = document.createElement('button'); btn.id = 'admin-btn'; btn.textContent = '🛠️ Admin';
+  const panel = document.createElement('div'); panel.id = 'admin-panel';
+  panel.innerHTML = '<b>Admin Panel - Putzzdev</b><button id="ad-fly">✈️ Terbang: OFF (F)</button><label>Kecepatan: <span id="ad-spd">14</span><input id="ad-speed" type="range" min="5" max="40" value="14" style="width:100%"></label><button id="ad-god">🛡️ Anti-mati: OFF</button><button data-tp="start">📍 Ke Start</button><button data-tp="hub">📍 Ke Hub Tower</button><button data-tp="top">🏁 Ke Puncak</button><button id="ad-coin">🪙 +1000 Koin</button>';
+  const fc = document.createElement('div'); fc.id = 'fly-ctrl';
+  fc.innerHTML = '<button id="fly-up">▲</button><button id="fly-down">▼</button>';
+  document.body.append(btn, panel, fc);
+
+  btn.onclick = () => { panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; };
+  const setFly = (v) => {
+    flyMode = v; fc.style.display = v ? 'flex' : 'none'; flyUp = flyDown = false; physics.velocityY = 0;
+    const b = document.getElementById('ad-fly'); b.classList.toggle('on', v); b.textContent = '✈️ Terbang: ' + (v ? 'ON' : 'OFF') + ' (F)';
+  };
+  document.getElementById('ad-fly').onclick = () => setFly(!flyMode);
+  document.getElementById('ad-speed').oninput = (e) => { flySpeed = +e.target.value; document.getElementById('ad-spd').textContent = flySpeed; };
+  document.getElementById('ad-god').onclick = (e) => { godMode = !godMode; e.target.classList.toggle('on', godMode); e.target.textContent = '🛡️ Anti-mati: ' + (godMode ? 'ON' : 'OFF'); };
+  panel.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => {
+    const d = { start: [0, 0.25, 0], hub: [0, 13.75, -68], top: [0, FIN_Y, -77] }[b.dataset.tp];
+    character.position.set(...d); physics.velocityY = 0; moveVel.set(0, 0);
+    if (gameState === 'GAMEOVER') { gameState = 'PLAYING'; document.getElementById('overlay').style.display = 'none'; }
+  });
+  document.getElementById('ad-coin').onclick = () => {
+    playerData.coins = (playerData.coins || 0) + 1000; updatePlayerFirebase();
+    document.getElementById('coin-amount').textContent = playerData.coins; showToast('🪙 +1000 koin');
+  };
+  const hold = (id, up) => {
+    const el = document.getElementById(id), set = (v) => { if (up) flyUp = v; else flyDown = v; };
+    el.onpointerdown = () => set(true);
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => set(false)));
+  };
+  hold('fly-up', true); hold('fly-down', false);
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'KeyF' && gameState === 'PLAYING') setFly(!flyMode);
+    if (e.code === 'Space') flyUp = true;
+    if (e.code.startsWith('Shift')) flyDown = true;
+  });
+  window.addEventListener('keyup', (e) => { if (e.code === 'Space') flyUp = false; if (e.code.startsWith('Shift')) flyDown = false; });
+}
 
 function spawnDust(n) {
   for (let i = 0; i < n; i++) {
@@ -506,15 +559,45 @@ function init3DGame() {
   // Jembatan kaca: tiap baris 1 asli, 1 palsu (hampir tak terlihat, cuma sesekali berkedip)
   createPlatform(-2, 12, -58, 3.2, 2.5, 'static'); createPlatform(2, 12, -58, 3.2, 2.5, 'fake', 0.15);
   createPlatform(-2, 12, -61.5, 3.2, 2.5, 'fake', 0.05); createPlatform(2, 12, -61.5, 3.2, 2.5, 'static');
-  createPlatform(0, 13.5, -68, 8, 8, 'static');    // Puncak / Finish
+  createPlatform(0, 13.5, -68, 8, 8, 'static');
+  const checkMat = new THREE.MeshStandardMaterial({ color: 0x22aa55, emissive: 0x22aa55, emissiveIntensity: 0.4 });
+  const markCheckpoint = () => { const c = platforms[platforms.length - 1]; c.checkpoint = true; c.mesh.material = checkMat; };
+  markCheckpoint(); // Hub = checkpoint
+
+  // ===== TOWER SPIRAL ala obby Roblox: muter naik ke atas =====
+  const TC = { x: 0, z: -77 }, TR = 9, TN = 29, TDY = 1.1, TDA = 0.55;
+  let ty = 13.5, ta = Math.PI / 2;
+  for (let i = 1; i <= TN; i++) {
+    ta += TDA; ty += TDY;
+    const rx = Math.cos(ta), rz = Math.sin(ta);
+    const tell = Math.max(0.05, 0.5 - i * 0.015); // makin tinggi makin susah dibedakan
+    if (i % 5 === 0) {
+      // Pilihan radial: satu kotak asli, satu palsu
+      const realOut = (i / 5) % 2 === 0;
+      createPlatform(TC.x + rx * (TR + 2.8), ty, TC.z + rz * (TR + 2.8), 3.2, 3.2, realOut ? 'static' : 'fake', tell);
+      createPlatform(TC.x + rx * (TR - 2.8), ty, TC.z + rz * (TR - 2.8), 3.2, 3.2, realOut ? 'fake' : 'static', tell);
+    } else if (i % 8 === 0) {
+      createPlatform(TC.x + rx * TR, ty, TC.z + rz * TR, 3.6, 3.6, 'static'); markCheckpoint();
+    } else if (i % 7 === 3) {
+      createPlatform(TC.x + rx * TR, ty, TC.z + rz * TR, 3.2, 3.2, 'moving_y'); platforms[platforms.length - 1].range = 0.9;
+    } else {
+      createPlatform(TC.x + rx * TR, ty, TC.z + rz * TR, 3.2, 3.2, 'static');
+    }
+  }
+  createPlatform(TC.x + Math.cos(ta) * 6.3, ty + 0.55, TC.z + Math.sin(ta) * 6.3, 3, 3, 'static'); // penghubung
+  const FY = ty + 1.1; FIN_Y = FY + 0.25;
+  createPlatform(TC.x, FY, TC.z, 8, 8, 'static'); // PUNCAK / FINISH
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, FY - 12.25, 16), new THREE.MeshStandardMaterial({ color: 0x2a2a3a }));
+  pillar.position.set(TC.x, (12 + FY - 0.25) / 2, TC.z); scene.add(pillar);
+      // Puncak / Finish
 
   // FINISH LINE
   const finishLine = new THREE.Mesh(new THREE.BoxGeometry(7, 0.1, 7), new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1 }));
-  finishLine.position.set(0, 13.8, -68); scene.add(finishLine);
+  finishLine.position.set(0, FY + 0.3, -77); scene.add(finishLine);
 
   const poleMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-  const leftPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); leftPole.position.set(-4, 16.5, -68); scene.add(leftPole);
-  const rightPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); rightPole.position.set(4, 16.5, -68); scene.add(rightPole);
+  const leftPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); leftPole.position.set(-4, FY + 3, -77); scene.add(leftPole);
+  const rightPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); rightPole.position.set(4, FY + 3, -77); scene.add(rightPole);
 
   const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 256;
   const ctx = canvas.getContext('2d');
@@ -526,7 +609,7 @@ function init3DGame() {
 
   const texture = new THREE.CanvasTexture(canvas); texture.needsUpdate = true;
   const board = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide, emissive: 0x00ff00, emissiveIntensity: 0.2 }));
-  board.position.set(0, 17.5, -68); scene.add(board);
+  board.position.set(0, FY + 4, -77); scene.add(board);
 
   character = new THREE.Group();
   character.position.set(0, 0.25, 0);
@@ -645,10 +728,11 @@ function init3DGame() {
   btnRun.addEventListener('pointerup', (e) => { isRunning = false; });
   btnRun.addEventListener('pointerleave', (e) => { isRunning = false; });
 
-  document.getElementById('btn-restart').addEventListener('click', () => { location.reload(); });
+  document.getElementById('btn-restart').addEventListener('click', () => { if (gameState === 'WIN') location.reload(); else respawn(); });
   document.getElementById('overlay').style.display = 'none';
 
   updateCharacterNameSprite(playerData.username, playerData.isDev);
+  setupAdminPanel();
   animate();
 }
 
@@ -762,7 +846,7 @@ function animate() {
 
   if (gameState !== 'PLAYING') return;
 
-  const speed = isRunning ? 9 : 5;
+  const speed = flyMode ? flySpeed : (isRunning ? 9 : 5);
   let isMoving = false;
 
   platforms.forEach(p => {
@@ -800,19 +884,27 @@ function animate() {
   isMoving = hSpeed > 0.4;
   nextX += moveVel.x * delta; nextZ += moveVel.y * delta;
 
-  if (!checkWallCollision(nextX, character.position.z, character.position.y)) character.position.x = nextX;
-  if (!checkWallCollision(character.position.x, nextZ, character.position.y)) character.position.z = nextZ;
+  if (flyMode || !checkWallCollision(nextX, character.position.z, character.position.y)) character.position.x = nextX;
+  if (flyMode || !checkWallCollision(character.position.x, nextZ, character.position.y)) character.position.z = nextZ;
 
-  const groundData = checkGroundCollision(character.position.x, character.position.z, character.position.y);
+  const groundData = flyMode ? null : checkGroundCollision(character.position.x, character.position.z, character.position.y);
   if (groundData && physics.velocityY <= 0) {
     character.position.y = groundData.y;
     physics.velocityY = 0; physics.isGrounded = true; physics.jumpCount = 0;
     if (groundData.platform.type === 'moving_x') character.position.x += groundData.platform.dx;
+    if (groundData.platform.checkpoint && checkpoint.p !== groundData.platform) {
+      const m = groundData.platform.mesh.position;
+      checkpoint = { p: groundData.platform, set: true, x: m.x, y: groundData.y, z: m.z };
+      showToast('✅ Checkpoint tersimpan!');
+    }
   } else {
     physics.isGrounded = false;
   }
 
-  if (!physics.isGrounded) {
+  if (flyMode) {
+    physics.velocityY = 0;
+    character.position.y += ((flyUp ? 1 : 0) - (flyDown ? 1 : 0)) * flySpeed * 0.8 * delta;
+  } else if (!physics.isGrounded) {
     physics.velocityY += physics.gravity * delta;
     character.position.y += physics.velocityY * delta;
     const landingData = checkGroundCollision(character.position.x, character.position.z, character.position.y + 0.5);
@@ -835,19 +927,20 @@ function animate() {
   });
 
   // Laser hanya mengenai jika sedang menembak & kamu tidak melompatinya
-  if (laserState === 'fire' && Math.abs(character.position.z - LASER_Z) < 0.5 && Math.abs(character.position.x) < 3.5 && character.position.y > 8 && character.position.y < LASER_Y + 0.25) {
+  if (!godMode && !flyMode && laserState === 'fire' && Math.abs(character.position.z - LASER_Z) < 0.5 && Math.abs(character.position.x) < 3.5 && character.position.y > 8 && character.position.y < LASER_Y + 0.25) {
     gameState = 'GAMEOVER';
     showOverlay('TERKENA LASER!', 'Putzzdev : "Kena tembak laser NPC, cupu! 💥"', '#ff3333');
   }
 
   // JIKA JATUH KE LAVA
-  if (character.position.y < -3) {
+  if (godMode && character.position.y < -3) { character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z); physics.velocityY = 0; }
+  if (!godMode && !flyMode && character.position.y < -3) {
     gameState = 'GAMEOVER'; 
     showOverlay('GAME OVER', 'Putzzdev : "Salah pilih jalan/jatuh ke lava wkwk! 😹"', '#ff3333');
   }
 
   // KONDISI MENANG DI PUNCAK
-  if (character.position.z < -65 && character.position.y > 13) {
+  if (character.position.y > FIN_Y - 0.5 && Math.abs(character.position.x) < 4.5 && Math.abs(character.position.z + 77) < 4.5) {
     gameState = 'WIN'; 
     playerData.coins = (playerData.coins || 0) + 100;
     updatePlayerFirebase();
