@@ -388,6 +388,19 @@ let joystickVector = new THREE.Vector2(0, 0);
 let isRunning = false;
 let trailParticles = [], jumpParticles = [];
 let laserBeam = null; // Objek Laser NPC
+let rig, leftElbow, rightElbow, leftKnee, rightKnee, embers;
+let sq = { x: 0, v: 0 }, moveVel = new THREE.Vector2(0, 0), wasGrounded = true, laserState = 'off';
+const LASER_Z = -44, LASER_Y = 9.3;
+
+function spawnDust(n) {
+  for (let i = 0; i < n; i++) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.7 });
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), mat);
+    m.position.copy(character.position); m.position.y += 0.1;
+    m.position.x += (Math.random() - 0.5) * 0.7; m.position.z += (Math.random() - 0.5) * 0.7;
+    scene.add(m); trailParticles.push({ mesh: m, life: 0.5 });
+  }
+}
 
 function requestFullscreenAndLock() {
   const elem = document.documentElement;
@@ -424,19 +437,24 @@ function init3DGame() {
   lava.rotation.x = -Math.PI / 2;
   lava.position.y = -8;
   scene.add(lava);
+  const emberPos = new Float32Array(150 * 3);
+  for (let i = 0; i < 150; i++) { emberPos[i*3] = (Math.random()-0.5)*90; emberPos[i*3+1] = -8 + Math.random()*30; emberPos[i*3+2] = -35 + (Math.random()-0.5)*100; }
+  const emberGeo = new THREE.BufferGeometry();
+  emberGeo.setAttribute('position', new THREE.BufferAttribute(emberPos, 3));
+  embers = new THREE.Points(emberGeo, new THREE.PointsMaterial({ color: 0xff7722, size: 0.25, transparent: true, opacity: 0.8 }));
+  scene.add(embers);
 
   const platformMat = new THREE.MeshStandardMaterial({ color: 0x444455, roughness: 0.8 });
   const breakableMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9 });
   const movingMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.7 });
   const trapMat = new THREE.MeshStandardMaterial({ color: 0xff0055, roughness: 0.5 }); // Warna platform jebakan
 
-  function createPlatform(x, y, z, width, depth, type = 'static') {
+  function createPlatform(x, y, z, width, depth, type = 'static', tell = 0) {
     const height = 0.5;
     const geo = new THREE.BoxGeometry(width, height, depth);
     let mat = platformMat;
-    if (type === 'breaking') mat = breakableMat;
     if (type.includes('moving')) mat = movingMat;
-    if (type === 'trap_left' || type === 'trap_right') mat = trapMat;
+    if (type === 'fake') { mat = platformMat.clone(); mat.transparent = true; }
 
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
@@ -447,7 +465,7 @@ function init3DGame() {
       mesh, width, depth, type, 
       startX: x, startY: y, startZ: z, 
       range: 2.5, speed: 1.5, phase: Math.random() * Math.PI * 2, 
-      isBreaking: false, breakTimer: 0, isFallen: false 
+      isFallen: false, tell, revealTimer: 0, dx: 0 
     });
   }
 
@@ -456,16 +474,19 @@ function init3DGame() {
   createPlatform(0, 1.5, -8, 5, 5, 'static');
   
   // Jebakan Kiri / Kanan Pertama (Kiri jebakan jatuh, Kanan aman)
-  createPlatform(-2.5, 3, -15, 3.5, 3.5, 'trap_left');  // JEBAKAN JATUH
+  createPlatform(-2.5, 3, -15, 3.5, 3.5, 'fake', 0.9);  // KOTAK PALSU (jelas)
   createPlatform(2.5, 3, -15, 3.5, 3.5, 'static');       // AMAN
 
   createPlatform(0, 4.5, -22, 6, 6, 'moving_x');
 
   // Jebakan Tebak-tebakan Kedua (Kiri aman, Kanan jebakan jatuh)
   createPlatform(-2.5, 6, -29, 3.5, 3.5, 'static');      // AMAN
-  createPlatform(2.5, 6, -29, 3.5, 3.5, 'trap_right'); // JEBAKAN JATUH
+  createPlatform(2.5, 6, -29, 3.5, 3.5, 'fake', 0.6); // KOTAK PALSU (sedang)
 
-  createPlatform(0, 7.5, -36, 5, 5, 'breaking');
+  // 3 kotak: hanya kiri yang asli
+  createPlatform(-3.5, 7.5, -36, 3, 5, 'static');
+  createPlatform(0, 7.5, -36, 3, 5, 'fake', 0.4);
+  createPlatform(3.5, 7.5, -36, 3, 5, 'fake', 0.4);
   
   // Area Laser NPC Tembak Otomatis
   createPlatform(0, 9, -44, 6, 6, 'static');
@@ -476,9 +497,15 @@ function init3DGame() {
   laserBeam = new THREE.Mesh(laserGeo, laserMat);
   laserBeam.position.set(0, 9.3, -44);
   scene.add(laserBeam);
+  [-3.6, 3.6].forEach(ex => {
+    const em = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.5), new THREE.MeshStandardMaterial({ color: 0x222233, emissive: 0x00ffff, emissiveIntensity: 0.6 }));
+    em.position.set(ex, 9.6, LASER_Z); scene.add(em);
+  });
 
   createPlatform(0, 10.5, -52, 5, 5, 'moving_y');
-  createPlatform(0, 12, -60, 5, 5, 'breaking');
+  // Jembatan kaca: tiap baris 1 asli, 1 palsu (hampir tak terlihat, cuma sesekali berkedip)
+  createPlatform(-2, 12, -58, 3.2, 2.5, 'static'); createPlatform(2, 12, -58, 3.2, 2.5, 'fake', 0.15);
+  createPlatform(-2, 12, -61.5, 3.2, 2.5, 'fake', 0.05); createPlatform(2, 12, -61.5, 3.2, 2.5, 'static');
   createPlatform(0, 13.5, -68, 8, 8, 'static');    // Puncak / Finish
 
   // FINISH LINE
@@ -533,18 +560,30 @@ function init3DGame() {
   const bangCenter = new THREE.Mesh(bangGeo, matHair); bangCenter.position.set(0, 0.2, 0.27); bangCenter.rotation.set(0.1, 0, 0); bangCenter.scale.set(1.2, 1, 1.2); hairGroup.add(bangCenter);
   const bangRight = new THREE.Mesh(bangGeo, matHair); bangRight.position.set(0.15, 0.15, 0.24); bangRight.rotation.set(0.2, 0, 0.3); hairGroup.add(bangRight);
 
-  leftArmPivot = new THREE.Group(); leftArmPivot.position.set(-0.4, 1.8, 0); character.add(leftArmPivot);
-  const leftArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.6, 4, 8), matShirt); leftArm.position.y = -0.4; leftArm.castShadow = true; leftArm.userData.type = 'baju'; leftArmPivot.add(leftArm);
-  rightArmPivot = new THREE.Group(); rightArmPivot.position.set(0.4, 1.8, 0); character.add(rightArmPivot);
-  const rightArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.6, 4, 8), matShirt); rightArm.position.y = -0.4; rightArm.castShadow = true; rightArm.userData.type = 'baju'; rightArmPivot.add(rightArm);
+  const makeArm = (x) => {
+    const pivot = new THREE.Group(); pivot.position.set(x, 1.8, 0);
+    const up = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.25, 4, 8), matShirt); up.position.y = -0.22; up.castShadow = true; up.userData.type = 'baju'; pivot.add(up);
+    const elbow = new THREE.Group(); elbow.position.y = -0.42; pivot.add(elbow);
+    const low = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.25, 4, 8), matShirt); low.position.y = -0.2; low.castShadow = true; low.userData.type = 'baju'; elbow.add(low);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 12), matSkin); hand.position.y = -0.43; elbow.add(hand);
+    return { pivot, elbow };
+  };
+  const makeLeg = (x) => {
+    const pivot = new THREE.Group(); pivot.position.set(x, 0.9, 0);
+    const th = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.21, 4, 8), matPants); th.position.y = -0.2; th.castShadow = true; th.userData.type = 'celana'; pivot.add(th);
+    const knee = new THREE.Group(); knee.position.y = -0.4; pivot.add(knee);
+    const sh = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.2, 4, 8), matPants); sh.position.y = -0.2; sh.castShadow = true; sh.userData.type = 'celana'; knee.add(sh);
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); shoe.position.set(0, -0.41, 0.05); shoe.userData.type = 'sepatu'; knee.add(shoe);
+    return { pivot, knee };
+  };
+  const la = makeArm(-0.4), ra = makeArm(0.4), ll = makeLeg(-0.15), rl = makeLeg(0.15);
+  leftArmPivot = la.pivot; leftElbow = la.elbow; rightArmPivot = ra.pivot; rightElbow = ra.elbow;
+  leftLegPivot = ll.pivot; leftKnee = ll.knee; rightLegPivot = rl.pivot; rightKnee = rl.knee;
 
-  leftLegPivot = new THREE.Group(); leftLegPivot.position.set(-0.15, 0.9, 0); character.add(leftLegPivot);
-  const leftLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.7, 4, 8), matPants); leftLeg.position.y = -0.4; leftLeg.castShadow = true; leftLeg.userData.type = 'celana'; leftLegPivot.add(leftLeg);
-  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); leftShoe.position.set(0, -0.8, 0.05); leftShoe.userData.type = 'sepatu'; leftLegPivot.add(leftShoe);
-
-  rightLegPivot = new THREE.Group(); rightLegPivot.position.set(0.15, 0.9, 0); character.add(rightLegPivot);
-  const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.7, 4, 8), matPants); rightLeg.position.y = -0.4; rightLeg.castShadow = true; rightLeg.userData.type = 'celana'; rightLegPivot.add(rightLeg);
-  const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); rightShoe.position.set(0, -0.8, 0.05); rightShoe.userData.type = 'sepatu'; rightLegPivot.add(rightShoe);
+  // "rig" membungkus badan: bisa miring, memantul & squash tanpa mengubah posisi kaki/collision
+  rig = new THREE.Group();
+  [torso, headGroup, leftArmPivot, rightArmPivot, leftLegPivot, rightLegPivot].forEach(o => rig.add(o));
+  character.add(rig);
 
   updateCharacterVisuals();
 
@@ -591,10 +630,10 @@ function init3DGame() {
   document.getElementById('btn-jump').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (physics.isGrounded) {
-      physics.jumpCount = 1; physics.velocityY = physics.jumpForce; physics.isGrounded = false;
+      physics.jumpCount = 1; physics.velocityY = physics.jumpForce; physics.isGrounded = false; sq.v = 6; spawnDust(5);
       createJumpEffect();
     } else if (physics.jumpCount < physics.maxJumps) {
-      physics.jumpCount++; physics.velocityY = physics.jumpForce;
+      physics.jumpCount++; physics.velocityY = physics.jumpForce; sq.v = 6;
       createJumpEffect();
     }
   });
@@ -616,7 +655,7 @@ function init3DGame() {
 function checkGroundCollision(x, z, y) {
   const feetY = y; const tolerance = 0.3;
   for (let p of platforms) {
-    if (p.isFallen) continue;
+    if (p.isFallen || p.type === 'fake') continue;
     if (x > p.mesh.position.x - p.width/2 && x < p.mesh.position.x + p.width/2 &&
         z > p.mesh.position.z - p.depth/2 && z < p.mesh.position.z + p.depth/2) {
       const topY = p.mesh.position.y + 0.25;
@@ -629,7 +668,7 @@ function checkGroundCollision(x, z, y) {
 function checkWallCollision(x, z, y) {
   const radius = 0.35; const feetY = y;
   for (let p of platforms) {
-    if (p.isFallen) continue;
+    if (p.isFallen || p.type === 'fake') continue;
     const topY = p.mesh.position.y + 0.25;
     const bottomY = p.mesh.position.y - 0.25;
     if (feetY < topY - 0.1 && feetY > bottomY - 1) {
@@ -682,7 +721,12 @@ function animate() {
 
   // Animasi Berkedip pada Laser NPC
   if (laserBeam) {
-    laserBeam.visible = Math.sin(t * 8) > 0; // Laser menyala dan mati secara berkala
+    const lc = t % 2.9; // 1.2s mati -> 0.8s peringatan (garis oranye) -> 0.9s menembak
+    laserState = lc < 1.2 ? 'off' : (lc < 2.0 ? 'warn' : 'fire');
+    laserBeam.visible = laserState !== 'off' && !(laserState === 'warn' && Math.sin(t * 40) > 0.4);
+    laserBeam.material.color.setHex(laserState === 'fire' ? 0x00ffff : 0xff5500);
+    const th = laserState === 'fire' ? 1 : 0.2;
+    laserBeam.scale.set(1, th, th);
   }
 
   for (let i = trailParticles.length - 1; i >= 0; i--) {
@@ -722,29 +766,39 @@ function animate() {
   let isMoving = false;
 
   platforms.forEach(p => {
-    if (p.type === 'moving_x') p.mesh.position.x = p.startX + Math.sin(t * p.speed + p.phase) * p.range;
+    if (p.type === 'moving_x') { const nx = p.startX + Math.sin(t * p.speed + p.phase) * p.range; p.dx = nx - p.mesh.position.x; p.mesh.position.x = nx; }
     else if (p.type === 'moving_y') p.mesh.position.y = p.startY + Math.sin(t * p.speed + p.phase) * p.range;
-    else if ((p.type === 'breaking' || p.type === 'trap_left' || p.type === 'trap_right') && p.isBreaking && !p.isFallen) {
-      p.breakTimer -= delta;
-      p.mesh.position.x = p.startX + (Math.random() - 0.5) * 0.15;
-      p.mesh.position.z = p.startZ + (Math.random() - 0.5) * 0.15;
-      if (p.breakTimer <= 0) { p.isFallen = true; p.mesh.position.y -= 25; }
+    else if (p.type === 'fake') {
+      const m = p.mesh.material;
+      p.revealTimer = Math.max(0, p.revealTimer - delta);
+      const glitch = p.revealTimer > 0 || ((t * 0.7 + p.phase) % 4) < 0.18; // semua kotak palsu sesekali berkedip
+      m.opacity = glitch ? 0.2 + Math.random() * 0.25 : 1 - 0.45 * p.tell * (0.6 + 0.4 * Math.sin(t * 5 + p.phase));
+      m.emissive.setHex(p.revealTimer > 0 ? 0xff0044 : (glitch ? 0x66ccff : 0x000000));
+      m.emissiveIntensity = 0.7;
     }
   });
 
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
   const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
 
+  const preVy = physics.velocityY;
   let nextX = character.position.x; let nextZ = character.position.z;
-
+  let desX = 0, desZ = 0;
   if (Math.abs(joystickVector.x) > 0.1 || Math.abs(joystickVector.y) > 0.1) {
     const moveX = forward.x * joystickVector.y + right.x * joystickVector.x;
     const moveZ = forward.z * joystickVector.y + right.z * joystickVector.x;
     const len = Math.sqrt(moveX*moveX + moveZ*moveZ);
-    nextX += (moveX / len) * speed * delta; nextZ += (moveZ / len) * speed * delta;
-    isMoving = true; character.rotation.y = Math.atan2(moveX, moveZ);
+    desX = (moveX / len) * speed; desZ = (moveZ / len) * speed;
+    let diff = Math.atan2(moveX, moveZ) - character.rotation.y;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    character.rotation.y += diff * (1 - Math.exp(-delta * 16));
     if (isRunning && Math.random() < 0.3) createTrailEffect();
   }
+  const accel = 1 - Math.exp(-delta * ((desX || desZ) ? 11 : 14));
+  moveVel.x += (desX - moveVel.x) * accel; moveVel.y += (desZ - moveVel.y) * accel;
+  const hSpeed = moveVel.length();
+  isMoving = hSpeed > 0.4;
+  nextX += moveVel.x * delta; nextZ += moveVel.y * delta;
 
   if (!checkWallCollision(nextX, character.position.z, character.position.y)) character.position.x = nextX;
   if (!checkWallCollision(character.position.x, nextZ, character.position.y)) character.position.z = nextZ;
@@ -753,14 +807,7 @@ function animate() {
   if (groundData && physics.velocityY <= 0) {
     character.position.y = groundData.y;
     physics.velocityY = 0; physics.isGrounded = true; physics.jumpCount = 0;
-    if (groundData.platform.type === 'moving_x') character.position.x = character.position.x;
-    else if (groundData.platform.type === 'moving_y') character.position.y = groundData.y;
-    
-    // Jika menginjak platform jebakan kiri/kanan atau breaking
-    if ((groundData.platform.type === 'breaking' || groundData.platform.type === 'trap_left' || groundData.platform.type === 'trap_right') && !groundData.platform.isBreaking) {
-      groundData.platform.isBreaking = true; 
-      groundData.platform.breakTimer = 0.5; // Waktu singkat sebelum jatuh
-    }
+    if (groundData.platform.type === 'moving_x') character.position.x += groundData.platform.dx;
   } else {
     physics.isGrounded = false;
   }
@@ -775,7 +822,20 @@ function animate() {
   }
 
   // CEK APAKAH TERKENA LASER NPC (Posisi Z sekitar -44 dan laser sedang menyala)
-  if (laserBeam && laserBeam.visible && Math.abs(character.position.z - (-44)) < 0.8 && Math.abs(character.position.x) < 3 && Math.abs(character.position.y - 9) < 1) {
+  if (physics.isGrounded && !wasGrounded && preVy < -4) { const imp = Math.min(1, -preVy / 22); sq.v = -imp * 8; spawnDust(4 + Math.round(imp * 6)); }
+  wasGrounded = physics.isGrounded;
+
+  // Kotak palsu: tembus lalu glitch merah
+  platforms.forEach(p => {
+    if (p.type !== 'fake' || p.revealTimer > 0) return;
+    const m = p.mesh.position, ty = m.y + 0.25;
+    if (Math.abs(character.position.x - m.x) < p.width / 2 && Math.abs(character.position.z - m.z) < p.depth / 2 && character.position.y < ty + 0.2 && character.position.y > ty - 1.2) {
+      p.revealTimer = 1.5; showToast('👻 Kotak palsu!');
+    }
+  });
+
+  // Laser hanya mengenai jika sedang menembak & kamu tidak melompatinya
+  if (laserState === 'fire' && Math.abs(character.position.z - LASER_Z) < 0.5 && Math.abs(character.position.x) < 3.5 && character.position.y > 8 && character.position.y < LASER_Y + 0.25) {
     gameState = 'GAMEOVER';
     showOverlay('TERKENA LASER!', 'Putzzdev : "Kena tembak laser NPC, cupu! 💥"', '#ff3333');
   }
@@ -795,23 +855,45 @@ function animate() {
     showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago melewati jebakan! +100 🪙', '#00ff00');
   }
 
+  // ===== Animasi karakter: damping + squash & stretch + condong badan =====
+  const k = 1 - Math.exp(-delta * 14);
+  const damp = (o, key, v) => { o[key] += (v - o[key]) * k; };
+  const runK = THREE.MathUtils.clamp((hSpeed - 5) / 4, 0, 1);
+  sq.v += (-sq.x * 220 - sq.v * 14) * delta; sq.x += sq.v * delta;
+  let bob = 0, lean = 0, twist = 0, sway = 0;
+  let lH = 0, rH = 0, lK = 0, rK = 0, lA = 0, rA = 0, lE = -0.15, rE = -0.15, armZ = 0.1, headY = 0;
+
   if (!physics.isGrounded) {
-    leftLegPivot.rotation.x = THREE.MathUtils.lerp(leftLegPivot.rotation.x, -0.5, 0.2);
-    rightLegPivot.rotation.x = THREE.MathUtils.lerp(rightLegPivot.rotation.x, 0.5, 0.2);
-    leftArmPivot.rotation.x = THREE.MathUtils.lerp(leftArmPivot.rotation.x, -1.2, 0.2);
-    rightArmPivot.rotation.x = THREE.MathUtils.lerp(rightArmPivot.rotation.x, -1.2, 0.2);
+    const up = physics.velocityY > 0;
+    lH = up ? -0.9 : -0.4; rH = up ? 0.3 : 0.5; lK = up ? 1.0 : 0.4; rK = up ? 0.3 : 0.7;
+    lA = rA = up ? -1.7 : -1.0; lE = rE = -0.5; armZ = up ? 0.5 : 0.8;
+    lean = 0.1 + THREE.MathUtils.clamp(-physics.velocityY * 0.004, -0.1, 0.12);
   } else if (isMoving) {
-    walkTime += delta * speed * 2;
-    const swing = Math.sin(walkTime) * 0.8;
-    leftLegPivot.rotation.x = swing; rightLegPivot.rotation.x = -swing;
-    leftArmPivot.rotation.x = -swing * 0.7; rightArmPivot.rotation.x = swing * 0.7;
+    walkTime += delta * hSpeed * 1.7;
+    const s = Math.sin(walkTime), c = Math.cos(walkTime), amp = 0.55 + runK * 0.4;
+    lH = s * amp; rH = -s * amp;
+    lK = Math.max(0, -c) * (0.7 + runK * 0.8) + 0.08; rK = Math.max(0, c) * (0.7 + runK * 0.8) + 0.08;
+    lA = -s * amp * 0.9; rA = s * amp * 0.9;
+    lE = -(0.25 + runK * 0.9) - Math.max(0, s) * 0.3; rE = -(0.25 + runK * 0.9) - Math.max(0, -s) * 0.3;
+    bob = Math.abs(s) * (0.05 + runK * 0.05); lean = 0.06 + runK * 0.2; twist = -s * (0.12 + runK * 0.1); sway = s * 0.04; armZ = 0.12;
+    headY = -twist * 0.8;
   } else {
-    leftLegPivot.rotation.x = THREE.MathUtils.lerp(leftLegPivot.rotation.x, 0, 0.1);
-    rightLegPivot.rotation.x = THREE.MathUtils.lerp(rightLegPivot.rotation.x, 0, 0.1);
-    leftArmPivot.rotation.x = THREE.MathUtils.lerp(leftArmPivot.rotation.x, 0, 0.1);
-    rightArmPivot.rotation.x = THREE.MathUtils.lerp(rightArmPivot.rotation.x, 0, 0.1);
-    headGroup.rotation.y = Math.sin(t * 0.5) * 0.2;
+    const br = Math.sin(t * 2.2); // idle: napas, goyang pelan, kepala melirik
+    bob = br * 0.008; lA = Math.sin(t * 1.3) * 0.04; rA = -lA; armZ = 0.1 + br * 0.015;
+    lE = rE = -0.12; sway = Math.sin(t * 0.8) * 0.015; headY = Math.sin(t * 0.5) * 0.35;
   }
+  damp(leftLegPivot.rotation, 'x', lH); damp(rightLegPivot.rotation, 'x', rH);
+  damp(leftKnee.rotation, 'x', lK); damp(rightKnee.rotation, 'x', rK);
+  damp(leftArmPivot.rotation, 'x', lA); damp(rightArmPivot.rotation, 'x', rA);
+  damp(leftElbow.rotation, 'x', lE); damp(rightElbow.rotation, 'x', rE);
+  damp(leftArmPivot.rotation, 'z', -armZ); damp(rightArmPivot.rotation, 'z', armZ);
+  damp(headGroup.rotation, 'y', headY);
+  damp(rig.position, 'y', bob); damp(rig.rotation, 'x', lean); damp(rig.rotation, 'y', twist); damp(rig.rotation, 'z', sway);
+  const air = physics.isGrounded ? 0 : THREE.MathUtils.clamp(physics.velocityY / 13, -1, 1) * 0.1;
+  const st = THREE.MathUtils.clamp(sq.x + air, -0.35, 0.35);
+  rig.scale.set(1 - st * 0.5, 1 + st, 1 - st * 0.5);
+  camera.fov += ((60 + runK * 8) - camera.fov) * k * 0.5; camera.updateProjectionMatrix();
+  if (embers) { const ep = embers.geometry.attributes.position; for (let i = 0; i < ep.count; i++) { let y = ep.getY(i) + delta * 1.5; if (y > 22) y = -8; ep.setY(i, y); } ep.needsUpdate = true; }
 
   const targetPos = character.position.clone(); targetPos.y += 1.5;
   controls.target.lerp(targetPos, 0.1);
