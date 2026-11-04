@@ -47,6 +47,29 @@ const SHOP_ITEMS = {
   ]
 };
 
+// ============ FUNGSI FETCH GLOBAL CHAT (DITAMBAHKAN AGAR TIDAK ERROR) ============
+async function fetchGlobalChat() {
+  try {
+    const res = await fetch(`${FIREBASE_URL}chats.json?orderBy="$key"&limitToLast=20`);
+    const data = await res.json();
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+    chatMessages.innerHTML = '';
+    
+    if (data) {
+      Object.values(data).forEach(msg => {
+        const div = document.createElement('div');
+        div.className = 'chat-msg';
+        div.innerHTML = `<span class="name ${msg.isDev ? 'dev' : ''}">${msg.name}: </span><span class="text">${msg.text}</span>`;
+        chatMessages.appendChild(div);
+      });
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+  } catch (e) {
+    console.log("Gagal mengambil chat:", e);
+  }
+}
+
 // ============ 2. FUNGSI NOTIFIKASI CUSTOM (TOAST) ============
 function showToast(message) {
   const toast = document.getElementById('custom-toast');
@@ -296,7 +319,7 @@ async function updatePlayerFirebase() {
   });
 }
 
-// ============ 5. UPDATE VISUAL KARAKTER (TANPA KACAMATA) ============
+// ============ 5. UPDATE VISUAL KARAKTER ============
 function updateCharacterVisuals() {
   if (!character) return;
   const getColor = (cat, id, defaultColor) => {
@@ -375,6 +398,8 @@ function requestFullscreenAndLock() {
 }
 
 function init3DGame() {
+  if (renderer) return; // Mencegah inisialisasi ganda
+
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a24);
   scene.fog = new THREE.Fog(0x1a1a24, 20, 120);
