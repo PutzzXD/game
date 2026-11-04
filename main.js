@@ -47,7 +47,7 @@ const SHOP_ITEMS = {
   ]
 };
 
-// ============ FUNGSI FETCH GLOBAL CHAT (DITAMBAHKAN AGAR TIDAK ERROR) ============
+// ============ FUNGSI FETCH GLOBAL CHAT ============
 async function fetchGlobalChat() {
   try {
     const res = await fetch(`${FIREBASE_URL}chats.json?orderBy="$key"&limitToLast=20`);
@@ -398,11 +398,11 @@ function requestFullscreenAndLock() {
 }
 
 function init3DGame() {
-  if (renderer) return; // Mencegah inisialisasi ganda
+  if (renderer) return;
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1a1a24);
-  scene.fog = new THREE.Fog(0x1a1a24, 20, 120);
+  scene.fog = new THREE.Fog(0x1a1a24, 20, 150);
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -414,12 +414,12 @@ function init3DGame() {
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.5));
   const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-  sun.position.set(10, 30, 10);
+  sun.position.set(10, 50, 10);
   sun.castShadow = true;
   scene.add(sun);
 
   lavaMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-  const lava = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), lavaMat);
+  const lava = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), lavaMat);
   lava.rotation.x = -Math.PI / 2;
   lava.position.y = -8;
   scene.add(lava);
@@ -440,26 +440,33 @@ function init3DGame() {
     mesh.receiveShadow = true; mesh.castShadow = true;
     scene.add(mesh);
 
-    platforms.push({ mesh, width, depth, type, startX: x, startY: y, startZ: z, range: 2, speed: 1.5, phase: Math.random() * Math.PI * 2, isBreaking: false, breakTimer: 0, isFallen: false });
+    platforms.push({ mesh, width, depth, type, startX: x, startY: y, startZ: z, range: 2.5, speed: 1.5, phase: Math.random() * Math.PI * 2, isBreaking: false, breakTimer: 0, isFallen: false });
   }
 
-  createPlatform(0, 0, 0, 8, 8, 'static');
-  createPlatform(0, 0, -7, 5, 5, 'static');
-  createPlatform(3, 1, -13, 5, 5, 'moving_x');
-  createPlatform(0, 2, -19, 6, 6, 'static');
-  createPlatform(-3, 2.5, -25, 5, 5, 'moving_y');
-  createPlatform(0, 3.5, -31, 5, 5, 'breaking');
-  createPlatform(0, 4.5, -37, 8, 8, 'static');
-  createPlatform(0, 5.5, -44, 6, 6, 'moving_x');
-  createPlatform(0, 6.5, -50, 5, 5, 'static');
-  createPlatform(0, 7.5, -56, 8, 8, 'static');
+  // ============ RINTANGAN MENANJAK KE ATAS & JAUH ============
+  createPlatform(0, 0, 0, 8, 8, 'static');         // Start
+  createPlatform(0, 1.5, -8, 5, 5, 'static');
+  createPlatform(3, 3.5, -15, 5, 5, 'moving_x');
+  createPlatform(0, 5.5, -22, 6, 6, 'static');
+  createPlatform(-3, 7.5, -29, 5, 5, 'moving_y');
+  createPlatform(0, 9.5, -36, 5, 5, 'breaking');
+  createPlatform(3, 11.5, -43, 6, 6, 'static');
+  createPlatform(0, 13.5, -50, 5, 5, 'moving_x');
+  createPlatform(-3, 15.5, -57, 5, 5, 'static');
+  createPlatform(0, 17.5, -64, 5, 5, 'breaking');
+  createPlatform(3, 19.5, -71, 6, 6, 'moving_y');
+  createPlatform(0, 21.5, -78, 5, 5, 'static');
+  createPlatform(-3, 23.5, -85, 5, 5, 'moving_x');
+  createPlatform(0, 25.5, -92, 5, 5, 'breaking');
+  createPlatform(0, 27.5, -100, 8, 8, 'static');    // Platform Puncak / Finish
 
+  // FINISH LINE (DI PUNCAK Y = 27.5, Z = -100)
   const finishLine = new THREE.Mesh(new THREE.BoxGeometry(7, 0.1, 7), new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1 }));
-  finishLine.position.set(0, 7.8, -56); scene.add(finishLine);
+  finishLine.position.set(0, 27.8, -100); scene.add(finishLine);
 
   const poleMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-  const leftPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); leftPole.position.set(-4, 10.5, -56); scene.add(leftPole);
-  const rightPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); rightPole.position.set(4, 10.5, -56); scene.add(rightPole);
+  const leftPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); leftPole.position.set(-4, 30.5, -100); scene.add(leftPole);
+  const rightPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); rightPole.position.set(4, 30.5, -100); scene.add(rightPole);
 
   const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 256;
   const ctx = canvas.getContext('2d');
@@ -471,7 +478,7 @@ function init3DGame() {
 
   const texture = new THREE.CanvasTexture(canvas); texture.needsUpdate = true;
   const board = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide, emissive: 0x00ff00, emissiveIntensity: 0.2 }));
-  board.position.set(0, 11.5, -56); scene.add(board);
+  board.position.set(0, 31.5, -100); scene.add(board);
 
   character = new THREE.Group();
   character.position.set(0, 0.25, 0);
@@ -738,12 +745,14 @@ function animate() {
     }
   }
 
+  // JIKA JATUH
   if (character.position.y < -3) {
     gameState = 'GAMEOVER'; 
     showOverlay('GAME OVER', 'Putzzdev : "cupu banget kamu wkwk skil isue😹"', '#ff3333');
   }
 
-  if (character.position.z < -53 && character.position.y > 6) {
+  // KONDISI MENANG DI PUNCAK Y > 26 & Z < -97
+  if (character.position.z < -97 && character.position.y > 26) {
     gameState = 'WIN'; 
     playerData.coins = (playerData.coins || 0) + 100;
     updatePlayerFirebase();
