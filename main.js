@@ -9,12 +9,11 @@ let playerData = {
   username: "", 
   isDev: false, 
   coins: 0, 
-  inventory: ['baju_default', 'celana_default', 'sepatu_default', 'kacamata_default', 'efek_lari_default', 'efek_lompat_default'],
+  inventory: ['baju_default', 'celana_default', 'sepatu_default', 'efek_lari_default', 'efek_lompat_default'],
   equipped: {
     baju: 'baju_default',
     celana: 'celana_default',
     sepatu: 'sepatu_default',
-    kacamata: 'kacamata_default',
     efek_lari: 'efek_lari_default',
     efek_lompat: 'efek_lompat_default'
   }
@@ -39,12 +38,6 @@ const SHOP_ITEMS = {
     { id: 'sepatu_default', name: 'Sepatu Merah', price: 0, color: 0xa61c2b },
     { id: 'sepatu_neon', name: 'Sepatu Neon', price: 200, color: 0x00ffcc },
     { id: 'sepatu_emas', name: 'Sepatu Emas', price: 400, color: 0xffd700 }
-  ],
-  kacamata: [
-    { id: 'kacamata_default', name: 'Tanpa Kacamata', price: 0, color: 0x000000, shape: 'none' },
-    { id: 'kacamata_hitam', name: 'Kacamata Hitam', price: 100, color: 0x000000, shape: 'round' },
-    { id: 'kacamata_cyber', name: 'Kacamata Cyber', price: 200, color: 0x00ffff, shape: 'visor' },
-    { id: 'kacamata_emas', name: 'Kacamata Emas', price: 250, color: 0xffd700, shape: 'square' }
   ],
   efek: [
     { id: 'efek_lari_default', name: 'Tanpa Efek Lari', price: 0, type: 'lari' },
@@ -101,16 +94,6 @@ window.addEventListener('DOMContentLoaded', () => {
     renderShopTab('baju'); 
   });
   document.getElementById('close-shop').addEventListener('click', () => { shopModal.style.display = 'none'; });
-
-  // TAMBAHAN TAB KACAMATA DI HTML SHOP
-  const shopTabs = document.getElementById('shop-tabs-container');
-  if (shopTabs && !document.querySelector('[data-cat="kacamata"]')) {
-    const btnKacamata = document.createElement('button');
-    btnKacamata.className = 'shop-tab-btn';
-    btnKacamata.dataset.cat = 'kacamata';
-    btnKacamata.textContent = 'Kacamata';
-    shopTabs.insertBefore(btnKacamata, document.querySelector('[data-cat="efek"]'));
-  }
 
   document.querySelectorAll('.shop-tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -197,13 +180,7 @@ window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-login').disabled = false; return;
       }
       
-      // Pastikan inventory baru ada untuk player lama
-      if (!data.inventory) data.inventory = [];
-      if (!data.inventory.includes('kacamata_default')) data.inventory.push('kacamata_default');
-      if (!data.equipped) data.equipped = {};
-      if (!data.equipped.kacamata) data.equipped.kacamata = 'kacamata_default';
-
-      playerData = { ...playerData, ...data, inventory: data.inventory, equipped: data.equipped };
+      playerData = { ...playerData, ...data, inventory: data.inventory || playerData.inventory, equipped: data.equipped || playerData.equipped };
       localStorage.setItem('parkour_user', JSON.stringify({ username, isDev: data.isDev }));
       startLobby();
     } catch(e) {
@@ -221,12 +198,7 @@ window.addEventListener('DOMContentLoaded', () => {
         .then(res => res.json())
         .then(data => {
           if (data) {
-            if (!data.inventory) data.inventory = [];
-            if (!data.inventory.includes('kacamata_default')) data.inventory.push('kacamata_default');
-            if (!data.equipped) data.equipped = {};
-            if (!data.equipped.kacamata) data.equipped.kacamata = 'kacamata_default';
-            
-            playerData = { ...playerData, ...data, inventory: data.inventory, equipped: data.equipped };
+            playerData = { ...playerData, ...data, inventory: data.inventory || playerData.inventory, equipped: data.equipped || playerData.equipped };
             startLobby();
           } else { localStorage.removeItem('parkour_user'); }
         });
@@ -274,13 +246,7 @@ function renderShopTab(category) {
     div.className = 'shop-item';
     
     let previewHTML = '';
-    if (category === 'kacamata') {
-      let icon = '🚫';
-      if (item.shape === 'round') icon = '🕶️';
-      if (item.shape === 'visor') icon = '🥽';
-      if (item.shape === 'square') icon = '👓';
-      previewHTML = `<div class="color-preview" style="background: #${item.color.toString(16).padStart(6, '0')}; display: flex; align-items: center; justify-content: center; font-size: 24px;">${icon}</div>`;
-    } else if (item.color) {
+    if (item.color) {
       previewHTML = `<div class="color-preview" style="background: #${item.color.toString(16).padStart(6, '0')}"></div>`;
     } else {
       previewHTML = `<div class="color-preview" style="background: #444; display: flex; align-items: center; justify-content: center; font-size: 24px;">✨</div>`;
@@ -330,13 +296,9 @@ async function updatePlayerFirebase() {
   });
 }
 
-// ============ 5. UPDATE VISUAL KARAKTER (DIPERBAIKI) ============
-let currentGlassesMesh = null;
-
+// ============ 5. UPDATE VISUAL KARAKTER (TANPA KACAMATA) ============
 function updateCharacterVisuals() {
-  // Pastikan karakter sudah dibuat sebelum mengubah visual
-  if (!character || !headGroup) return;
-  
+  if (!character) return;
   const getColor = (cat, id, defaultColor) => {
     const item = SHOP_ITEMS[cat].find(i => i.id === id);
     return item && item.color ? item.color : defaultColor;
@@ -352,42 +314,6 @@ function updateCharacterVisuals() {
       if (child.userData.type === 'sepatu') child.material.color.setHex(sepatuColor);
     }
   });
-
-  // LOGIKA KACAMATA
-  if (currentGlassesMesh) {
-    headGroup.remove(currentGlassesMesh);
-    currentGlassesMesh = null;
-  }
-
-  const kacamataId = playerData.equipped.kacamata;
-  const kacamataItem = SHOP_ITEMS.kacamata.find(i => i.id === kacamataId);
-  
-  if (kacamataItem && kacamataItem.shape !== 'none') {
-    currentGlassesMesh = new THREE.Group();
-    const glassMat = new THREE.MeshStandardMaterial({ color: kacamataItem.color, emissive: kacamataItem.color, emissiveIntensity: 0.5, metalness: 0.8, roughness: 0.2 });
-
-    if (kacamataItem.shape === 'round') {
-      const lensGeo = new THREE.TorusGeometry(0.08, 0.02, 8, 16);
-      const leftLens = new THREE.Mesh(lensGeo, glassMat); leftLens.position.set(-0.12, 0.05, 0.3); leftLens.rotation.y = 0.2;
-      const rightLens = new THREE.Mesh(lensGeo, glassMat); rightLens.position.set(0.12, 0.05, 0.3); rightLens.rotation.y = -0.2;
-      const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.08), glassMat); bridge.rotation.z = Math.PI/2; bridge.position.set(0, 0.05, 0.31);
-      currentGlassesMesh.add(leftLens, rightLens, bridge);
-    } else if (kacamataItem.shape === 'visor') {
-      // Perbaikan visor pakai BoxGeometry (bukan Torus)
-      const visorGeo = new THREE.BoxGeometry(0.35, 0.08, 0.05);
-      const visor = new THREE.Mesh(visorGeo, glassMat);
-      visor.position.set(0, 0.08, 0.28);
-      currentGlassesMesh.add(visor);
-    } else if (kacamataItem.shape === 'square') {
-      const boxGeo = new THREE.BoxGeometry(0.15, 0.08, 0.05);
-      const leftBox = new THREE.Mesh(boxGeo, glassMat); leftBox.position.set(-0.12, 0.05, 0.3);
-      const rightBox = new THREE.Mesh(boxGeo, glassMat); rightBox.position.set(0.12, 0.05, 0.3);
-      const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.1), glassMat); bridge.rotation.z = Math.PI/2; bridge.position.set(0, 0.05, 0.31);
-      currentGlassesMesh.add(leftBox, rightBox, bridge);
-    }
-
-    headGroup.add(currentGlassesMesh);
-  }
 }
 
 // ============ 6. EFEK PARTIKEL ============
@@ -567,7 +493,6 @@ function init3DGame() {
   const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.7, 4, 8), matPants); rightLeg.position.y = -0.4; rightLeg.castShadow = true; rightLeg.userData.type = 'celana'; rightLegPivot.add(rightLeg);
   const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); rightShoe.position.set(0, -0.8, 0.05); rightShoe.userData.type = 'sepatu'; rightLegPivot.add(rightShoe);
 
-  // PANGGIL UPDATE VISUAL SETELAH KARAKTER SELESAI DIBUAT
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -702,7 +627,6 @@ function animate() {
   const t = clock.getElapsedTime();
   if (scene && camera) renderer.render(scene, camera);
 
-  // Update Efek Partikel Lari (Api)
   for (let i = trailParticles.length - 1; i >= 0; i--) {
     let p = trailParticles[i];
     p.life -= delta;
@@ -715,7 +639,6 @@ function animate() {
     if (p.life <= 0) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); trailParticles.splice(i, 1); }
   }
 
-  // Update Efek Partikel Lompat (Ledakan)
   for (let i = jumpParticles.length - 1; i >= 0; i--) {
     let p = jumpParticles[i];
     p.life -= delta;
@@ -790,7 +713,6 @@ function animate() {
     }
   }
 
-  // ============ UBAH TEKS ROASTING DISINI ============
   if (character.position.y < -3) {
     gameState = 'GAMEOVER'; 
     showOverlay('GAME OVER', 'Putzzdev : "cupu banget kamu wkwk skil isue😹"', '#ff3333');
