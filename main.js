@@ -197,7 +197,7 @@ window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-login').disabled = false; return;
       }
       
-      // Pastikan inventory kacamata ada untuk player lama
+      // Pastikan inventory baru ada untuk player lama
       if (!data.inventory) data.inventory = [];
       if (!data.inventory.includes('kacamata_default')) data.inventory.push('kacamata_default');
       if (!data.equipped) data.equipped = {};
@@ -334,7 +334,8 @@ async function updatePlayerFirebase() {
 let currentGlassesMesh = null;
 
 function updateCharacterVisuals() {
-  if (!character) return;
+  if (!character || !headGroup) return;
+  
   const getColor = (cat, id, defaultColor) => {
     const item = SHOP_ITEMS[cat].find(i => i.id === id);
     return item && item.color ? item.color : defaultColor;
@@ -362,23 +363,20 @@ function updateCharacterVisuals() {
   
   if (kacamataItem && kacamataItem.shape !== 'none') {
     currentGlassesMesh = new THREE.Group();
-    const glassMat = new THREE.MeshStandardMaterial({ color: kacamataItem.color, emissive: kacamataItem.color, emissiveIntensity: 0.3 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: kacamataItem.color, emissive: kacamataItem.color, emissiveIntensity: 0.5, metalness: 0.8, roughness: 0.2 });
 
     if (kacamataItem.shape === 'round') {
-      // Kacamata bulat hitam
       const lensGeo = new THREE.TorusGeometry(0.08, 0.02, 8, 16);
       const leftLens = new THREE.Mesh(lensGeo, glassMat); leftLens.position.set(-0.12, 0.05, 0.3); leftLens.rotation.y = 0.2;
       const rightLens = new THREE.Mesh(lensGeo, glassMat); rightLens.position.set(0.12, 0.05, 0.3); rightLens.rotation.y = -0.2;
       const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.08), glassMat); bridge.rotation.z = Math.PI/2; bridge.position.set(0, 0.05, 0.31);
       currentGlassesMesh.add(leftLens, rightLens, bridge);
     } else if (kacamataItem.shape === 'visor') {
-      // Kacamata visor cyberpunk (1 batang melengkung)
-      const visorGeo = new THREE.TorusGeometry(0.2, 0.03, 8, 16, Math.PI);
+      const visorGeo = new THREE.BoxGeometry(0.35, 0.08, 0.05);
       const visor = new THREE.Mesh(visorGeo, glassMat);
-      visor.rotation.x = Math.PI / 2; visor.rotation.z = Math.PI; visor.position.set(0, 0.08, 0.28);
+      visor.position.set(0, 0.08, 0.28);
       currentGlassesMesh.add(visor);
     } else if (kacamataItem.shape === 'square') {
-      // Kacamata kotak
       const boxGeo = new THREE.BoxGeometry(0.15, 0.08, 0.05);
       const leftBox = new THREE.Mesh(boxGeo, glassMat); leftBox.position.set(-0.12, 0.05, 0.3);
       const rightBox = new THREE.Mesh(boxGeo, glassMat); rightBox.position.set(0.12, 0.05, 0.3);
@@ -386,7 +384,6 @@ function updateCharacterVisuals() {
       currentGlassesMesh.add(leftBox, rightBox, bridge);
     }
 
-    // Tambahkan ke kepala karakter
     headGroup.add(currentGlassesMesh);
   }
 }
@@ -568,6 +565,7 @@ function init3DGame() {
   const rightLeg = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.7, 4, 8), matPants); rightLeg.position.y = -0.4; rightLeg.castShadow = true; rightLeg.userData.type = 'celana'; rightLegPivot.add(rightLeg);
   const rightShoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); rightShoe.position.set(0, -0.8, 0.05); rightShoe.userData.type = 'sepatu'; rightLegPivot.add(rightShoe);
 
+  // PANGGIL UPDATE VISUAL SETELAH KARAKTER SELESAI DIBUAT
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
