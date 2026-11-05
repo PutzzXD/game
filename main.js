@@ -9,13 +9,14 @@ let playerData = {
   username: "", 
   isDev: false, 
   coins: 0, 
-  inventory: ['baju_default', 'celana_default', 'sepatu_default', 'efek_lari_default', 'efek_lompat_default'],
+  inventory: ['baju_default', 'celana_default', 'sepatu_default', 'efek_lari_default', 'efek_lompat_default', 'aks_none'],
   equipped: {
     baju: 'baju_default',
     celana: 'celana_default',
     sepatu: 'sepatu_default',
     efek_lari: 'efek_lari_default',
-    efek_lompat: 'efek_lompat_default'
+    efek_lompat: 'efek_lompat_default',
+    aksesoris: 'aks_none'
   }
 };
 
@@ -27,23 +28,34 @@ const SHOP_ITEMS = {
     { id: 'baju_default', name: 'Baju Biru Tua', price: 0, color: 0x2c3e50 },
     { id: 'baju_merah', name: 'Baju Merah', price: 150, color: 0xff0000 },
     { id: 'baju_hijau', name: 'Baju Hijau', price: 150, color: 0x00ff00 },
-    { id: 'baju_emas', name: 'Baju Emas', price: 300, color: 0xffd700 }
+    { id: 'baju_emas', name: 'Baju Emas', price: 300, color: 0xffd700 },
+    { id: 'baju_spiderman', name: 'Kostum Spiderman', price: 500, color: 0xd91e2b, web: true }
   ],
   celana: [
     { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
     { id: 'celana_biru', name: 'Celana Jeans', price: 150, color: 0x1e3a8a },
-    { id: 'celana_putih', name: 'Celana Putih', price: 150, color: 0xffffff }
+    { id: 'celana_putih', name: 'Celana Putih', price: 150, color: 0xffffff },
+    { id: 'celana_spiderman', name: 'Celana Spiderman', price: 250, color: 0x1d3f9a, web: true }
   ],
   sepatu: [
     { id: 'sepatu_default', name: 'Sepatu Merah', price: 0, color: 0xa61c2b },
     { id: 'sepatu_neon', name: 'Sepatu Neon', price: 200, color: 0x00ffcc },
-    { id: 'sepatu_emas', name: 'Sepatu Emas', price: 400, color: 0xffd700 }
+    { id: 'sepatu_emas', name: 'Sepatu Emas', price: 400, color: 0xffd700 },
+    { id: 'sepatu_spiderman', name: 'Sepatu Spiderman', price: 250, color: 0xc4122f }
   ],
   efek: [
     { id: 'efek_lari_default', name: 'Tanpa Efek Lari', price: 0, type: 'lari' },
     { id: 'efek_lari_api', name: 'Jejak Api', price: 300, type: 'lari', color: 0xff3300 },
     { id: 'efek_lompat_default', name: 'Tanpa Efek Lompat', price: 0, type: 'lompat' },
     { id: 'efek_lompat_es', name: 'Ledakan Es', price: 300, type: 'lompat', color: 0x00ffff }
+  ],
+  aksesoris: [
+    { id: 'aks_none', name: 'Tanpa Aksesoris', price: 0 },
+    { id: 'aks_topeng_spider', name: 'Topeng Spiderman', price: 400 },
+    { id: 'aks_kacamata', name: 'Kacamata Hitam', price: 150 },
+    { id: 'aks_topi', name: 'Topi Merah', price: 200 },
+    { id: 'aks_mahkota', name: 'Mahkota Emas', price: 500 },
+    { id: 'aks_jubah', name: 'Jubah Merah', price: 350 }
   ]
 };
 
@@ -114,6 +126,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('btn-shop').addEventListener('click', () => {
     shopModal.style.display = 'flex';
+    const firstTab = document.querySelector('.shop-tab-btn');
+    if (firstTab && !document.querySelector('.shop-tab-btn[data-cat="aksesoris"]')) {
+      const tb = firstTab.cloneNode(true); tb.dataset.cat = 'aksesoris'; tb.textContent = '🎩 Aksesoris'; tb.classList.remove('active');
+      tb.addEventListener('click', (e) => { document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('active')); e.currentTarget.classList.add('active'); renderShopTab('aksesoris'); });
+      firstTab.parentNode.appendChild(tb);
+    }
     renderShopTab('baju'); 
   });
   document.getElementById('close-shop').addEventListener('click', () => { shopModal.style.display = 'none'; });
@@ -234,6 +252,8 @@ function startLobby() {
   document.getElementById('auth-container').style.display = 'none';
   document.getElementById('game-ui').style.display = 'block';
   gameState = 'LOBBY'; 
+  if (!playerData.inventory.includes('aks_none')) playerData.inventory.push('aks_none');
+  if (!playerData.equipped.aksesoris) playerData.equipped.aksesoris = 'aks_none';
   document.getElementById('hud-username').textContent = playerData.username;
   document.getElementById('coin-amount').textContent = playerData.coins || 0;
   document.getElementById('modal-username').textContent = playerData.username;
@@ -268,12 +288,7 @@ function renderShopTab(category) {
     const div = document.createElement('div');
     div.className = 'shop-item';
     
-    let previewHTML = '';
-    if (item.color) {
-      previewHTML = `<div class="color-preview" style="background: #${item.color.toString(16).padStart(6, '0')}"></div>`;
-    } else {
-      previewHTML = `<div class="color-preview" style="background: #444; display: flex; align-items: center; justify-content: center; font-size: 24px;">✨</div>`;
-    }
+    const previewHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center">${itemIcon(category, item)}</div>`;
 
     let btnHTML = '';
     if (isEquipped) {
@@ -320,23 +335,68 @@ async function updatePlayerFirebase() {
 }
 
 // ============ 5. UPDATE VISUAL KARAKTER ============
+const webTexCache = {};
+function getWebTex(hex) {
+  if (webTexCache[hex]) return webTexCache[hex];
+  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+  x.fillStyle = '#' + hex.toString(16).padStart(6, '0'); x.fillRect(0, 0, 256, 256);
+  x.strokeStyle = 'rgba(0,0,0,0.55)'; x.lineWidth = 2;
+  for (let i = 0; i <= 256; i += 64) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 256); x.stroke(); }
+  for (let j = 0; j < 256; j += 32) for (let i = 0; i < 256; i += 64) { x.beginPath(); x.moveTo(i, j); x.quadraticCurveTo(i + 32, j + 10, i + 64, j); x.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2);
+  return (webTexCache[hex] = t);
+}
+
+function makeSpiderLogoTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  x.strokeStyle = '#111'; x.fillStyle = '#111'; x.lineWidth = 6; x.lineCap = 'round';
+  for (const s of [-1, 1]) for (const [ex, ey] of [[48, -44], [58, -14], [58, 16], [46, 46]]) {
+    x.beginPath(); x.moveTo(64, 66); x.quadraticCurveTo(64 + s * ex * 0.5, 66 + ey - 14, 64 + s * ex, 66 + ey); x.stroke();
+  }
+  x.beginPath(); x.ellipse(64, 74, 11, 22, 0, 0, Math.PI * 2); x.fill();
+  x.beginPath(); x.arc(64, 46, 8, 0, Math.PI * 2); x.fill();
+  return new THREE.CanvasTexture(c);
+}
+
+const ACC_ICONS = {
+  aks_none: '<circle cx="32" cy="32" r="20" fill="none" stroke="#888" stroke-width="4"/><path d="M18 46L46 18" stroke="#888" stroke-width="4"/>',
+  aks_topeng_spider: '<circle cx="32" cy="32" r="24" fill="#d91e2b"/><path d="M32 8V56M9 32H55M14 16Q32 24 50 16M14 48Q32 40 50 48" stroke="rgba(0,0,0,.45)" stroke-width="1" fill="none"/><path d="M13 27Q21 19 29 31Q20 37 13 27Z" fill="#fff" stroke="#111" stroke-width="2"/><path d="M51 27Q43 19 35 31Q44 37 51 27Z" fill="#fff" stroke="#111" stroke-width="2"/>',
+  aks_kacamata: '<rect x="6" y="24" width="22" height="14" rx="4" fill="#111"/><rect x="36" y="24" width="22" height="14" rx="4" fill="#111"/><path d="M28 29H36" stroke="#111" stroke-width="3"/>',
+  aks_topi: '<path d="M12 40Q12 14 34 14Q54 14 54 40Z" fill="#e53935"/><path d="M30 40H62Q62 47 50 47H30Z" fill="#b71c1c"/>',
+  aks_mahkota: '<path d="M8 48L12 18L24 32L32 14L40 32L52 18L56 48Z" fill="#ffd700" stroke="#b8860b" stroke-width="2" stroke-linejoin="round"/>',
+  aks_jubah: '<path d="M20 8H44L54 56Q32 48 10 56Z" fill="#c0132b" stroke="rgba(255,255,255,.5)" stroke-width="1.5"/>'
+};
+const SHAPES = {
+  baju: 'M20 8 L8 16 L13 27 L19 24 L19 56 L45 56 L45 24 L51 27 L56 16 L44 8 Q32 16 20 8 Z',
+  celana: 'M18 8 H46 L50 56 H35 L32 28 L29 56 H14 Z',
+  sepatu: 'M8 34 H27 L33 26 H42 L44 34 Q58 36 58 46 V52 H8 Z'
+};
+function itemIcon(cat, it) {
+  let inner = '';
+  if (SHAPES[cat]) {
+    const col = '#' + it.color.toString(16).padStart(6, '0'), d = SHAPES[cat];
+    inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linejoin="round"/>`;
+    if (it.web) inner += `<g clip-path="url(#cp-${it.id})" stroke="rgba(0,0,0,.5)" stroke-width=".8" fill="none"><path d="M32 4V60M20 4V60M44 4V60M8 4V60M56 4V60M4 16Q32 24 60 16M4 28Q32 36 60 28M4 40Q32 48 60 40M4 52Q32 60 60 52"/></g>`;
+    if (it.web && cat === 'baju') inner += '<g stroke="#111" stroke-width="1.6" fill="#111" stroke-linecap="round"><ellipse cx="32" cy="35" rx="2.6" ry="5"/><circle cx="32" cy="28.5" r="1.8"/><path fill="none" d="M32 33L24 28M32 35L23 35M32 37L24 42M32 38L25 46M32 33L40 28M32 35L41 35M32 37L40 42M32 38L39 46"/></g>';
+  } else if (cat === 'aksesoris') inner = ACC_ICONS[it.id] || '';
+  else inner = `<text x="32" y="44" font-size="34" text-anchor="middle">${it.id.includes('api') ? '🔥' : (it.id.includes('_es') ? '❄️' : '✨')}</text>`;
+  return `<svg viewBox="0 0 64 64" style="width:80%;height:80%">${inner}</svg>`;
+}
+
 function updateCharacterVisuals() {
   if (!character) return;
-  const getColor = (cat, id, defaultColor) => {
-    const item = SHOP_ITEMS[cat].find(i => i.id === id);
-    return item && item.color ? item.color : defaultColor;
-  };
-  const bajuColor = getColor('baju', playerData.equipped.baju, 0x2c3e50);
-  const celanaColor = getColor('celana', playerData.equipped.celana, 0x1a1a1c);
-  const sepatuColor = getColor('sepatu', playerData.equipped.sepatu, 0xa61c2b);
-  
+  const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === playerData.equipped[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
+  const ap = (child, item) => { const m = child.material; m.map = item.web ? getWebTex(item.color) : null; m.color.setHex(item.web ? 0xffffff : item.color); m.needsUpdate = true; };
+  const baju = pick('baju', 'baju_default'), celana = pick('celana', 'celana_default'), sepatu = pick('sepatu', 'sepatu_default');
   character.traverse((child) => {
-    if (child.isMesh) {
-      if (child.userData.type === 'baju') child.material.color.setHex(bajuColor);
-      if (child.userData.type === 'celana') child.material.color.setHex(celanaColor);
-      if (child.userData.type === 'sepatu') child.material.color.setHex(sepatuColor);
-    }
+    if (!child.isMesh) return;
+    if (child.userData.type === 'baju') ap(child, baju);
+    if (child.userData.type === 'celana') ap(child, celana);
+    if (child.userData.type === 'sepatu') ap(child, sepatu);
   });
+  if (spiderLogoGrp) spiderLogoGrp.visible = baju.id === 'baju_spiderman';
+  const a = playerData.equipped.aksesoris || 'aks_none';
+  Object.keys(acc).forEach(id => { acc[id].visible = id === a; });
 }
 
 // ============ 6. EFEK PARTIKEL ============
@@ -392,11 +452,13 @@ let rig, leftElbow, rightElbow, leftKnee, rightKnee, embers;
 let sq = { x: 0, v: 0 }, moveVel = new THREE.Vector2(0, 0), wasGrounded = true, laserState = 'off';
 const LASER_Z = -44, LASER_Y = 9.3;
 let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
+let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
+const knock = new THREE.Vector2();
 let flyMode = false, godMode = false, flyUp = false, flyDown = false, flySpeed = 14;
 
 function respawn() {
   character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z);
-  physics.velocityY = 0; moveVel.set(0, 0); gameState = 'PLAYING';
+  physics.velocityY = 0; moveVel.set(0, 0); knock.set(0, 0); gameState = 'PLAYING';
   document.getElementById('overlay').style.display = 'none';
 }
 
@@ -502,12 +564,13 @@ function init3DGame() {
   const movingMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.7 });
   const trapMat = new THREE.MeshStandardMaterial({ color: 0xff0055, roughness: 0.5 }); // Warna platform jebakan
 
-  function createPlatform(x, y, z, width, depth, type = 'static', tell = 0) {
+  function createPlatform(x, y, z, width, depth, type = 'static', tell = 0, shape = 'box') {
     const height = 0.5;
-    const geo = new THREE.BoxGeometry(width, height, depth);
-    let mat = platformMat;
+    const geo = shape === 'box' ? new THREE.BoxGeometry(width, height, depth) : new THREE.CylinderGeometry(width / 2, width / 2, height, shape === 'hex' ? 6 : 32);
+    const base = shape === 'round' ? roundMat : (shape === 'hex' ? hexMat : platformMat);
+    let mat = base;
     if (type.includes('moving')) mat = movingMat;
-    if (type === 'fake') { mat = platformMat.clone(); mat.transparent = true; }
+    if (type === 'fake') { mat = base.clone(); mat.transparent = true; }
 
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
@@ -518,19 +581,68 @@ function init3DGame() {
       mesh, width, depth, type, 
       startX: x, startY: y, startZ: z, 
       range: 2.5, speed: 1.5, phase: Math.random() * Math.PI * 2, 
-      isFallen: false, tell, revealTimer: 0, dx: 0 
+      isFallen: false, tell, revealTimer: 0, dx: 0, r: shape === 'round' ? width / 2 : (shape === 'hex' ? width * 0.45 : 0) 
+    });
+  }
+
+  const roundMat = new THREE.MeshStandardMaterial({ color: 0x3a5a7a, roughness: 0.6 });
+  const hexMat = new THREE.MeshStandardMaterial({ color: 0x5a3a7a, roughness: 0.6 });
+  const hazMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.4 });
+  const redMat = new THREE.MeshStandardMaterial({ color: 0xe02030, emissive: 0x551018, roughness: 0.5 });
+
+  // Palang berputar: lompati atau terpental
+  function addSweeper(cx, py, cz, len, speed) {
+    const barY = py + 0.25 + 0.65;
+    const g = new THREE.Group(); g.position.set(cx, barY, cz); scene.add(g);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.65, 16), hazMat); post.position.y = -0.325; g.add(post);
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, len, 12), redMat); bar.rotation.z = Math.PI / 2; g.add(bar);
+    for (const sd of [-1, 1]) { const capE = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 12), hazMat); capE.position.x = sd * len / 2; g.add(capE); }
+    let a = 0;
+    hazards.push({
+      update(t) { a = t * speed; g.rotation.y = -a; },
+      test(pp) {
+        const dx = pp.x - cx, dz = pp.z - cz, c = Math.cos(a), sn = Math.sin(a);
+        const along = dx * c + dz * sn, perp = -dx * sn + dz * c;
+        if (Math.abs(along) < len / 2 + 0.2 && Math.abs(perp) < 0.5 && pp.y < barY + 0.2 && pp.y + 1.9 > barY - 0.2) { const sg = perp >= 0 ? 1 : -1; return { x: -sn * sg, z: c * sg }; }
+        return null;
+      }
+    });
+  }
+
+  // Bola berduri berayun
+  function addPendulum(px, py, pz, axis, L = 4.4) {
+    const pivotY = py + 0.25 + L + 0.8;
+    const g = new THREE.Group(); g.position.set(px, pivotY, pz); scene.add(g);
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, L, 6), hazMat); rope.position.y = -L / 2; g.add(rope);
+    const ball = new THREE.Group(); ball.position.y = -L; g.add(ball);
+    ball.add(new THREE.Mesh(new THREE.SphereGeometry(0.6, 20, 16), new THREE.MeshStandardMaterial({ color: 0x333344, metalness: 0.6, roughness: 0.4 })));
+    for (let i = 0; i < 14; i++) {
+      const yy = 1 - (i / 13) * 2, rr = Math.sqrt(1 - yy * yy), ang = i * 2.399963;
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.35, 8), redMat);
+      const dir = new THREE.Vector3(Math.cos(ang) * rr, yy, Math.sin(ang) * rr);
+      sp.position.copy(dir).multiplyScalar(0.72); sp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir); ball.add(sp);
+    }
+    let th = 0;
+    hazards.push({
+      update(t) { th = 0.85 * Math.sin(t * 1.6 + px); if (axis === 'x') g.rotation.z = th; else g.rotation.x = -th; },
+      test(pp) {
+        const bx = px + (axis === 'x' ? L * Math.sin(th) : 0), by = pivotY - L * Math.cos(th), bz = pz + (axis === 'z' ? L * Math.sin(th) : 0);
+        const cy = Math.min(Math.max(by, pp.y + 0.2), pp.y + 1.7);
+        if (Math.hypot(pp.x - bx, cy - by, pp.z - bz) < 1.0) { const hx = pp.x - bx, hz = pp.z - bz, l = Math.hypot(hx, hz) || 1; return { x: hx / l, z: hz / l }; }
+        return null;
+      }
     });
   }
 
   // ============ JALUR PARKOUR DENGAN JEBAKAN KIRI/KANAN & LASER NPC ============
   createPlatform(0, 0, 0, 8, 8, 'static');         // Start
-  createPlatform(0, 1.5, -8, 5, 5, 'static');
+  createPlatform(0, 1.5, -8, 5, 5, 'static', 0, 'round'); addPendulum(0, 1.5, -8, 'x');
   
   // Jebakan Kiri / Kanan Pertama (Kiri jebakan jatuh, Kanan aman)
   createPlatform(-2.5, 3, -15, 3.5, 3.5, 'fake', 0.9);  // KOTAK PALSU (jelas)
   createPlatform(2.5, 3, -15, 3.5, 3.5, 'static');       // AMAN
 
-  createPlatform(0, 4.5, -22, 6, 6, 'moving_x');
+  createPlatform(0, 4.5, -22, 6, 6, 'moving_x', 0, 'hex'); addPendulum(0, 4.5, -22, 'z');
 
   // Jebakan Tebak-tebakan Kedua (Kiri aman, Kanan jebakan jatuh)
   createPlatform(-2.5, 6, -29, 3.5, 3.5, 'static');      // AMAN
@@ -555,7 +667,7 @@ function init3DGame() {
     em.position.set(ex, 9.6, LASER_Z); scene.add(em);
   });
 
-  createPlatform(0, 10.5, -52, 5, 5, 'moving_y');
+  createPlatform(0, 10.5, -52, 5, 5, 'moving_y', 0, 'round');
   // Jembatan kaca: tiap baris 1 asli, 1 palsu (hampir tak terlihat, cuma sesekali berkedip)
   createPlatform(-2, 12, -58, 3.2, 2.5, 'static'); createPlatform(2, 12, -58, 3.2, 2.5, 'fake', 0.15);
   createPlatform(-2, 12, -61.5, 3.2, 2.5, 'fake', 0.05); createPlatform(2, 12, -61.5, 3.2, 2.5, 'static');
@@ -567,21 +679,24 @@ function init3DGame() {
   // ===== TOWER SPIRAL ala obby Roblox: muter naik ke atas =====
   const TC = { x: 0, z: -77 }, TR = 9, TN = 29, TDY = 1.1, TDA = 0.55;
   let ty = 13.5, ta = Math.PI / 2;
+  const SH = ['box', 'round', 'hex'];
   for (let i = 1; i <= TN; i++) {
     ta += TDA; ty += TDY;
-    const rx = Math.cos(ta), rz = Math.sin(ta);
-    const tell = Math.max(0.05, 0.5 - i * 0.015); // makin tinggi makin susah dibedakan
+    const rx = Math.cos(ta), rz = Math.sin(ta), cx = TC.x + rx * TR, cz = TC.z + rz * TR;
+    const tell = Math.max(0.05, 0.5 - i * 0.015);
+    const sh = SH[i % 3], w = sh === 'box' ? 3.2 : 3.6;
     if (i % 5 === 0) {
-      // Pilihan radial: satu kotak asli, satu palsu
       const realOut = (i / 5) % 2 === 0;
-      createPlatform(TC.x + rx * (TR + 2.8), ty, TC.z + rz * (TR + 2.8), 3.2, 3.2, realOut ? 'static' : 'fake', tell);
-      createPlatform(TC.x + rx * (TR - 2.8), ty, TC.z + rz * (TR - 2.8), 3.2, 3.2, realOut ? 'fake' : 'static', tell);
+      createPlatform(TC.x + rx * (TR + 2.8), ty, TC.z + rz * (TR + 2.8), w, w, realOut ? 'static' : 'fake', tell, sh);
+      createPlatform(TC.x + rx * (TR - 2.8), ty, TC.z + rz * (TR - 2.8), w, w, realOut ? 'fake' : 'static', tell, sh);
     } else if (i % 8 === 0) {
-      createPlatform(TC.x + rx * TR, ty, TC.z + rz * TR, 3.6, 3.6, 'static'); markCheckpoint();
+      createPlatform(cx, ty, cz, 4, 4, 'static', 0, 'round'); markCheckpoint();
+    } else if (i % 11 === 6) {
+      createPlatform(cx, ty, cz, 5.4, 5.4, 'static', 0, 'round'); addSweeper(cx, ty, cz, 4.6, 1.5 + i * 0.01);
     } else if (i % 7 === 3) {
-      createPlatform(TC.x + rx * TR, ty, TC.z + rz * TR, 3.2, 3.2, 'moving_y'); platforms[platforms.length - 1].range = 0.9;
+      createPlatform(cx, ty, cz, w, w, 'moving_y', 0, sh); platforms[platforms.length - 1].range = 0.9;
     } else {
-      createPlatform(TC.x + rx * TR, ty, TC.z + rz * TR, 3.2, 3.2, 'static');
+      createPlatform(cx, ty, cz, w, w, 'static', 0, sh);
     }
   }
   createPlatform(TC.x + Math.cos(ta) * 6.3, ty + 0.55, TC.z + Math.sin(ta) * 6.3, 3, 3, 'static'); // penghubung
@@ -668,6 +783,37 @@ function init3DGame() {
   [torso, headGroup, leftArmPivot, rightArmPivot, leftLegPivot, rightLegPivot].forEach(o => rig.add(o));
   character.add(rig);
 
+  // ===== AKSESORIS & KOSTUM SPIDERMAN =====
+  const accMat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, ...o });
+  const mk = (geo, mat, x, y, z, parent) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
+  const A = (id, parent) => { const g = new THREE.Group(); g.visible = false; parent.add(g); acc[id] = g; return g; };
+
+  const mask = A('aks_topeng_spider', headGroup);
+  mk(new THREE.SphereGeometry(0.36, 32, 24), new THREE.MeshStandardMaterial({ color: 0xffffff, map: getWebTex(0xd91e2b), roughness: 0.6 }), 0, 0.02, -0.01, mask);
+  for (const s of [-1, 1]) {
+    const o = mk(new THREE.SphereGeometry(0.1, 16, 12), accMat(0x111111), s * 0.13, 0.07, 0.335, mask); o.scale.set(1.5, 1, 0.35); o.rotation.z = -s * 0.4;
+    const l = mk(new THREE.SphereGeometry(0.085, 16, 12), accMat(0xffffff, { emissive: 0x444444 }), s * 0.13, 0.07, 0.35, mask); l.scale.set(1.35, 0.85, 0.35); l.rotation.z = -s * 0.4;
+  }
+  const gl = A('aks_kacamata', headGroup);
+  for (const s of [-1, 1]) mk(new THREE.BoxGeometry(0.16, 0.09, 0.03), accMat(0x111111), s * 0.1, 0.05, 0.335, gl);
+  mk(new THREE.BoxGeometry(0.06, 0.02, 0.03), accMat(0x111111), 0, 0.07, 0.335, gl);
+
+  const cap = A('aks_topi', headGroup);
+  mk(new THREE.SphereGeometry(0.335, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), accMat(0xe53935), 0, 0.04, 0, cap);
+  const brim = mk(new THREE.CylinderGeometry(0.24, 0.24, 0.03, 20), accMat(0xb71c1c), 0, 0.12, 0.28, cap); brim.scale.set(1, 1, 0.8);
+
+  const crown = A('aks_mahkota', headGroup), gold = accMat(0xffd700, { metalness: 0.7, roughness: 0.3 });
+  mk(new THREE.CylinderGeometry(0.22, 0.24, 0.1, 20), gold, 0, 0.38, 0, crown);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; mk(new THREE.ConeGeometry(0.05, 0.16, 8), gold, Math.cos(a) * 0.2, 0.5, Math.sin(a) * 0.2, crown); }
+
+  capePivot = A('aks_jubah', rig); capePivot.position.set(0, 1.95, -0.3);
+  mk(new THREE.BoxGeometry(0.7, 1.1, 0.05), accMat(0xc0132b, { side: THREE.DoubleSide }), 0, -0.55, 0, capePivot);
+
+  spiderLogoGrp = new THREE.Group(); spiderLogoGrp.visible = false; rig.add(spiderLogoGrp);
+  const logoMat = new THREE.MeshBasicMaterial({ map: makeSpiderLogoTex(), transparent: true, depthWrite: false });
+  const lf = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), logoMat); lf.position.set(0, 1.62, 0.305); spiderLogoGrp.add(lf);
+  const lb = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), logoMat); lb.position.set(0, 1.62, -0.305); lb.rotation.y = Math.PI; spiderLogoGrp.add(lb);
+
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -736,12 +882,17 @@ function init3DGame() {
   animate();
 }
 
+function insidePlat(p, x, z, pad) {
+  const m = p.mesh.position;
+  if (p.r) return Math.hypot(x - m.x, z - m.z) < p.r + pad;
+  return x + pad > m.x - p.width / 2 && x - pad < m.x + p.width / 2 && z + pad > m.z - p.depth / 2 && z - pad < m.z + p.depth / 2;
+}
+
 function checkGroundCollision(x, z, y) {
   const feetY = y; const tolerance = 0.3;
   for (let p of platforms) {
     if (p.isFallen || p.type === 'fake') continue;
-    if (x > p.mesh.position.x - p.width/2 && x < p.mesh.position.x + p.width/2 &&
-        z > p.mesh.position.z - p.depth/2 && z < p.mesh.position.z + p.depth/2) {
+    if (insidePlat(p, x, z, 0)) {
       const topY = p.mesh.position.y + 0.25;
       if (feetY >= topY - tolerance && feetY <= topY + 0.5) return { y: topY, platform: p };
     }
@@ -753,12 +904,8 @@ function checkWallCollision(x, z, y) {
   const radius = 0.35; const feetY = y;
   for (let p of platforms) {
     if (p.isFallen || p.type === 'fake') continue;
-    const topY = p.mesh.position.y + 0.25;
-    const bottomY = p.mesh.position.y - 0.25;
-    if (feetY < topY - 0.1 && feetY > bottomY - 1) {
-      if (x + radius > p.mesh.position.x - p.width/2 && x - radius < p.mesh.position.x + p.width/2 &&
-          z + radius > p.mesh.position.z - p.depth/2 && z - radius < p.mesh.position.z + p.depth/2) return true;
-    }
+    const topY = p.mesh.position.y + 0.25, bottomY = p.mesh.position.y - 0.25;
+    if (feetY < topY - 0.1 && feetY > bottomY - 1 && insidePlat(p, x, z, radius)) return true;
   }
   return false;
 }
@@ -862,6 +1009,12 @@ function animate() {
     }
   });
 
+  hazards.forEach(h => h.update(t));
+  hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 4));
+  if (hitCD <= 0 && !godMode && !flyMode) for (const h of hazards) {
+    const n = h.test(character.position);
+    if (n) { knock.set(n.x * 10, n.z * 10); physics.velocityY = 8; physics.isGrounded = false; hitCD = 0.8; sq.v = -4; showToast('💥 Kena rintangan!'); break; }
+  }
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
   const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
 
@@ -882,7 +1035,7 @@ function animate() {
   moveVel.x += (desX - moveVel.x) * accel; moveVel.y += (desZ - moveVel.y) * accel;
   const hSpeed = moveVel.length();
   isMoving = hSpeed > 0.4;
-  nextX += moveVel.x * delta; nextZ += moveVel.y * delta;
+  nextX += (moveVel.x + knock.x) * delta; nextZ += (moveVel.y + knock.y) * delta;
 
   if (flyMode || !checkWallCollision(nextX, character.position.z, character.position.y)) character.position.x = nextX;
   if (flyMode || !checkWallCollision(character.position.x, nextZ, character.position.y)) character.position.z = nextZ;
@@ -982,6 +1135,7 @@ function animate() {
   damp(leftArmPivot.rotation, 'z', -armZ); damp(rightArmPivot.rotation, 'z', armZ);
   damp(headGroup.rotation, 'y', headY);
   damp(rig.position, 'y', bob); damp(rig.rotation, 'x', lean); damp(rig.rotation, 'y', twist); damp(rig.rotation, 'z', sway);
+  if (capePivot && capePivot.visible) damp(capePivot.rotation, 'x', 0.08 + hSpeed * 0.05 + (physics.isGrounded ? 0 : 0.4) + Math.sin(t * 7) * (isMoving ? 0.05 : 0.01));
   const air = physics.isGrounded ? 0 : THREE.MathUtils.clamp(physics.velocityY / 13, -1, 1) * 0.1;
   const st = THREE.MathUtils.clamp(sq.x + air, -0.35, 0.35);
   rig.scale.set(1 - st * 0.5, 1 + st, 1 - st * 0.5);
