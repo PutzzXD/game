@@ -29,19 +29,22 @@ const SHOP_ITEMS = {
     { id: 'baju_merah', name: 'Baju Merah', price: 150, color: 0xff0000 },
     { id: 'baju_hijau', name: 'Baju Hijau', price: 150, color: 0x00ff00 },
     { id: 'baju_emas', name: 'Baju Emas', price: 300, color: 0xffd700 },
-    { id: 'baju_spiderman', name: 'Kostum Spiderman', price: 500, color: 0xd91e2b, web: true }
+    { id: 'baju_spiderman', name: 'Kostum Spiderman', price: 500, color: 0xd91e2b, web: true },
+    { id: 'baju_batman', name: 'Kostum Batman', price: 550, color: 0x2b2f3a, bat: true }
   ],
   celana: [
     { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
     { id: 'celana_biru', name: 'Celana Jeans', price: 150, color: 0x1e3a8a },
     { id: 'celana_putih', name: 'Celana Putih', price: 150, color: 0xffffff },
-    { id: 'celana_spiderman', name: 'Celana Spiderman', price: 250, color: 0x1d3f9a, web: true }
+    { id: 'celana_spiderman', name: 'Celana Spiderman', price: 250, color: 0x1d3f9a, web: true },
+    { id: 'celana_batman', name: 'Celana Batman', price: 250, color: 0x23252e }
   ],
   sepatu: [
     { id: 'sepatu_default', name: 'Sepatu Merah', price: 0, color: 0xa61c2b },
     { id: 'sepatu_neon', name: 'Sepatu Neon', price: 200, color: 0x00ffcc },
     { id: 'sepatu_emas', name: 'Sepatu Emas', price: 400, color: 0xffd700 },
-    { id: 'sepatu_spiderman', name: 'Sepatu Spiderman', price: 250, color: 0xc4122f }
+    { id: 'sepatu_spiderman', name: 'Sepatu Spiderman', price: 250, color: 0xc4122f },
+    { id: 'sepatu_batman', name: 'Sepatu Batman', price: 250, color: 0x0f0f13 }
   ],
   efek: [
     { id: 'efek_lari_default', name: 'Tanpa Efek Lari', price: 0, type: 'lari' },
@@ -52,6 +55,7 @@ const SHOP_ITEMS = {
   aksesoris: [
     { id: 'aks_none', name: 'Tanpa Aksesoris', price: 0 },
     { id: 'aks_topeng_spider', name: 'Topeng Spiderman', price: 400 },
+    { id: 'aks_topeng_batman', name: 'Topeng Batman', price: 400 },
     { id: 'aks_kacamata', name: 'Kacamata Hitam', price: 150 },
     { id: 'aks_topi', name: 'Topi Merah', price: 200 },
     { id: 'aks_mahkota', name: 'Mahkota Emas', price: 500 },
@@ -358,7 +362,20 @@ function makeSpiderLogoTex() {
   return new THREE.CanvasTexture(c);
 }
 
+function makeBatLogoTex() {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  x.fillStyle = '#f5c400'; x.beginPath(); x.ellipse(64, 64, 60, 38, 0, 0, Math.PI * 2); x.fill();
+  x.strokeStyle = '#111'; x.lineWidth = 5; x.stroke();
+  x.fillStyle = '#111'; x.beginPath();
+  x.moveTo(64, 42); x.lineTo(70, 36); x.lineTo(72, 44); x.quadraticCurveTo(92, 40, 110, 54); x.quadraticCurveTo(100, 58, 96, 72);
+  x.quadraticCurveTo(90, 64, 82, 68); x.quadraticCurveTo(76, 68, 72, 82); x.lineTo(64, 72); x.lineTo(56, 82);
+  x.quadraticCurveTo(52, 68, 46, 68); x.quadraticCurveTo(38, 64, 32, 72); x.quadraticCurveTo(28, 58, 18, 54);
+  x.quadraticCurveTo(36, 40, 56, 44); x.lineTo(58, 36); x.closePath(); x.fill();
+  return new THREE.CanvasTexture(c);
+}
+
 const ACC_ICONS = {
+  aks_topeng_batman: '<path d="M14 56V26Q14 12 32 12Q50 12 50 26V56Q42 46 32 46Q22 46 14 56Z" fill="#15151c"/><path d="M14 26L10 4L27 13ZM50 26L54 4L37 13Z" fill="#15151c"/><path d="M19 30L29 34L19 37Z" fill="#fff"/><path d="M45 30L35 34L45 37Z" fill="#fff"/>',
   aks_none: '<circle cx="32" cy="32" r="20" fill="none" stroke="#888" stroke-width="4"/><path d="M18 46L46 18" stroke="#888" stroke-width="4"/>',
   aks_topeng_spider: '<circle cx="32" cy="32" r="24" fill="#d91e2b"/><path d="M32 8V56M9 32H55M14 16Q32 24 50 16M14 48Q32 40 50 48" stroke="rgba(0,0,0,.45)" stroke-width="1" fill="none"/><path d="M13 27Q21 19 29 31Q20 37 13 27Z" fill="#fff" stroke="#111" stroke-width="2"/><path d="M51 27Q43 19 35 31Q44 37 51 27Z" fill="#fff" stroke="#111" stroke-width="2"/>',
   aks_kacamata: '<rect x="6" y="24" width="22" height="14" rx="4" fill="#111"/><rect x="36" y="24" width="22" height="14" rx="4" fill="#111"/><path d="M28 29H36" stroke="#111" stroke-width="3"/>',
@@ -377,6 +394,7 @@ function itemIcon(cat, it) {
     const col = '#' + it.color.toString(16).padStart(6, '0'), d = SHAPES[cat];
     inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linejoin="round"/>`;
     if (it.web) inner += `<g clip-path="url(#cp-${it.id})" stroke="rgba(0,0,0,.5)" stroke-width=".8" fill="none"><path d="M32 4V60M20 4V60M44 4V60M8 4V60M56 4V60M4 16Q32 24 60 16M4 28Q32 36 60 28M4 40Q32 48 60 40M4 52Q32 60 60 52"/></g>`;
+    if (it.bat && cat === 'baju') inner += '<rect x="19" y="47" width="26" height="4" fill="#f5c400"/><ellipse cx="32" cy="30" rx="8" ry="5" fill="#f5c400" stroke="#111"/><path d="M32 26L33 25L33.5 26.5Q38 26 40 28Q38 28.5 37 31Q35 30 34 31L32 33L30 31Q29 30 27 31Q26 28.5 24 28Q26 26 30.5 26.5L31 25Z" fill="#111"/>';
     if (it.web && cat === 'baju') inner += '<g stroke="#111" stroke-width="1.6" fill="#111" stroke-linecap="round"><ellipse cx="32" cy="35" rx="2.6" ry="5"/><circle cx="32" cy="28.5" r="1.8"/><path fill="none" d="M32 33L24 28M32 35L23 35M32 37L24 42M32 38L25 46M32 33L40 28M32 35L41 35M32 37L40 42M32 38L39 46"/></g>';
   } else if (cat === 'aksesoris') inner = ACC_ICONS[it.id] || '';
   else inner = `<text x="32" y="44" font-size="34" text-anchor="middle">${it.id.includes('api') ? '🔥' : (it.id.includes('_es') ? '❄️' : '✨')}</text>`;
@@ -395,8 +413,10 @@ function updateCharacterVisuals() {
     if (child.userData.type === 'sepatu') ap(child, sepatu);
   });
   if (spiderLogoGrp) spiderLogoGrp.visible = baju.id === 'baju_spiderman';
+  if (batGrp) batGrp.visible = baju.id === 'baju_batman';
   const a = playerData.equipped.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => { acc[id].visible = id === a; });
+  if (nameSprite) updateCharacterNameSprite(playerData.username, playerData.isDev);
 }
 
 // ============ 6. EFEK PARTIKEL ============
@@ -454,6 +474,20 @@ const LASER_Z = -44, LASER_Y = 9.3;
 let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
 let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
+let batGrp, capeB;
+const ROASTS = {
+  hit: ['Admin kena bola berduri 😹 katanya jago?', 'Yang bikin game kalah sama palang berputar 💀', 'Admin: "gampang kok". Admin: *terpental* 😹', 'Terpental sejauh itu, kayak gaji admin 🤣'],
+  fall: ['Admin jatuh ke lava 😹 turun pangkat jadi pemain biasa', 'Bikin game sendiri, mati sendiri 💀', 'Lava: "makasih udah mampir, min" 🔥😹'],
+  fly: ['Admin pakai cheat terbang, curang nih 😹', 'Ketahuan! Admin terbang pas takut jatuh 🛫😹'],
+  god: ['Anti-mati ON... takut mati ya min? 😹', 'Mode aman, mental bayi 🍼😹']
+};
+const isAdminUser = () => !!(playerData && playerData.username && playerData.username.toLowerCase() === DEV_USERNAME);
+function roast(kind) {
+  if (!isAdminUser()) return;
+  const arr = ROASTS[kind], m = arr[Math.floor(Math.random() * arr.length)];
+  showToast(m);
+  const el = document.getElementById('admin-roast'); if (el) el.textContent = m;
+}
 let flyMode = false, godMode = false, flyUp = false, flyDown = false, flySpeed = 14;
 
 function respawn() {
@@ -466,23 +500,40 @@ function respawn() {
 function setupAdminPanel() {
   if (playerData.username.toLowerCase() !== DEV_USERNAME || document.getElementById('admin-btn')) return;
   const css = document.createElement('style');
-  css.textContent = '#admin-btn,#admin-panel,#fly-ctrl{position:fixed;z-index:9999;font-family:sans-serif}#admin-btn{top:10px;right:10px;padding:8px 12px;border:0;border-radius:10px;background:#ff3366;color:#fff;font-weight:700}#admin-panel{top:52px;right:10px;width:210px;padding:12px;border-radius:12px;background:rgba(15,15,25,.92);color:#fff;display:none;flex-direction:column;gap:8px;font-size:13px}#admin-panel button{padding:8px;border:0;border-radius:8px;background:#2d3550;color:#fff}#admin-panel button.on{background:#00b86b}#fly-ctrl{right:14px;top:45%;display:none;flex-direction:column;gap:10px}#fly-ctrl button{width:56px;height:56px;border-radius:50%;border:0;background:rgba(255,255,255,.25);color:#fff;font-size:24px}';
+  css.textContent = '#admin-wrap{position:fixed;top:10px;right:10px;z-index:9999;display:flex;flex-direction:column;align-items:flex-end;gap:6px;font-family:sans-serif}#admin-btn{padding:8px 12px;border:0;border-radius:10px;background:#ff3366;color:#fff;font-weight:700;cursor:grab;touch-action:none}#admin-panel{width:220px;padding:12px;border-radius:12px;background:rgba(15,15,25,.92);color:#fff;display:none;flex-direction:column;gap:8px;font-size:13px}#admin-title{cursor:grab;padding:4px 0;touch-action:none;user-select:none}#admin-panel button{padding:8px;border:0;border-radius:8px;background:#2d3550;color:#fff}#admin-panel button.on{background:#00b86b}#admin-roast{font-size:12px;color:#ffd166}#fly-ctrl{position:fixed;z-index:9999;right:14px;top:45%;display:none;flex-direction:column;gap:10px}#fly-ctrl button{width:56px;height:56px;border-radius:50%;border:0;background:rgba(255,255,255,.25);color:#fff;font-size:24px}';
   document.head.appendChild(css);
+  const wrap = document.createElement('div'); wrap.id = 'admin-wrap';
   const btn = document.createElement('button'); btn.id = 'admin-btn'; btn.textContent = '🛠️ Admin';
   const panel = document.createElement('div'); panel.id = 'admin-panel';
-  panel.innerHTML = '<b>Admin Panel - Putzzdev</b><button id="ad-fly">✈️ Terbang: OFF (F)</button><label>Kecepatan: <span id="ad-spd">14</span><input id="ad-speed" type="range" min="5" max="40" value="14" style="width:100%"></label><button id="ad-god">🛡️ Anti-mati: OFF</button><button data-tp="start">📍 Ke Start</button><button data-tp="hub">📍 Ke Hub Tower</button><button data-tp="top">🏁 Ke Puncak</button><button id="ad-coin">🪙 +1000 Koin</button>';
+  panel.innerHTML = '<b id="admin-title">☰ Admin Panel - Putzzdev (geser)</b><div id="admin-roast">Admin juga manusia... kadang jatuh juga 😹</div><button id="ad-fly">✈️ Terbang: OFF (F)</button><label>Kecepatan: <span id="ad-spd">14</span><input id="ad-speed" type="range" min="5" max="40" value="14" style="width:100%"></label><button id="ad-god">🛡️ Anti-mati: OFF</button><button data-tp="start">📍 Ke Start</button><button data-tp="hub">📍 Ke Hub Tower</button><button data-tp="top">🏁 Ke Puncak</button><button id="ad-coin">🪙 +1000 Koin</button>';
   const fc = document.createElement('div'); fc.id = 'fly-ctrl';
   fc.innerHTML = '<button id="fly-up">▲</button><button id="fly-down">▼</button>';
-  document.body.append(btn, panel, fc);
+  wrap.append(btn, panel); document.body.append(wrap, fc);
 
-  btn.onclick = () => { panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; };
+  // Geser panel: tahan & seret tombol Admin atau judul panel
+  let moved = false;
+  const makeDrag = (handle) => handle.addEventListener('pointerdown', (e) => {
+    const r = wrap.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top, sx = e.clientX, sy = e.clientY;
+    moved = false; wrap.style.right = 'auto'; wrap.style.left = r.left + 'px'; wrap.style.top = r.top + 'px';
+    handle.setPointerCapture(e.pointerId);
+    const mv = (ev) => {
+      if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 6) moved = true;
+      if (!moved) return;
+      wrap.style.left = Math.max(0, Math.min(innerWidth - wrap.offsetWidth, ev.clientX - ox)) + 'px';
+      wrap.style.top = Math.max(0, Math.min(innerHeight - wrap.offsetHeight, ev.clientY - oy)) + 'px';
+    };
+    const up = () => { handle.removeEventListener('pointermove', mv); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up); };
+    handle.addEventListener('pointermove', mv); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
+  });
+  makeDrag(btn); makeDrag(document.getElementById('admin-title'));
+  btn.onclick = () => { if (moved) { moved = false; return; } panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; };
   const setFly = (v) => {
-    flyMode = v; fc.style.display = v ? 'flex' : 'none'; flyUp = flyDown = false; physics.velocityY = 0;
+    flyMode = v; fc.style.display = v ? 'flex' : 'none'; flyUp = flyDown = false; physics.velocityY = 0; if (v) roast('fly');
     const b = document.getElementById('ad-fly'); b.classList.toggle('on', v); b.textContent = '✈️ Terbang: ' + (v ? 'ON' : 'OFF') + ' (F)';
   };
   document.getElementById('ad-fly').onclick = () => setFly(!flyMode);
   document.getElementById('ad-speed').oninput = (e) => { flySpeed = +e.target.value; document.getElementById('ad-spd').textContent = flySpeed; };
-  document.getElementById('ad-god').onclick = (e) => { godMode = !godMode; e.target.classList.toggle('on', godMode); e.target.textContent = '🛡️ Anti-mati: ' + (godMode ? 'ON' : 'OFF'); };
+  document.getElementById('ad-god').onclick = (e) => { godMode = !godMode; if (godMode) roast('god'); e.target.classList.toggle('on', godMode); e.target.textContent = '🛡️ Anti-mati: ' + (godMode ? 'ON' : 'OFF'); };
   panel.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => {
     const d = { start: [0, 0.25, 0], hub: [0, 13.75, -68], top: [0, FIN_Y, -77] }[b.dataset.tp];
     character.position.set(...d); physics.velocityY = 0; moveVel.set(0, 0);
@@ -814,6 +865,22 @@ function init3DGame() {
   const lf = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), logoMat); lf.position.set(0, 1.62, 0.305); spiderLogoGrp.add(lf);
   const lb = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.34), logoMat); lb.position.set(0, 1.62, -0.305); lb.rotation.y = Math.PI; spiderLogoGrp.add(lb);
 
+  // ===== BATMAN =====
+  const cowl = A('aks_topeng_batman', headGroup), cowlMat = accMat(0x15151c, { roughness: 0.5 });
+  mk(new THREE.SphereGeometry(0.35, 32, 24, 0, Math.PI * 2, 0, Math.PI * 0.58), cowlMat, 0, 0.02, -0.01, cowl);
+  for (const sd of [-1, 1]) {
+    const ear = mk(new THREE.ConeGeometry(0.07, 0.3, 8), cowlMat, sd * 0.17, 0.4, 0, cowl); ear.rotation.z = -sd * 0.15;
+    const eye = mk(new THREE.SphereGeometry(0.07, 12, 8), accMat(0xffffff, { emissive: 0xaaaaaa }), sd * 0.12, 0.07, 0.34, cowl); eye.scale.set(1.5, 0.6, 0.3); eye.rotation.z = sd * 0.35;
+  }
+  batGrp = new THREE.Group(); batGrp.visible = false; rig.add(batGrp);
+  const yel = accMat(0xf5c400, { metalness: 0.3 });
+  mk(new THREE.CylinderGeometry(0.315, 0.315, 0.09, 24), yel, 0, 1.05, 0, batGrp);
+  mk(new THREE.BoxGeometry(0.1, 0.1, 0.03), yel, 0, 1.05, 0.32, batGrp);
+  const bl = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.38), new THREE.MeshBasicMaterial({ map: makeBatLogoTex(), transparent: true, depthWrite: false }));
+  bl.position.set(0, 1.62, 0.305); batGrp.add(bl);
+  capeB = new THREE.Group(); capeB.position.set(0, 1.95, -0.3); batGrp.add(capeB);
+  mk(new THREE.BoxGeometry(0.7, 1.15, 0.05), accMat(0x15151c, { side: THREE.DoubleSide }), 0, -0.575, 0, capeB);
+
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -839,22 +906,26 @@ function init3DGame() {
     joystickVector.x = x / maxDist; joystickVector.y = -y / maxDist;
   }
 
-  const handleStart = (e) => { e.preventDefault(); joystickActive = true; handleMove(e); };
-  const handleMove = (e) => {
-    if (!joystickActive) return;
-    e.preventDefault();
-    const touch = e.touches ? e.touches[0] : e;
-    const rect = joystickArea.getBoundingClientRect();
-    updateKnob(touch.clientX - (rect.left + rect.width/2), touch.clientY - (rect.top + rect.height/2));
-  };
-  const handleEnd = () => { joystickActive = false; joystickVector.set(0,0); joystickKnob.style.transform = `translate(-50%, -50%)`; };
+  // Analog hanya mengikuti JARINYA SENDIRI (identifier), jadi geser layar dengan jari lain tidak mengganggu
+  let joyId = null;
+  const findTouch = (list) => { for (const tc of list) if (tc.identifier === joyId) return tc; return null; };
+  const moveKnobTo = (cx, cy) => { const rect = joystickArea.getBoundingClientRect(); updateKnob(cx - (rect.left + rect.width / 2), cy - (rect.top + rect.height / 2)); };
+  const handleEnd = () => { joystickActive = false; joyId = null; joystickVector.set(0, 0); joystickKnob.style.transform = 'translate(-50%, -50%)'; };
 
-  joystickArea.addEventListener('touchstart', handleStart, { passive: false });
-  joystickArea.addEventListener('touchmove', handleMove, { passive: false });
-  joystickArea.addEventListener('touchend', handleEnd);
-  joystickArea.addEventListener('mousedown', handleStart);
-  window.addEventListener('mousemove', handleMove);
-  window.addEventListener('mouseup', handleEnd);
+  joystickArea.addEventListener('touchstart', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (joyId !== null) return;
+    const tc = e.changedTouches[0]; joyId = tc.identifier; joystickActive = true; moveKnobTo(tc.clientX, tc.clientY);
+  }, { passive: false });
+  joystickArea.addEventListener('touchmove', (e) => { const tc = findTouch(e.changedTouches); if (!tc) return; e.preventDefault(); moveKnobTo(tc.clientX, tc.clientY); }, { passive: false });
+  const endTouch = (e) => { if (findTouch(e.changedTouches)) handleEnd(); };
+  joystickArea.addEventListener('touchend', endTouch);
+  joystickArea.addEventListener('touchcancel', endTouch);
+
+  let mouseJoy = false; // desktop
+  joystickArea.addEventListener('mousedown', (e) => { e.preventDefault(); mouseJoy = true; moveKnobTo(e.clientX, e.clientY); });
+  window.addEventListener('mousemove', (e) => { if (mouseJoy) moveKnobTo(e.clientX, e.clientY); });
+  window.addEventListener('mouseup', () => { if (mouseJoy) { mouseJoy = false; handleEnd(); } });
 
   document.getElementById('btn-jump').addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -918,25 +989,32 @@ function showOverlay(title, desc, color) {
 }
 
 function updateCharacterNameSprite(username, isDev) {
-  if (nameSprite) { scene.remove(nameSprite); nameSprite.material.map.dispose(); nameSprite.material.dispose(); }
+  if (!character) return;
+  if (nameSprite) { character.remove(nameSprite); scene.remove(nameSprite); nameSprite.material.map.dispose(); nameSprite.material.dispose(); }
+  const bj = SHOP_ITEMS.baju.find(i => i.id === playerData.equipped.baju);
+  const label = bj ? (bj.web ? '🕸️ ' : (bj.bat ? '🦇 ' : '👕 ')) + bj.name : '';
   const canvasName = document.createElement('canvas');
-  canvasName.width = 512; canvasName.height = 128;
+  canvasName.width = 512; canvasName.height = 176;
   const ctxName = canvasName.getContext('2d');
-  ctxName.clearRect(0, 0, canvasName.width, canvasName.height);
+  ctxName.clearRect(0, 0, 512, 176);
   ctxName.fillStyle = 'rgba(0, 0, 0, 0.6)';
-  ctxName.beginPath(); ctxName.roundRect(10, 20, 492, 88, 20); ctxName.fill();
+  ctxName.beginPath(); ctxName.roundRect(10, 10, 492, 88, 20); ctxName.fill();
   ctxName.font = 'bold 50px sans-serif'; ctxName.fillStyle = '#ffffff'; ctxName.textAlign = 'center'; ctxName.textBaseline = 'middle';
-  ctxName.fillText(username, 256, 64);
+  ctxName.fillText(username, 256, 54);
   if (isDev) {
-    ctxName.beginPath(); ctxName.arc(430, 64, 28, 0, Math.PI * 2); ctxName.fillStyle = '#1DA1F2'; ctxName.fill();
+    ctxName.beginPath(); ctxName.arc(430, 54, 28, 0, Math.PI * 2); ctxName.fillStyle = '#1DA1F2'; ctxName.fill();
     ctxName.strokeStyle = '#ffffff'; ctxName.lineWidth = 4; ctxName.stroke();
-    ctxName.beginPath(); ctxName.moveTo(418, 64); ctxName.lineTo(426, 74); ctxName.lineTo(444, 54); ctxName.strokeStyle = '#ffffff'; ctxName.lineWidth = 6; ctxName.lineCap = 'round'; ctxName.lineJoin = 'round'; ctxName.stroke();
+    ctxName.beginPath(); ctxName.moveTo(418, 54); ctxName.lineTo(426, 64); ctxName.lineTo(444, 44); ctxName.strokeStyle = '#ffffff'; ctxName.lineWidth = 6; ctxName.lineCap = 'round'; ctxName.lineJoin = 'round'; ctxName.stroke();
+  }
+  if (label) {
+    ctxName.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctxName.beginPath(); ctxName.roundRect(60, 106, 392, 56, 16); ctxName.fill();
+    ctxName.font = 'bold 30px sans-serif'; ctxName.fillStyle = '#ffd166'; ctxName.fillText(label, 256, 135);
   }
   const textureName = new THREE.CanvasTexture(canvasName);
-  textureName.needsUpdate = true;
   nameSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: textureName, depthTest: false, depthWrite: false }));
-  nameSprite.position.set(0, 3.2, 0);
-  nameSprite.scale.set(2, 0.5, 1);
+  nameSprite.position.set(0, 3.3, 0);
+  nameSprite.scale.set(2, 0.6875, 1);
   character.add(nameSprite);
 }
 
@@ -1010,10 +1088,10 @@ function animate() {
   });
 
   hazards.forEach(h => h.update(t));
-  hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 4));
+  hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 2.5));
   if (hitCD <= 0 && !godMode && !flyMode) for (const h of hazards) {
     const n = h.test(character.position);
-    if (n) { knock.set(n.x * 10, n.z * 10); physics.velocityY = 8; physics.isGrounded = false; hitCD = 0.8; sq.v = -4; showToast('💥 Kena rintangan!'); break; }
+    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; if (isAdminUser()) roast('hit'); else showToast('💥 Kena rintangan!'); break; }
   }
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
   const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
@@ -1088,6 +1166,7 @@ function animate() {
   // JIKA JATUH KE LAVA
   if (godMode && character.position.y < -3) { character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z); physics.velocityY = 0; }
   if (!godMode && !flyMode && character.position.y < -3) {
+    roast('fall');
     gameState = 'GAMEOVER'; 
     showOverlay('GAME OVER', 'Putzzdev : "Salah pilih jalan/jatuh ke lava wkwk! 😹"', '#ff3333');
   }
@@ -1135,7 +1214,7 @@ function animate() {
   damp(leftArmPivot.rotation, 'z', -armZ); damp(rightArmPivot.rotation, 'z', armZ);
   damp(headGroup.rotation, 'y', headY);
   damp(rig.position, 'y', bob); damp(rig.rotation, 'x', lean); damp(rig.rotation, 'y', twist); damp(rig.rotation, 'z', sway);
-  if (capePivot && capePivot.visible) damp(capePivot.rotation, 'x', 0.08 + hSpeed * 0.05 + (physics.isGrounded ? 0 : 0.4) + Math.sin(t * 7) * (isMoving ? 0.05 : 0.01));
+  for (const cp of [capePivot, capeB]) if (cp && cp.visible) damp(cp.rotation, 'x', 0.08 + hSpeed * 0.05 + (physics.isGrounded ? 0 : 0.4) + Math.sin(t * 7) * (isMoving ? 0.05 : 0.01));
   const air = physics.isGrounded ? 0 : THREE.MathUtils.clamp(physics.velocityY / 13, -1, 1) * 0.1;
   const st = THREE.MathUtils.clamp(sq.x + air, -0.35, 0.35);
   rig.scale.set(1 - st * 0.5, 1 + st, 1 - st * 0.5);
