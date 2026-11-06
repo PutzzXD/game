@@ -30,7 +30,8 @@ const SHOP_ITEMS = {
     { id: 'baju_hijau', name: 'Baju Hijau', price: 150, color: 0x00ff00 },
     { id: 'baju_emas', name: 'Baju Emas', price: 300, color: 0xffd700 },
     { id: 'baju_spiderman', name: 'Kostum Spiderman', price: 500, color: 0xd91e2b, web: true },
-    { id: 'baju_batman', name: 'Kostum Batman', price: 550, color: 0x2b2f3a, bat: true }
+    { id: 'baju_batman', name: 'Kostum Batman', price: 550, color: 0x2b2f3a, bat: true },
+    { id: 'baju_ironman', name: 'Kostum Ironman', price: 2000, color: 0xb01020, iron: true }
   ],
   celana: [
     { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
@@ -394,6 +395,7 @@ function itemIcon(cat, it) {
     const col = '#' + it.color.toString(16).padStart(6, '0'), d = SHAPES[cat];
     inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linejoin="round"/>`;
     if (it.web) inner += `<g clip-path="url(#cp-${it.id})" stroke="rgba(0,0,0,.5)" stroke-width=".8" fill="none"><path d="M32 4V60M20 4V60M44 4V60M8 4V60M56 4V60M4 16Q32 24 60 16M4 28Q32 36 60 28M4 40Q32 48 60 40M4 52Q32 60 60 52"/></g>`;
+    if (it.iron && cat === 'baju') inner += '<path d="M20 8L8 16L13 27L19 24Z" fill="#d4a017"/><path d="M44 8L56 16L51 27L45 24Z" fill="#d4a017"/><circle cx="32" cy="30" r="5" fill="#9ff3ff" stroke="#d4a017" stroke-width="2"/><rect x="19" y="46" width="26" height="4" fill="#d4a017"/>';
     if (it.bat && cat === 'baju') inner += '<rect x="19" y="47" width="26" height="4" fill="#f5c400"/><ellipse cx="32" cy="30" rx="8" ry="5" fill="#f5c400" stroke="#111"/><path d="M32 26L33 25L33.5 26.5Q38 26 40 28Q38 28.5 37 31Q35 30 34 31L32 33L30 31Q29 30 27 31Q26 28.5 24 28Q26 26 30.5 26.5L31 25Z" fill="#111"/>';
     if (it.web && cat === 'baju') inner += '<g stroke="#111" stroke-width="1.6" fill="#111" stroke-linecap="round"><ellipse cx="32" cy="35" rx="2.6" ry="5"/><circle cx="32" cy="28.5" r="1.8"/><path fill="none" d="M32 33L24 28M32 35L23 35M32 37L24 42M32 38L25 46M32 33L40 28M32 35L41 35M32 37L40 42M32 38L39 46"/></g>';
   } else if (cat === 'aksesoris') inner = ACC_ICONS[it.id] || '';
@@ -404,18 +406,22 @@ function itemIcon(cat, it) {
 function updateCharacterVisuals() {
   if (!character) return;
   const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === playerData.equipped[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
-  const ap = (child, item) => { const m = child.material; m.map = item.web ? getWebTex(item.color) : null; m.color.setHex(item.web ? 0xffffff : item.color); m.needsUpdate = true; };
+  const ap = (child, item) => { const m = child.material; m.map = item.web ? getWebTex(item.color) : null; m.color.setHex(item.web ? 0xffffff : item.color); m.metalness = item.iron ? 0.75 : 0; m.roughness = item.iron ? 0.28 : 0.7; m.needsUpdate = true; };
   const baju = pick('baju', 'baju_default'), celana = pick('celana', 'celana_default'), sepatu = pick('sepatu', 'sepatu_default');
+  const iron = !!baju.iron;
+  const celanaV = iron ? { color: 0xb01020, iron: true } : celana, sepatuV = iron ? { color: 0xd4a017, iron: true } : sepatu;
   character.traverse((child) => {
     if (!child.isMesh) return;
     if (child.userData.type === 'baju') ap(child, baju);
-    if (child.userData.type === 'celana') ap(child, celana);
-    if (child.userData.type === 'sepatu') ap(child, sepatu);
+    if (child.userData.type === 'celana') ap(child, celanaV);
+    if (child.userData.type === 'sepatu') ap(child, sepatuV);
   });
   if (spiderLogoGrp) spiderLogoGrp.visible = baju.id === 'baju_spiderman';
   if (batGrp) batGrp.visible = baju.id === 'baju_batman';
+  if (ironHelm) ironHelm.visible = iron;
+  if (ironBody) ironBody.visible = iron;
   const a = playerData.equipped.aksesoris || 'aks_none';
-  Object.keys(acc).forEach(id => { acc[id].visible = id === a; });
+  Object.keys(acc).forEach(id => { acc[id].visible = !iron && id === a; });
   if (nameSprite) updateCharacterNameSprite(playerData.username, playerData.isDev);
 }
 
@@ -474,11 +480,12 @@ const LASER_Z = -44, LASER_Y = 9.3;
 let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
 let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
-let batGrp, capeB;
+let batGrp, capeB, ironHelm, ironBody;
 const ROASTS = {
   hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
   fall: ['Beruntung banget jatuh ke lava, hangat kan? 🔥😹', 'Pemain paling beruntung sedunia: jatuh dari tempat yang sama lagi 🍀💀', 'Mantap, rekor jatuh terbaru! Lava bangga sama kamu 🏅🔥'],
-  fake: ['Beruntung banget ketipu kotak palsu, yang asli malah kamu lewatin 😹🍀', 'Kotak palsu aja kamu percaya, pantes paling beruntung 🤣👻', 'Insting kamu emang paling beruntung... beruntung salah terus 🍀👻']
+  fake: ['Beruntung banget ketipu kotak palsu, yang asli malah kamu lewatin 😹🍀', 'Kotak palsu aja kamu percaya, pantes paling beruntung 🤣👻', 'Insting kamu emang paling beruntung... beruntung salah terus 🍀👻'],
+  laser: ['Lasernya nyala sebentar, kamu tetap kena. Bakat langka 🍀💥', 'Kena laser lagi? Rekor kesialan paling beruntung 🏅💥', 'Tinggal lompat doang lho, beruntung banget kamu 😹⚡']
 };
 const isAdminUser = () => !!(playerData && playerData.username && playerData.username.toLowerCase() === DEV_USERNAME);
 // Pemain biasa di-roasting; admin/dev tidak (admin cuma dapat pesan biasa)
@@ -727,26 +734,38 @@ function init3DGame() {
   markCheckpoint(); // Hub = checkpoint
 
   // ===== TOWER SPIRAL ala obby Roblox: muter naik ke atas =====
-  const TC = { x: 0, z: -77 }, TR = 9, TN = 29, TDY = 1.1, TDA = 0.55;
+  const TC = { x: 0, z: -77 }, TR = 9, TN = 58, TDY = 1.1, TDA = 0.55;
   let ty = 13.5, ta = Math.PI / 2;
   const SH = ['box', 'round', 'hex'];
+  const tHash = (n) => { const v = Math.sin(n * 127.1) * 43758.5453; return v - Math.floor(v); };
   for (let i = 1; i <= TN; i++) {
     ta += TDA; ty += TDY;
     const rx = Math.cos(ta), rz = Math.sin(ta), cx = TC.x + rx * TR, cz = TC.z + rz * TR;
-    const tell = Math.max(0.05, 0.5 - i * 0.015);
+    const hard = i > 29; // paruh atas: kotak palsu nyaris identik, pilihan 3 jalur, bola berduri, kotak asli yang ikut berkedip (pengecoh)
+    const tell = hard ? 0.02 : Math.max(0.05, 0.5 - i * 0.015);
     const sh = SH[i % 3], w = sh === 'box' ? 3.2 : 3.6;
+    const choice = (n, gap) => {
+      const real = Math.floor(tHash(i) * n); // posisi kotak asli acak tapi tetap (bisa dihafal)
+      for (let k = 0; k < n; k++) {
+        const off = (k - (n - 1) / 2) * gap;
+        createPlatform(TC.x + rx * (TR + off), ty, TC.z + rz * (TR + off), w, w, k === real ? 'static' : 'fake', tell, sh);
+      }
+    };
     if (i % 5 === 0) {
-      const realOut = (i / 5) % 2 === 0;
-      createPlatform(TC.x + rx * (TR + 2.8), ty, TC.z + rz * (TR + 2.8), w, w, realOut ? 'static' : 'fake', tell, sh);
-      createPlatform(TC.x + rx * (TR - 2.8), ty, TC.z + rz * (TR - 2.8), w, w, realOut ? 'fake' : 'static', tell, sh);
+      choice(hard ? 3 : 2, hard ? 3.8 : 5.6);
     } else if (i % 8 === 0) {
       createPlatform(cx, ty, cz, 4, 4, 'static', 0, 'round'); markCheckpoint();
     } else if (i % 11 === 6) {
-      createPlatform(cx, ty, cz, 5.4, 5.4, 'static', 0, 'round'); addSweeper(cx, ty, cz, 4.6, 1.5 + i * 0.01);
+      createPlatform(cx, ty, cz, 5.4, 5.4, 'static', 0, 'round'); addSweeper(cx, ty, cz, 4.6, 1.5 + i * 0.02);
+    } else if (hard && i % 9 === 4) {
+      createPlatform(cx, ty, cz, 4.4, 4.4, 'static', 0, 'round'); addPendulum(cx, ty, cz, i % 2 ? 'x' : 'z');
+    } else if (hard && i % 7 === 2) {
+      choice(2, 5.6);
     } else if (i % 7 === 3) {
-      createPlatform(cx, ty, cz, w, w, 'moving_y', 0, sh); platforms[platforms.length - 1].range = 0.9;
+      createPlatform(cx, ty, cz, w, w, 'moving_y', 0, sh); platforms[platforms.length - 1].range = hard ? 1.4 : 0.9;
     } else {
       createPlatform(cx, ty, cz, w, w, 'static', 0, sh);
+      if (hard && i % 3 === 1) { const d = platforms[platforms.length - 1]; d.decoy = true; d.mesh.material = d.mesh.material.clone(); d.mesh.material.transparent = true; }
     }
   }
   createPlatform(TC.x + Math.cos(ta) * 6.3, ty + 0.55, TC.z + Math.sin(ta) * 6.3, 3, 3, 'static'); // penghubung
@@ -880,6 +899,18 @@ function init3DGame() {
   capeB = new THREE.Group(); capeB.position.set(0, 1.95, -0.3); batGrp.add(capeB);
   mk(new THREE.BoxGeometry(0.7, 1.15, 0.05), accMat(0x15151c, { side: THREE.DoubleSide }), 0, -0.575, 0, capeB);
 
+  // ===== IRONMAN (armor penuh: helm, reaktor arc, bahu emas) =====
+  const ironRed = accMat(0xb01020, { metalness: 0.75, roughness: 0.28 }), ironGold = accMat(0xd4a017, { metalness: 0.8, roughness: 0.25 });
+  ironHelm = new THREE.Group(); ironHelm.visible = false; headGroup.add(ironHelm);
+  mk(new THREE.SphereGeometry(0.36, 32, 24), ironRed, 0, 0.02, -0.01, ironHelm);
+  const ifc = mk(new THREE.SphereGeometry(0.3, 24, 18), ironGold, 0, -0.02, 0.25, ironHelm); ifc.scale.set(0.78, 0.95, 0.45);
+  for (const sd of [-1, 1]) { const ey = mk(new THREE.BoxGeometry(0.11, 0.03, 0.02), accMat(0xffffff, { emissive: 0xbfefff, emissiveIntensity: 1 }), sd * 0.1, 0.06, 0.372, ironHelm); ey.rotation.z = sd * 0.2; }
+  ironBody = new THREE.Group(); ironBody.visible = false; rig.add(ironBody);
+  const reactor = new THREE.Mesh(new THREE.CircleGeometry(0.07, 24), new THREE.MeshBasicMaterial({ color: 0x9ff3ff })); reactor.position.set(0, 1.62, 0.31); ironBody.add(reactor);
+  const rg = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.018, 8, 24), ironGold); rg.position.set(0, 1.62, 0.31); ironBody.add(rg);
+  for (const sd of [-1, 1]) mk(new THREE.SphereGeometry(0.13, 16, 12), ironGold, sd * 0.4, 1.95, 0, ironBody);
+  mk(new THREE.CylinderGeometry(0.315, 0.315, 0.08, 24), ironGold, 0, 1.05, 0, ironBody);
+
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -981,17 +1012,26 @@ function checkWallCollision(x, z, y) {
 }
 
 function showOverlay(title, desc, color) {
-  document.getElementById('overlay-title').textContent = title;
-  document.getElementById('overlay-title').style.color = color;
+  const t = document.getElementById('overlay-title');
+  t.textContent = title; t.style.color = color; t.style.fontSize = ''; t.style.maxWidth = ''; t.style.textAlign = ''; t.style.lineHeight = '';
   document.getElementById('overlay-desc').textContent = desc;
   document.getElementById('overlay').style.display = 'flex';
+}
+
+// Pengganti tulisan GAME OVER: kalimat roasting, lalu "Coba lagi" di bawahnya (admin/dev tidak di-roasting)
+function showGameOver(kind) {
+  const arr = ROASTS[kind];
+  const msg = isAdminUser() ? '💥 Kena!' : arr[Math.floor(Math.random() * arr.length)];
+  showOverlay(msg, 'Coba lagi 👇', '#ff3333');
+  const t = document.getElementById('overlay-title');
+  t.style.fontSize = 'clamp(22px, 6vw, 34px)'; t.style.maxWidth = '90vw'; t.style.textAlign = 'center'; t.style.lineHeight = '1.3';
 }
 
 function updateCharacterNameSprite(username, isDev) {
   if (!character) return;
   if (nameSprite) { character.remove(nameSprite); scene.remove(nameSprite); nameSprite.material.map.dispose(); nameSprite.material.dispose(); }
   const bj = SHOP_ITEMS.baju.find(i => i.id === playerData.equipped.baju);
-  const label = bj ? (bj.web ? '🕸️ ' : (bj.bat ? '🦇 ' : '👕 ')) + bj.name : '';
+  const label = bj ? (bj.web ? '🕸️ ' : bj.bat ? '🦇 ' : bj.iron ? '🤖 ' : '👕 ') + bj.name : '';
   const canvasName = document.createElement('canvas');
   canvasName.width = 512; canvasName.height = 176;
   const ctxName = canvasName.getContext('2d');
@@ -1084,6 +1124,9 @@ function animate() {
       m.emissive.setHex(p.revealTimer > 0 ? 0xff0044 : (glitch ? 0x66ccff : 0x000000));
       m.emissiveIntensity = 0.7;
     }
+    else if (p.decoy) { // kotak ASLI yang ikut berkedip, pengecoh
+      p.mesh.material.opacity = ((t * 0.6 + p.phase * 1.7) % 5) < 0.14 ? 0.3 + Math.random() * 0.25 : 1;
+    }
   });
 
   hazards.forEach(h => h.update(t));
@@ -1159,15 +1202,14 @@ function animate() {
   // Laser hanya mengenai jika sedang menembak & kamu tidak melompatinya
   if (!godMode && !flyMode && laserState === 'fire' && Math.abs(character.position.z - LASER_Z) < 0.5 && Math.abs(character.position.x) < 3.5 && character.position.y > 8 && character.position.y < LASER_Y + 0.25) {
     gameState = 'GAMEOVER';
-    showOverlay('TERKENA LASER!', 'Putzzdev : "Kena tembak laser NPC, cupu! 💥"', '#ff3333');
+    showGameOver('laser');
   }
 
   // JIKA JATUH KE LAVA
   if (godMode && character.position.y < -3) { character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z); physics.velocityY = 0; }
   if (!godMode && !flyMode && character.position.y < -3) {
-    roast('fall');
     gameState = 'GAMEOVER'; 
-    showOverlay('GAME OVER', 'Putzzdev : "Salah pilih jalan/jatuh ke lava wkwk! 😹"', '#ff3333');
+    showGameOver('fall');
   }
 
   // KONDISI MENANG DI PUNCAK
