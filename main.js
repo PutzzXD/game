@@ -1021,7 +1021,7 @@ function showOverlay(title, desc, color) {
 // Pengganti tulisan GAME OVER: kalimat roasting, lalu "Coba lagi" di bawahnya (admin/dev tidak di-roasting)
 function showGameOver(kind) {
   const arr = ROASTS[kind];
-  const msg = isAdminUser() ? '💥 Kena!' : arr[Math.floor(Math.random() * arr.length)];
+  const msg = isAdminUser() ? 'BOT BOT GITU AJA GA BISA😹!' : arr[Math.floor(Math.random() * arr.length)];
   showOverlay(msg, 'Coba lagi 👇', '#ff3333');
   const t = document.getElementById('overlay-title');
   t.style.fontSize = 'clamp(22px, 6vw, 34px)'; t.style.maxWidth = '90vw'; t.style.textAlign = 'center'; t.style.lineHeight = '1.3';
@@ -1133,7 +1133,7 @@ function animate() {
   hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 2.5));
   if (hitCD <= 0 && !godMode && !flyMode) for (const h of hazards) {
     const n = h.test(character.position);
-    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; roast('hit', '💥 Kena rintangan!'); break; }
+    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; roast('hit', ' Kena rintangan buta ya?😹'); break; }
   }
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
   const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
