@@ -476,17 +476,16 @@ let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
 let batGrp, capeB;
 const ROASTS = {
-  hit: ['Admin kena bola berduri 😹 katanya jago?', 'Yang bikin game kalah sama palang berputar 💀', 'Admin: "gampang kok". Admin: *terpental* 😹', 'Terpental sejauh itu, kayak gaji admin 🤣'],
-  fall: ['Admin jatuh ke lava 😹 turun pangkat jadi pemain biasa', 'Bikin game sendiri, mati sendiri 💀', 'Lava: "makasih udah mampir, min" 🔥😹'],
-  fly: ['Admin pakai cheat terbang, curang nih 😹', 'Ketahuan! Admin terbang pas takut jatuh 🛫😹'],
-  god: ['Anti-mati ON... takut mati ya min? 😹', 'Mode aman, mental bayi 🍼😹']
+  hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
+  fall: ['Beruntung banget jatuh ke lava, hangat kan? 🔥😹', 'Pemain paling beruntung sedunia: jatuh dari tempat yang sama lagi 🍀💀', 'Mantap, rekor jatuh terbaru! Lava bangga sama kamu 🏅🔥'],
+  fake: ['Beruntung banget ketipu kotak palsu, yang asli malah kamu lewatin 😹🍀', 'Kotak palsu aja kamu percaya, pantes paling beruntung 🤣👻', 'Insting kamu emang paling beruntung... beruntung salah terus 🍀👻']
 };
 const isAdminUser = () => !!(playerData && playerData.username && playerData.username.toLowerCase() === DEV_USERNAME);
-function roast(kind) {
-  if (!isAdminUser()) return;
-  const arr = ROASTS[kind], m = arr[Math.floor(Math.random() * arr.length)];
-  showToast(m);
-  const el = document.getElementById('admin-roast'); if (el) el.textContent = m;
+// Pemain biasa di-roasting; admin/dev tidak (admin cuma dapat pesan biasa)
+function roast(kind, plain) {
+  if (isAdminUser()) { if (plain) showToast(plain); return; }
+  const arr = ROASTS[kind];
+  showToast(arr[Math.floor(Math.random() * arr.length)]);
 }
 let flyMode = false, godMode = false, flyUp = false, flyDown = false, flySpeed = 14;
 
@@ -505,7 +504,7 @@ function setupAdminPanel() {
   const wrap = document.createElement('div'); wrap.id = 'admin-wrap';
   const btn = document.createElement('button'); btn.id = 'admin-btn'; btn.textContent = '🛠️ Admin';
   const panel = document.createElement('div'); panel.id = 'admin-panel';
-  panel.innerHTML = '<b id="admin-title">☰ Admin Panel - Putzzdev (geser)</b><div id="admin-roast">Admin juga manusia... kadang jatuh juga 😹</div><button id="ad-fly">✈️ Terbang: OFF (F)</button><label>Kecepatan: <span id="ad-spd">14</span><input id="ad-speed" type="range" min="5" max="40" value="14" style="width:100%"></label><button id="ad-god">🛡️ Anti-mati: OFF</button><button data-tp="start">📍 Ke Start</button><button data-tp="hub">📍 Ke Hub Tower</button><button data-tp="top">🏁 Ke Puncak</button><button id="ad-coin">🪙 +1000 Koin</button>';
+  panel.innerHTML = '<b id="admin-title">☰ Admin Panel - Putzzdev (geser)</b><button id="ad-fly">✈️ Terbang: OFF (F)</button><label>Kecepatan: <span id="ad-spd">14</span><input id="ad-speed" type="range" min="5" max="40" value="14" style="width:100%"></label><button id="ad-god">🛡️ Anti-mati: OFF</button><button data-tp="start">📍 Ke Start</button><button data-tp="hub">📍 Ke Hub Tower</button><button data-tp="top">🏁 Ke Puncak</button><button id="ad-coin">🪙 +1000 Koin</button>';
   const fc = document.createElement('div'); fc.id = 'fly-ctrl';
   fc.innerHTML = '<button id="fly-up">▲</button><button id="fly-down">▼</button>';
   wrap.append(btn, panel); document.body.append(wrap, fc);
@@ -528,12 +527,12 @@ function setupAdminPanel() {
   makeDrag(btn); makeDrag(document.getElementById('admin-title'));
   btn.onclick = () => { if (moved) { moved = false; return; } panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; };
   const setFly = (v) => {
-    flyMode = v; fc.style.display = v ? 'flex' : 'none'; flyUp = flyDown = false; physics.velocityY = 0; if (v) roast('fly');
+    flyMode = v; fc.style.display = v ? 'flex' : 'none'; flyUp = flyDown = false; physics.velocityY = 0;
     const b = document.getElementById('ad-fly'); b.classList.toggle('on', v); b.textContent = '✈️ Terbang: ' + (v ? 'ON' : 'OFF') + ' (F)';
   };
   document.getElementById('ad-fly').onclick = () => setFly(!flyMode);
   document.getElementById('ad-speed').oninput = (e) => { flySpeed = +e.target.value; document.getElementById('ad-spd').textContent = flySpeed; };
-  document.getElementById('ad-god').onclick = (e) => { godMode = !godMode; if (godMode) roast('god'); e.target.classList.toggle('on', godMode); e.target.textContent = '🛡️ Anti-mati: ' + (godMode ? 'ON' : 'OFF'); };
+  document.getElementById('ad-god').onclick = (e) => { godMode = !godMode; e.target.classList.toggle('on', godMode); e.target.textContent = '🛡️ Anti-mati: ' + (godMode ? 'ON' : 'OFF'); };
   panel.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => {
     const d = { start: [0, 0.25, 0], hub: [0, 13.75, -68], top: [0, FIN_Y, -77] }[b.dataset.tp];
     character.position.set(...d); physics.velocityY = 0; moveVel.set(0, 0);
@@ -1091,7 +1090,7 @@ function animate() {
   hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 2.5));
   if (hitCD <= 0 && !godMode && !flyMode) for (const h of hazards) {
     const n = h.test(character.position);
-    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; if (isAdminUser()) roast('hit'); else showToast('💥 Kena rintangan!'); break; }
+    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; roast('hit', '💥 Kena rintangan!'); break; }
   }
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
   const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
@@ -1153,7 +1152,7 @@ function animate() {
     if (p.type !== 'fake' || p.revealTimer > 0) return;
     const m = p.mesh.position, ty = m.y + 0.25;
     if (Math.abs(character.position.x - m.x) < p.width / 2 && Math.abs(character.position.z - m.z) < p.depth / 2 && character.position.y < ty + 0.2 && character.position.y > ty - 1.2) {
-      p.revealTimer = 1.5; showToast('👻 Kotak palsu!');
+      p.revealTimer = 1.5; roast('fake', '👻 Kotak palsu!');
     }
   });
 
