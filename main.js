@@ -1336,7 +1336,9 @@ function tickMultiplayer() {
 function disposeAvatar(id) {
   const av = remotePlayers.get(id); if (!av) return;
   scene.remove(av);
-  av.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map && !Object.values(webTexCache).includes(o.material.map)) o.material.map.dispose(); o.material.dispose(); } });
+  const u = av.userData;
+  (u.mats || []).forEach(m => m.dispose());
+  if (u.label) { u.label.material.map.dispose(); u.label.material.dispose(); }
   remotePlayers.delete(id);
 }
 function makeLabelSprite(o) { // o: { name, owner, host, costume }
@@ -1362,32 +1364,43 @@ function makeLabelSprite(o) { // o: { name, owner, host, costume }
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, depthWrite: false }));
   sp.position.y = 3.3; sp.scale.set(2, 0.6875, 1); return sp;
 }
+function applyRemoteCostume(u, eq) {
+  const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
+  const baju = pick('baju', 'baju_default'), celana = pick('celana', 'celana_default'), sepatu = pick('sepatu', 'sepatu_default');
+  const iron = !!baju.iron;
+  const cV = iron ? { color: 0xb01020, iron: true } : celana, sV = iron ? { color: 0xd4a017, iron: true } : sepatu;
+  const ap = (m, it) => { m.map = it.web ? getWebTex(it.color) : null; m.color.setHex(it.web ? 0xffffff : it.color); m.metalness = it.iron ? 0.75 : 0; m.roughness = it.iron ? 0.28 : 0.7; m.needsUpdate = true; };
+  u.model.traverse((o) => {
+    if (!o.isMesh) return;
+    const t = o.userData.type;
+    if (t === 'baju') ap(o.material, baju); else if (t === 'celana') ap(o.material, cV); else if (t === 'sepatu') ap(o.material, sV);
+  });
+  const vis = (orig, v) => { const c = u.map.get(orig); if (c) c.visible = v; };
+  vis(spiderLogoGrp, baju.id === 'baju_spiderman'); vis(batGrp, baju.id === 'baju_batman'); vis(ironHelm, iron); vis(ironBody, iron);
+  const a = eq.aksesoris || 'aks_none';
+  Object.keys(acc).forEach(id => vis(acc[id], !iron && id === a));
+  u.costumeName = baju.name;
+}
 function makeRemotePlayer(uid, data) {
   const eq = data.equipped || {};
-  const find = (cat, id, def) => SHOP_ITEMS[cat].find(i => i.id === id) || SHOP_ITEMS[cat].find(i => i.id === def);
-  const b = find('baju', eq.baju, 'baju_default'), iron = !!b.iron;
-  const c = iron ? { color: 0xb01020, iron: true } : find('celana', eq.celana, 'celana_default');
-  const sh = iron ? { color: 0xd4a017, iron: true } : find('sepatu', eq.sepatu, 'sepatu_default');
-  const acc = iron ? 'iron' : (eq.aksesoris || 'aks_none');
-  const mat = (it) => new THREE.MeshStandardMaterial({ color: it.web ? 0xffffff : it.color, map: it.web ? getWebTex(it.color) : null, metalness: it.iron ? 0.75 : 0, roughness: it.iron ? 0.28 : 0.7 });
-  const mB = mat(b), mC = mat(c), mS = mat(sh), skin = new THREE.MeshStandardMaterial({ color: 0xe0ac84, roughness: 0.8 });
-  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
-  const add = (geo, m, x, y, z, par = body) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; par.add(o); return o; };
-  add(new THREE.CapsuleGeometry(0.3, 0.8, 4, 12), mB, 0, 1.4, 0);
-  const headCol = { aks_topeng_spider: 0xd91e2b, aks_topeng_batman: 0x15151c, iron: 0xb01020 }[acc];
-  add(new THREE.SphereGeometry(headCol ? 0.34 : 0.3, 20, 16), headCol ? new THREE.MeshStandardMaterial({ color: headCol, metalness: acc === 'iron' ? 0.7 : 0 }) : skin, 0, 2.25, 0);
-  if (!headCol) for (const sd of [-1, 1]) add(new THREE.SphereGeometry(0.035, 8, 8), new THREE.MeshBasicMaterial({ color: 0x111111 }), sd * 0.1, 2.3, 0.27);
-  else for (const sd of [-1, 1]) add(new THREE.BoxGeometry(0.11, 0.04, 0.03), new THREE.MeshBasicMaterial({ color: 0xffffff }), sd * 0.12, 2.3, 0.33);
-  const limb = (x, y, geo, m, cy, extra) => { const p = new THREE.Group(); p.position.set(x, y, 0); body.add(p); add(geo, m, 0, cy, 0, p); if (extra) extra(p); return p; };
-  const armL = limb(-0.4, 1.8, new THREE.CapsuleGeometry(0.09, 0.5, 4, 8), mB, -0.3), armR = limb(0.4, 1.8, new THREE.CapsuleGeometry(0.09, 0.5, 4, 8), mB, -0.3);
-  const shoe = (p) => add(new THREE.BoxGeometry(0.2, 0.15, 0.35), mS, 0, -0.84, 0.05, p);
-  const legL = limb(-0.15, 0.9, new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), mC, -0.4, shoe), legR = limb(0.15, 0.9, new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), mC, -0.4, shoe);
-  const emoji = b.web ? ' 🕸️' : b.bat ? ' 🦇' : b.iron ? ' 🤖' : '';
-  Object.assign(g.userData, { eqKey: JSON.stringify(eq), body, armL, armR, legL, legR, emoji, costumeName: b.name, ph: Math.random() * 6, spd: 0, last: new THREE.Vector3(), lastY: 0, d: data, slot: [0, 0], spawn: [0, 0], first: true });
+  const model = character.clone(true), map = new Map();
+  const walk = (a, b) => { map.set(a, b); a.children.forEach((ch, i) => { if (b.children[i]) walk(ch, b.children[i]); }); };
+  walk(character, model);
+  const ns = map.get(nameSprite); if (ns) model.remove(ns); // label karakter lokal tidak ikut
+  const mm = new Map(), mats = [];
+  model.traverse((o) => { if (o.material) { if (!mm.has(o.material)) { const c = o.material.clone(); mm.set(o.material, c); mats.push(c); } o.material = mm.get(o.material); } });
+  model.position.set(0, 0, 0); model.rotation.set(0, 0, 0); model.scale.set(1, 1, 1);
+  const P = (o) => map.get(o);
+  const parts = { rig: P(rig), head: P(headGroup), armL: P(leftArmPivot), armR: P(rightArmPivot), legL: P(leftLegPivot), legR: P(rightLegPivot), elL: P(leftElbow), elR: P(rightElbow), knL: P(leftKnee), knR: P(rightKnee), capes: [P(capePivot), P(capeB)].filter(Boolean) };
+  [parts.rig, parts.head, parts.armL, parts.armR, parts.legL, parts.legR, parts.elL, parts.elR, parts.knL, parts.knR, ...parts.capes].forEach(o => o && o.rotation.set(0, 0, 0));
+  parts.rig.position.set(0, 0, 0); parts.rig.scale.set(1, 1, 1);
+  const g = new THREE.Group(); g.add(model);
+  Object.assign(g.userData, { eqKey: JSON.stringify(eq), model, map, mats, parts, ph: Math.random() * 6, spd: 0, last: new THREE.Vector3(), lastY: 0, d: data, slot: [0, 0], spawn: [0, 0], first: true });
+  applyRemoteCostume(g.userData, eq);
   scene.add(g); remotePlayers.set(uid, g); return g;
 }
 function updateRemoteAvatars() {
-  if (!scene) return;
+  if (!scene || !character) return;
   const ids = sortedIds(), others = ids.filter(id => id !== mpUid), alive = new Set(others);
   others.forEach((id, i) => {
     const d = roomPlayers[id]; if (!d) return;
@@ -1423,14 +1436,27 @@ function animateRemotePlayers(delta) {
     av.rotation.y += Math.atan2(Math.sin(rot - av.rotation.y), Math.cos(rot - av.rotation.y)) * blend;
     const dt = Math.max(delta, 1e-3), hv = Math.hypot(av.position.x - u.last.x, av.position.z - u.last.z) / dt, vy = (av.position.y - u.lastY) / dt;
     u.last.copy(av.position); u.lastY = av.position.y; u.spd += (hv - u.spd) * 0.2;
-    const air = Math.abs(vy) > 2.5, k = 1 - Math.exp(-delta * 14);
+    const air = Math.abs(vy) > 2.5, k = 1 - Math.exp(-delta * 14), P = u.parts;
     u.ph += delta * u.spd * 1.7;
-    const sw = air ? 0 : Math.sin(u.ph) * Math.min(0.9, u.spd * 0.12), moving = u.spd > 0.4;
-    const damp = (o, v) => { o.rotation.x += (v - o.rotation.x) * k; };
-    damp(u.legL, air ? -0.6 : sw); damp(u.legR, air ? 0.4 : -sw);
-    damp(u.armL, air ? -1.6 : -sw); damp(u.armR, air ? -1.6 : sw);
-    u.body.position.y += ((moving ? Math.abs(Math.sin(u.ph)) * 0.05 : Math.sin(now * 2 + u.ph) * 0.01) - u.body.position.y) * k;
-    u.body.rotation.x += ((moving ? 0.12 : 0) - u.body.rotation.x) * k;
+    const moving = u.spd > 0.4, runK = Math.min(1, Math.max(0, (u.spd - 5) / 4));
+    let lH = 0, rH = 0, lK = 0, rK = 0, lA = 0, rA = 0, lE = -0.15, rE = -0.15, armZ = 0.1, bob = 0, lean = 0, twist = 0, headY = 0;
+    if (air) { lH = -0.5; rH = 0.4; lK = 0.6; rK = 0.5; lA = rA = -1.4; lE = rE = -0.5; armZ = 0.6; lean = 0.1; }
+    else if (moving) {
+      const sn = Math.sin(u.ph), cs = Math.cos(u.ph), amp = 0.55 + runK * 0.4;
+      lH = sn * amp; rH = -sn * amp; lK = Math.max(0, -cs) * (0.7 + runK * 0.8) + 0.08; rK = Math.max(0, cs) * (0.7 + runK * 0.8) + 0.08;
+      lA = -sn * amp * 0.9; rA = sn * amp * 0.9; lE = -(0.25 + runK * 0.9) - Math.max(0, sn) * 0.3; rE = -(0.25 + runK * 0.9) - Math.max(0, -sn) * 0.3;
+      bob = Math.abs(sn) * (0.05 + runK * 0.05); lean = 0.06 + runK * 0.2; twist = -sn * (0.12 + runK * 0.1); armZ = 0.12;
+    } else {
+      const br = Math.sin(now * 2.2 + u.ph);
+      bob = br * 0.008; lA = Math.sin(now * 1.3 + u.ph) * 0.04; rA = -lA; armZ = 0.1 + br * 0.015; lE = rE = -0.12; headY = Math.sin(now * 0.5 + u.ph) * 0.35;
+    }
+    const dm = (o, key, v) => { if (o) o[key] += (v - o[key]) * k; };
+    dm(P.legL.rotation, 'x', lH); dm(P.legR.rotation, 'x', rH); dm(P.knL.rotation, 'x', lK); dm(P.knR.rotation, 'x', rK);
+    dm(P.armL.rotation, 'x', lA); dm(P.armR.rotation, 'x', rA); dm(P.elL.rotation, 'x', lE); dm(P.elR.rotation, 'x', rE);
+    dm(P.armL.rotation, 'z', -armZ); dm(P.armR.rotation, 'z', armZ); dm(P.head.rotation, 'y', headY);
+    dm(P.rig.position, 'y', bob); dm(P.rig.rotation, 'x', lean); dm(P.rig.rotation, 'y', twist);
+    const capeX = 0.08 + u.spd * 0.05 + (air ? 0.4 : 0);
+    P.capes.forEach(cp => dm(cp.rotation, 'x', capeX));
   }
 }
 
