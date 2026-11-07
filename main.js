@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
 import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
 import { getDatabase, ref, set, get, update, onValue, onDisconnect, remove } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js';
@@ -47,8 +48,9 @@ const SHOP_ITEMS = {
     { id: 'baju_hijau', name: 'Baju Hijau', price: 150, color: 0x00ff00 },
     { id: 'baju_emas', name: 'Baju Emas', price: 300, color: 0xffd700 },
     { id: 'baju_spiderman', name: 'Kostum Spiderman', price: 500, color: 0xd91e2b, web: true },
-    { id: 'baju_batman', name: 'Kostum Batman', price: 550, color: 0x2b2f3a, bat: true },
-    { id: 'baju_ironman', name: 'Kostum Ironman', price: 2000, color: 0xb01020, iron: true }
+    { id: 'baju_batman', name: 'Kostum Batman', price: 550, color: 0x2b2f3a, bat: true, suit: 'bat' },
+    { id: 'baju_ironman', name: 'Kostum Ironman', price: 2000, color: 0xb01020, iron: true },
+    { id: 'baju_thor', name: 'Kostum Thor', price: 1500, color: 0x3b4252, thor: true, suit: 'mail' }
   ],
   celana: [
     { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
@@ -361,12 +363,13 @@ async function updatePlayerFirebase() {
 const webTexCache = {};
 function getWebTex(hex) {
   if (webTexCache[hex]) return webTexCache[hex];
-  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+  const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d'); x.scale(2, 2);
   x.fillStyle = '#' + hex.toString(16).padStart(6, '0'); x.fillRect(0, 0, 256, 256);
   x.strokeStyle = 'rgba(0,0,0,0.55)'; x.lineWidth = 2;
   for (let i = 0; i <= 256; i += 64) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 256); x.stroke(); }
   for (let j = 0; j < 256; j += 32) for (let i = 0; i < 256; i += 64) { x.beginPath(); x.moveTo(i, j); x.quadraticCurveTo(i + 32, j + 10, i + 64, j); x.stroke(); }
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2);
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return (webTexCache[hex] = t);
 }
 
@@ -378,7 +381,7 @@ function makeSpiderLogoTex() {
   }
   x.beginPath(); x.ellipse(64, 74, 11, 22, 0, 0, Math.PI * 2); x.fill();
   x.beginPath(); x.arc(64, 46, 8, 0, Math.PI * 2); x.fill();
-  return new THREE.CanvasTexture(c);
+  const lt = new THREE.CanvasTexture(c); lt.colorSpace = THREE.SRGBColorSpace; lt.anisotropy = 8; return lt;
 }
 
 function makeBatLogoTex() {
@@ -390,7 +393,52 @@ function makeBatLogoTex() {
   x.quadraticCurveTo(90, 64, 82, 68); x.quadraticCurveTo(76, 68, 72, 82); x.lineTo(64, 72); x.lineTo(56, 82);
   x.quadraticCurveTo(52, 68, 46, 68); x.quadraticCurveTo(38, 64, 32, 72); x.quadraticCurveTo(28, 58, 18, 54);
   x.quadraticCurveTo(36, 40, 56, 44); x.lineTo(58, 36); x.closePath(); x.fill();
-  return new THREE.CanvasTexture(c);
+  const lt = new THREE.CanvasTexture(c); lt.colorSpace = THREE.SRGBColorSpace; lt.anisotropy = 8; return lt;
+}
+
+// ===== HD: tekstur kain/rantai, environment map untuk logam, helper kostum =====
+let envTex = null;
+const suitTexCache = {};
+function getSuitTex(kind, hex) {
+  const key = kind + hex; if (suitTexCache[key]) return suitTexCache[key];
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d');
+  x.fillStyle = '#' + hex.toString(16).padStart(6, '0'); x.fillRect(0, 0, S, S);
+  if (kind === 'mail') { // zirah rantai
+    for (let j = 0; j < S; j += 14) for (let i = (j / 14 % 2) * 7; i < S; i += 14) {
+      x.strokeStyle = 'rgba(0,0,0,.5)'; x.lineWidth = 2.5; x.beginPath(); x.arc(i + 7, j + 7, 6, 0, Math.PI * 2); x.stroke();
+      x.strokeStyle = 'rgba(255,255,255,.18)'; x.lineWidth = 1; x.beginPath(); x.arc(i + 6, j + 6, 5, Math.PI, Math.PI * 1.6); x.stroke();
+    }
+  } else { // jahitan otot ala armor kain
+    x.strokeStyle = 'rgba(0,0,0,.55)'; x.lineWidth = 3;
+    for (let j = 0; j < S; j += 56) { x.beginPath(); x.moveTo(0, j); x.quadraticCurveTo(S / 2, j + 16, S, j); x.stroke(); }
+    x.strokeStyle = 'rgba(255,255,255,.07)'; x.lineWidth = 2;
+    for (let j = 8; j < S; j += 56) { x.beginPath(); x.moveTo(0, j); x.quadraticCurveTo(S / 2, j + 16, S, j); x.stroke(); }
+    x.strokeStyle = 'rgba(0,0,0,.4)'; x.lineWidth = 2;
+    for (let i = 0; i < S; i += 128) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, S); x.stroke(); }
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return (suitTexCache[key] = t);
+}
+function applyItemMat(m, it) {
+  const tex = it.web ? getWebTex(it.color) : it.suit ? getSuitTex(it.suit, it.color) : null;
+  const metal = it.iron ? 0.75 : it.thor ? 0.55 : 0;
+  m.map = tex; m.color.setHex(tex ? 0xffffff : it.color);
+  m.bumpMap = tex; m.bumpScale = 0.6;
+  m.metalness = metal; m.roughness = it.iron ? 0.28 : it.thor ? 0.4 : (tex ? 0.55 : 0.7);
+  m.envMap = (metal || tex) && envTex ? envTex : null; m.envMapIntensity = it.iron ? 1.1 : it.thor ? 0.9 : 0.3;
+  m.needsUpdate = true;
+}
+function pickCostume(eq) {
+  const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
+  const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor;
+  const celana = iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : pick('celana', 'celana_default');
+  const sepatu = iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : pick('sepatu', 'sepatu_default');
+  return { baju, celana, sepatu, iron, thor };
+}
+const costumeParts = { spider: [], bat: [], iron: [], thor: [] };
+function setCostumeVis(baju, get) {
+  const on = { spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor };
+  for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
 }
 
 const ACC_ICONS = {
@@ -414,6 +462,7 @@ function itemIcon(cat, it) {
     inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linejoin="round"/>`;
     if (it.web) inner += `<g clip-path="url(#cp-${it.id})" stroke="rgba(0,0,0,.5)" stroke-width=".8" fill="none"><path d="M32 4V60M20 4V60M44 4V60M8 4V60M56 4V60M4 16Q32 24 60 16M4 28Q32 36 60 28M4 40Q32 48 60 40M4 52Q32 60 60 52"/></g>`;
     if (it.iron && cat === 'baju') inner += '<path d="M20 8L8 16L13 27L19 24Z" fill="#d4a017"/><path d="M44 8L56 16L51 27L45 24Z" fill="#d4a017"/><circle cx="32" cy="30" r="5" fill="#9ff3ff" stroke="#d4a017" stroke-width="2"/><rect x="19" y="46" width="26" height="4" fill="#d4a017"/>';
+    if (it.thor && cat === 'baju') inner += '<path d="M20 8L8 16L13 27L19 24Z" fill="#c9d1d9"/><path d="M44 8L56 16L51 27L45 24Z" fill="#c9d1d9"/><circle cx="25" cy="29" r="5.5" fill="#dfe6ec" stroke="#7b8794" stroke-width="1.5"/><circle cx="39" cy="29" r="5.5" fill="#dfe6ec" stroke="#7b8794" stroke-width="1.5"/><rect x="19" y="46" width="26" height="4" fill="#4a2f1b"/><rect x="28" y="38" width="8" height="5" rx="1" fill="#6b7480"/><path d="M33 33L29 38H32L30 43L36 36H33Z" fill="#4aa8ff"/>';
     if (it.bat && cat === 'baju') inner += '<rect x="19" y="47" width="26" height="4" fill="#f5c400"/><ellipse cx="32" cy="30" rx="8" ry="5" fill="#f5c400" stroke="#111"/><path d="M32 26L33 25L33.5 26.5Q38 26 40 28Q38 28.5 37 31Q35 30 34 31L32 33L30 31Q29 30 27 31Q26 28.5 24 28Q26 26 30.5 26.5L31 25Z" fill="#111"/>';
     if (it.web && cat === 'baju') inner += '<g stroke="#111" stroke-width="1.6" fill="#111" stroke-linecap="round"><ellipse cx="32" cy="35" rx="2.6" ry="5"/><circle cx="32" cy="28.5" r="1.8"/><path fill="none" d="M32 33L24 28M32 35L23 35M32 37L24 42M32 38L25 46M32 33L40 28M32 35L41 35M32 37L40 42M32 38L39 46"/></g>';
   } else if (cat === 'aksesoris') inner = ACC_ICONS[it.id] || '';
@@ -423,23 +472,17 @@ function itemIcon(cat, it) {
 
 function updateCharacterVisuals() {
   if (!character) return;
-  const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === playerData.equipped[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
-  const ap = (child, item) => { const m = child.material; m.map = item.web ? getWebTex(item.color) : null; m.color.setHex(item.web ? 0xffffff : item.color); m.metalness = item.iron ? 0.75 : 0; m.roughness = item.iron ? 0.28 : 0.7; m.needsUpdate = true; };
-  const baju = pick('baju', 'baju_default'), celana = pick('celana', 'celana_default'), sepatu = pick('sepatu', 'sepatu_default');
-  const iron = !!baju.iron;
-  const celanaV = iron ? { color: 0xb01020, iron: true } : celana, sepatuV = iron ? { color: 0xd4a017, iron: true } : sepatu;
+  const ap = (child, item) => applyItemMat(child.material, item);
+  const { baju, iron, thor, celana: celanaV, sepatu: sepatuV } = pickCostume(playerData.equipped);
   character.traverse((child) => {
     if (!child.isMesh) return;
     if (child.userData.type === 'baju') ap(child, baju);
     if (child.userData.type === 'celana') ap(child, celanaV);
     if (child.userData.type === 'sepatu') ap(child, sepatuV);
   });
-  if (spiderLogoGrp) spiderLogoGrp.visible = baju.id === 'baju_spiderman';
-  if (batGrp) batGrp.visible = baju.id === 'baju_batman';
-  if (ironHelm) ironHelm.visible = iron;
-  if (ironBody) ironBody.visible = iron;
+  setCostumeVis(baju, o => o);
   const a = playerData.equipped.aksesoris || 'aks_none';
-  Object.keys(acc).forEach(id => { acc[id].visible = !iron && id === a; });
+  Object.keys(acc).forEach(id => { acc[id].visible = !(iron || thor) && id === a; });
   if (nameSprite) updateCharacterNameSprite(playerData.username, playerData.isDev);
   mpSyncEquipped();
 }
@@ -499,7 +542,7 @@ const LASER_Z = -44, LASER_Y = 9.3;
 let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
 let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
-let batGrp, capeB, ironHelm, ironBody;
+let batGrp, capeB, ironHelm, ironBody, thorHelm, thorBody, capeT;
 let zoomDir = 0, guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 const ROASTS = {
   hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
@@ -518,6 +561,7 @@ function roast(kind, plain) {
 let flyMode = false, godMode = false, flyUp = false, flyDown = false, flySpeed = 14;
 
 function respawn() {
+  reviveLocal();
   character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z);
   physics.velocityY = 0; moveVel.set(0, 0); knock.set(0, 0); guards.forEach(gd => gd.reset()); gameState = 'PLAYING';
   document.getElementById('overlay').style.display = 'none';
@@ -564,7 +608,7 @@ function setupAdminPanel() {
   panel.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => {
     const d = { start: [0, 0.25, 0], hub: [0, 13.75, -68], top: [0, FIN_Y, -77], maze: [-2, FIN_Y, -85], finish: [WIN.x, FIN_Y, WIN.z] }[b.dataset.tp];
     character.position.set(...d); physics.velocityY = 0; moveVel.set(0, 0);
-    if (gameState === 'GAMEOVER') { gameState = 'PLAYING'; document.getElementById('overlay').style.display = 'none'; }
+    if (gameState === 'GAMEOVER') { reviveLocal(); gameState = 'PLAYING'; document.getElementById('overlay').style.display = 'none'; }
   });
   document.getElementById('ad-coin').onclick = () => {
     playerData.coins = (playerData.coins || 0) + 1000; updatePlayerFirebase();
@@ -595,6 +639,65 @@ function spawnDust(n) {
   }
 }
 
+// ===== BADAN HANCUR (jatuh ke lava) — ikut tampil di layar pemain lain =====
+const shardGeos = [new THREE.BoxGeometry(1, 1, 1), new THREE.CapsuleGeometry(0.4, 0.5, 2, 6), new THREE.TetrahedronGeometry(0.8), new THREE.SphereGeometry(0.5, 8, 6)];
+const debris = [];
+function spawnShatter(pos, eq) {
+  if (!scene) return;
+  const c = pickCostume(eq || {}), metal = c.baju.iron ? 0.75 : c.baju.thor ? 0.55 : 0;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const px = pos.x, py = pos.y, pz = pos.z;
+  const groups = [ // [warna, jumlah, y0, y1, sebaran x, ukuran, logam]
+    [0xffd1b3, 6, 2.0, 2.4, 0.15, 0.2, 0], [0xd1d1d6, 4, 2.3, 2.5, 0.15, 0.14, 0],
+    [c.baju.color, 10, 1.0, 1.9, 0.3, 0.26, metal], [c.baju.color, 6, 1.2, 1.9, 0.55, 0.2, metal],
+    [0xffd1b3, 2, 1.0, 1.4, 0.55, 0.16, 0], [c.celana.color, 8, 0.3, 0.9, 0.2, 0.22, 0], [c.sepatu.color, 4, 0.05, 0.3, 0.25, 0.2, 0]
+  ];
+  if (c.iron) groups.push([0xd4a017, 6, 1.0, 2.2, 0.4, 0.15, 0.8]);
+  if (c.thor) groups.push([0xc9d1d9, 6, 1.0, 2.4, 0.4, 0.15, 0.85], [0xc0132b, 4, 1.2, 2.0, 0.4, 0.22, 0]);
+  for (const [color, n, y0, y1, sx, size, mt] of groups) for (let i = 0; i < n; i++) {
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: mt, transparent: true, opacity: 1, envMap: mt && envTex ? envTex : null });
+    const m = new THREE.Mesh(shardGeos[Math.floor(Math.random() * shardGeos.length)], mat), sc = size * rnd(0.7, 1.3);
+    m.scale.set(sc * rnd(0.7, 1.3), sc * rnd(0.7, 1.3), sc * rnd(0.7, 1.3));
+    m.position.set(px + rnd(-sx, sx), py + rnd(y0, y1), pz + rnd(-0.25, 0.25));
+    m.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+    scene.add(m);
+    debris.push({ mesh: m, vx: (m.position.x - px) * 9 + rnd(-2, 2), vy: rnd(3, 10), vz: (m.position.z - pz) * 9 + rnd(-2, 2), rx: rnd(-12, 12), ry: rnd(-12, 12), rz: rnd(-12, 12), life: 1, sink: false });
+  }
+  while (debris.length > 160) { const o = debris.shift(); scene.remove(o.mesh); o.mesh.material.dispose(); }
+  for (let i = 0; i < 14; i++) { // percikan lava
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6), new THREE.MeshBasicMaterial({ color: i % 2 ? 0xff7722 : 0xffcc33, transparent: true, opacity: 1 }));
+    m.position.set(px, py + rnd(0, 1.5), pz);
+    const ang = Math.random() * Math.PI * 2, sp = rnd(1.5, 5);
+    m.userData = { vx: Math.cos(ang) * sp, vy: rnd(2, 7), vz: Math.sin(ang) * sp };
+    scene.add(m); jumpParticles.push({ mesh: m, life: 1 });
+  }
+}
+function updateDebris(delta) {
+  for (let i = debris.length - 1; i >= 0; i--) {
+    const d = debris[i], m = d.mesh;
+    if (d.sink) { m.position.y -= delta * 0.6; d.life -= delta * 1.6; }
+    else {
+      d.vy -= 22 * delta;
+      m.position.x += d.vx * delta; m.position.y += d.vy * delta; m.position.z += d.vz * delta;
+      m.rotation.x += d.rx * delta; m.rotation.y += d.ry * delta; m.rotation.z += d.rz * delta;
+      if (m.position.y < -7.6) { m.position.y = -7.6; d.sink = true; }
+      d.life -= delta * 0.35;
+    }
+    m.material.opacity = Math.min(1, d.life * 1.2);
+    if (d.life <= 0) { scene.remove(m); m.material.dispose(); debris.splice(i, 1); }
+  }
+}
+function shatterLocal() {
+  if (!character || !character.visible) return;
+  spawnShatter(character.position, myEquipped());
+  character.visible = false;
+  if (myRef) update(myRef, { deadAt: serverNow() }).catch(() => {});
+}
+function reviveLocal() {
+  if (character) character.visible = true;
+  if (myRef) update(myRef, { deadAt: null }).catch(() => {});
+}
+
 function requestFullscreenAndLock() {
   const elem = document.documentElement;
   if (elem.requestFullscreen) {
@@ -617,6 +720,7 @@ function init3DGame() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  try { const pm = new THREE.PMREMGenerator(renderer); envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose(); } catch (e) { console.warn('Env map gagal:', e); }
   document.body.appendChild(renderer.domElement);
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.5));
@@ -935,7 +1039,7 @@ function init3DGame() {
   const matPupil = new THREE.MeshStandardMaterial({ color: 0x000000 });
   const matHair = new THREE.MeshStandardMaterial({ color: 0xd1d1d6, roughness: 0.6 });
 
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.8, 4, 16), matShirt); torso.position.y = 1.4; torso.castShadow = true; torso.userData.type = 'baju'; character.add(torso);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.8, 16, 48), matShirt); torso.position.y = 1.4; torso.castShadow = true; torso.userData.type = 'baju'; character.add(torso);
   headGroup = new THREE.Group(); headGroup.position.y = 2.2; character.add(headGroup);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 32), matSkin); head.castShadow = true; headGroup.add(head);
 
@@ -955,17 +1059,17 @@ function init3DGame() {
 
   const makeArm = (x) => {
     const pivot = new THREE.Group(); pivot.position.set(x, 1.8, 0);
-    const up = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.25, 4, 8), matShirt); up.position.y = -0.22; up.castShadow = true; up.userData.type = 'baju'; pivot.add(up);
+    const up = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.25, 10, 28), matShirt); up.position.y = -0.22; up.castShadow = true; up.userData.type = 'baju'; pivot.add(up);
     const elbow = new THREE.Group(); elbow.position.y = -0.42; pivot.add(elbow);
-    const low = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.25, 4, 8), matShirt); low.position.y = -0.2; low.castShadow = true; low.userData.type = 'baju'; elbow.add(low);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 12), matSkin); hand.position.y = -0.43; elbow.add(hand);
+    const low = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.25, 10, 28), matShirt); low.position.y = -0.2; low.castShadow = true; low.userData.type = 'baju'; elbow.add(low);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 24, 24), matSkin); hand.position.y = -0.43; elbow.add(hand);
     return { pivot, elbow };
   };
   const makeLeg = (x) => {
     const pivot = new THREE.Group(); pivot.position.set(x, 0.9, 0);
-    const th = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.21, 4, 8), matPants); th.position.y = -0.2; th.castShadow = true; th.userData.type = 'celana'; pivot.add(th);
+    const th = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.21, 10, 28), matPants); th.position.y = -0.2; th.castShadow = true; th.userData.type = 'celana'; pivot.add(th);
     const knee = new THREE.Group(); knee.position.y = -0.4; pivot.add(knee);
-    const sh = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.2, 4, 8), matPants); sh.position.y = -0.2; sh.castShadow = true; sh.userData.type = 'celana'; knee.add(sh);
+    const sh = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.2, 10, 28), matPants); sh.position.y = -0.2; sh.castShadow = true; sh.userData.type = 'celana'; knee.add(sh);
     const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.35), matShoe); shoe.position.set(0, -0.41, 0.05); shoe.userData.type = 'sepatu'; knee.add(shoe);
     return { pivot, knee };
   };
@@ -1036,6 +1140,72 @@ function init3DGame() {
   const rg = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.018, 8, 24), ironGold); rg.position.set(0, 1.62, 0.31); ironBody.add(rg);
   for (const sd of [-1, 1]) mk(new THREE.SphereGeometry(0.13, 16, 12), ironGold, sd * 0.4, 1.95, 0, ironBody);
   mk(new THREE.CylinderGeometry(0.315, 0.315, 0.08, 24), ironGold, 0, 1.05, 0, ironBody);
+
+  // ===== HD: detail tambahan semua kostum + THOR =====
+  ironRed.envMap = envTex; ironGold.envMap = envTex; yel.envMap = envTex; ironRed.envMapIntensity = ironGold.envMapIntensity = 1.1;
+  costumeParts.spider.push(spiderLogoGrp); costumeParts.bat.push(batGrp); costumeParts.iron.push(ironHelm, ironBody);
+  const grp = (parent, list) => { const g = new THREE.Group(); g.visible = false; parent.add(g); list.push(g); return g; };
+  const steel = accMat(0xc9d1d9, { metalness: 0.9, roughness: 0.22, envMap: envTex, envMapIntensity: 1 });
+  const darkSteel = accMat(0x4b525c, { metalness: 0.85, roughness: 0.35, envMap: envTex, envMapIntensity: 0.9 });
+  const leather = accMat(0x4a2f1b, { roughness: 0.8 });
+  const blackSuit = accMat(0x101016, { roughness: 0.55 });
+  const glowBlue = accMat(0x4aa8ff, { emissive: 0x4aa8ff, emissiveIntensity: 1.6 });
+
+  for (const [el, sd] of [[leftElbow, -1], [rightElbow, 1]]) {
+    // Spiderman: web-shooter di pergelangan
+    const ws = grp(el, costumeParts.spider);
+    mk(new THREE.CylinderGeometry(0.092, 0.092, 0.1, 20), accMat(0x2b2b33, { metalness: 0.5 }), 0, -0.33, 0, ws);
+    mk(new THREE.SphereGeometry(0.03, 10, 8), accMat(0xffffff, { emissive: 0xaaddff, emissiveIntensity: 0.8 }), 0, -0.33, 0.085, ws);
+    // Ironman: sarung tangan emas + repulsor
+    const ig = grp(el, costumeParts.iron);
+    mk(new THREE.CylinderGeometry(0.098, 0.088, 0.3, 28), ironGold, 0, -0.22, 0, ig);
+    mk(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 28), ironRed, 0, -0.06, 0, ig);
+    mk(new THREE.CircleGeometry(0.045, 20), new THREE.MeshBasicMaterial({ color: 0x9ff3ff }), 0, -0.47, 0.088, ig);
+    // Batman: gauntlet + sirip
+    const bg = grp(el, costumeParts.bat);
+    mk(new THREE.CylinderGeometry(0.095, 0.09, 0.3, 24), blackSuit, 0, -0.22, 0, bg);
+    for (let i = 0; i < 3; i++) { const fin = mk(new THREE.BoxGeometry(0.015, 0.07, 0.12), blackSuit, 0, -0.14 - i * 0.07, -0.13, bg); fin.rotation.x = 0.4; }
+    // Thor: bracer baja
+    const tg = grp(el, costumeParts.thor);
+    mk(new THREE.CylinderGeometry(0.1, 0.09, 0.24, 28), steel, 0, -0.26, 0, tg);
+    const br = mk(new THREE.TorusGeometry(0.1, 0.012, 8, 28), darkSteel, 0, -0.14, 0, tg); br.rotation.x = Math.PI / 2;
+  }
+  // Batman: kantong sabuk utilitas
+  for (let i = -2; i <= 2; i++) { const a = i * 0.32, p = mk(new THREE.BoxGeometry(0.1, 0.1, 0.07), yel, Math.sin(a) * 0.335, 1.05, Math.cos(a) * 0.335, batGrp); p.rotation.y = a; }
+  // Ironman: pelat perut
+  for (let i = 0; i < 3; i++) mk(new THREE.BoxGeometry(0.26 - i * 0.03, 0.05, 0.04), ironGold, 0, 1.38 - i * 0.1, 0.285, ironBody);
+
+  // THOR: helm bersayap
+  thorHelm = grp(headGroup, costumeParts.thor);
+  mk(new THREE.SphereGeometry(0.36, 48, 32, 0, Math.PI * 2, 0, Math.PI * 0.4), steel, 0, 0.02, -0.01, thorHelm);
+  const hrim = mk(new THREE.TorusGeometry(0.342, 0.022, 10, 48), darkSteel, 0, 0.131, -0.01, thorHelm); hrim.rotation.x = Math.PI / 2;
+  for (const sd of [-1, 1]) for (let i = 0; i < 3; i++) {
+    const w = mk(new THREE.ConeGeometry(0.055, 0.42 - i * 0.06, 8), steel, sd * (0.4 + i * 0.01), 0.2 + i * 0.045, -0.02, thorHelm);
+    w.rotation.z = -sd * (1.15 + i * 0.22); w.scale.z = 0.35;
+  }
+  // THOR: zirah dada, bahu, sabuk
+  thorBody = grp(rig, costumeParts.thor);
+  for (const sd of [-1, 1]) {
+    const disc = mk(new THREE.CylinderGeometry(0.095, 0.095, 0.03, 32), steel, sd * 0.125, 1.7, 0.285, thorBody); disc.rotation.x = Math.PI / 2;
+    const dr = mk(new THREE.TorusGeometry(0.095, 0.012, 8, 32), darkSteel, sd * 0.125, 1.7, 0.3, thorBody);
+    const pd = mk(new THREE.SphereGeometry(0.135, 24, 16), steel, sd * 0.4, 1.95, 0, thorBody); pd.scale.set(1, 0.8, 1.1);
+  }
+  const emb = mk(new THREE.CylinderGeometry(0.06, 0.06, 0.03, 24), darkSteel, 0, 1.52, 0.285, thorBody); emb.rotation.x = Math.PI / 2;
+  mk(new THREE.CylinderGeometry(0.315, 0.315, 0.1, 32), leather, 0, 1.05, 0, thorBody);
+  mk(new THREE.BoxGeometry(0.1, 0.09, 0.03), steel, 0, 1.05, 0.318, thorBody);
+  // THOR: jubah merah
+  capeT = new THREE.Group(); capeT.visible = false; capeT.position.set(0, 1.95, -0.3); rig.add(capeT); costumeParts.thor.push(capeT);
+  mk(new THREE.BoxGeometry(0.78, 1.3, 0.05), accMat(0xc0132b, { side: THREE.DoubleSide, roughness: 0.85 }), 0, -0.65, 0, capeT);
+  // THOR: palu Mjolnir di tangan kanan
+  const hammer = grp(rightElbow, costumeParts.thor); hammer.position.set(0, -0.43, 0.04); hammer.rotation.x = -0.25;
+  mk(new THREE.CylinderGeometry(0.026, 0.026, 0.66, 14), leather, 0, 0.2, 0, hammer);
+  for (let i = 0; i < 5; i++) mk(new THREE.CylinderGeometry(0.031, 0.031, 0.012, 14), blackSuit, 0, -0.05 + i * 0.045, 0, hammer);
+  mk(new THREE.SphereGeometry(0.04, 12, 8), steel, 0, -0.13, 0, hammer);
+  const lp = mk(new THREE.TorusGeometry(0.04, 0.008, 8, 16), leather, 0, -0.17, 0, hammer); lp.rotation.y = Math.PI / 2;
+  mk(new THREE.BoxGeometry(0.4, 0.2, 0.2), darkSteel, 0, 0.58, 0, hammer);
+  for (const sd of [-1, 1]) mk(new THREE.BoxGeometry(0.045, 0.23, 0.23), steel, sd * 0.2225, 0.58, 0, hammer);
+  for (const dy of [-0.06, 0.06]) mk(new THREE.BoxGeometry(0.3, 0.03, 0.205), steel, 0, 0.58 + dy, 0, hammer);
+  mk(new THREE.BoxGeometry(0.31, 0.012, 0.206), glowBlue, 0, 0.58, 0, hammer);
 
   updateCharacterVisuals();
 
@@ -1174,7 +1344,7 @@ function updateCharacterNameSprite(username, isDev) {
   if (!character) return;
   if (nameSprite) { character.remove(nameSprite); scene.remove(nameSprite); nameSprite.material.map.dispose(); nameSprite.material.dispose(); }
   const bj = SHOP_ITEMS.baju.find(i => i.id === playerData.equipped.baju);
-  const label = bj ? (bj.web ? '🕸️ ' : bj.bat ? '🦇 ' : bj.iron ? '🤖 ' : '👕 ') + bj.name : '';
+  const label = bj ? (bj.web ? '🕸️ ' : bj.bat ? '🦇 ' : bj.iron ? '🤖 ' : bj.thor ? '⚡ ' : '👕 ') + bj.name : '';
   const canvasName = document.createElement('canvas');
   canvasName.width = 512; canvasName.height = 176;
   const ctxName = canvasName.getContext('2d');
@@ -1302,7 +1472,7 @@ function onGameBegin() {
     const idx = Math.max(0, sortedIds().indexOf(mpUid)), sp = SPAWN[idx % SPAWN.length];
     character.position.set(sp[0], 0.25, sp[1]); checkpoint.x = sp[0]; checkpoint.z = sp[1];
     gameState = serverNow() < roomStartAt ? 'COUNTDOWN' : 'PLAYING';
-    update(myRef, { status: 'PLAYING' }).catch(() => {});
+    update(myRef, { status: 'PLAYING', deadAt: null }).catch(() => {});
   } else { soloStart = performance.now(); gameState = 'PLAYING'; }
 }
 
@@ -1365,20 +1535,17 @@ function makeLabelSprite(o) { // o: { name, owner, host, costume }
   sp.position.y = 3.3; sp.scale.set(2, 0.6875, 1); return sp;
 }
 function applyRemoteCostume(u, eq) {
-  const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
-  const baju = pick('baju', 'baju_default'), celana = pick('celana', 'celana_default'), sepatu = pick('sepatu', 'sepatu_default');
-  const iron = !!baju.iron;
-  const cV = iron ? { color: 0xb01020, iron: true } : celana, sV = iron ? { color: 0xd4a017, iron: true } : sepatu;
-  const ap = (m, it) => { m.map = it.web ? getWebTex(it.color) : null; m.color.setHex(it.web ? 0xffffff : it.color); m.metalness = it.iron ? 0.75 : 0; m.roughness = it.iron ? 0.28 : 0.7; m.needsUpdate = true; };
+  const { baju, iron, thor, celana: cV, sepatu: sV } = pickCostume(eq);
+  const ap = applyItemMat;
   u.model.traverse((o) => {
     if (!o.isMesh) return;
     const t = o.userData.type;
     if (t === 'baju') ap(o.material, baju); else if (t === 'celana') ap(o.material, cV); else if (t === 'sepatu') ap(o.material, sV);
   });
   const vis = (orig, v) => { const c = u.map.get(orig); if (c) c.visible = v; };
-  vis(spiderLogoGrp, baju.id === 'baju_spiderman'); vis(batGrp, baju.id === 'baju_batman'); vis(ironHelm, iron); vis(ironBody, iron);
+  setCostumeVis(baju, o => u.map.get(o));
   const a = eq.aksesoris || 'aks_none';
-  Object.keys(acc).forEach(id => vis(acc[id], !iron && id === a));
+  Object.keys(acc).forEach(id => vis(acc[id], !(iron || thor) && id === a));
   u.costumeName = baju.name;
 }
 function makeRemotePlayer(uid, data) {
@@ -1391,7 +1558,7 @@ function makeRemotePlayer(uid, data) {
   model.traverse((o) => { if (o.material) { if (!mm.has(o.material)) { const c = o.material.clone(); mm.set(o.material, c); mats.push(c); } o.material = mm.get(o.material); } });
   model.position.set(0, 0, 0); model.rotation.set(0, 0, 0); model.scale.set(1, 1, 1);
   const P = (o) => map.get(o);
-  const parts = { rig: P(rig), head: P(headGroup), armL: P(leftArmPivot), armR: P(rightArmPivot), legL: P(leftLegPivot), legR: P(rightLegPivot), elL: P(leftElbow), elR: P(rightElbow), knL: P(leftKnee), knR: P(rightKnee), capes: [P(capePivot), P(capeB)].filter(Boolean) };
+  const parts = { rig: P(rig), head: P(headGroup), armL: P(leftArmPivot), armR: P(rightArmPivot), legL: P(leftLegPivot), legR: P(rightLegPivot), elL: P(leftElbow), elR: P(rightElbow), knL: P(leftKnee), knR: P(rightKnee), capes: [P(capePivot), P(capeB), P(capeT)].filter(Boolean) };
   [parts.rig, parts.head, parts.armL, parts.armR, parts.legL, parts.legR, parts.elL, parts.elR, parts.knL, parts.knR, ...parts.capes].forEach(o => o && o.rotation.set(0, 0, 0));
   parts.rig.position.set(0, 0, 0); parts.rig.scale.set(1, 1, 1);
   const g = new THREE.Group(); g.add(model);
@@ -1406,8 +1573,16 @@ function updateRemoteAvatars() {
     const d = roomPlayers[id]; if (!d) return;
     let av = remotePlayers.get(id);
     if (av && av.userData.eqKey !== JSON.stringify(d.equipped || {})) { disposeAvatar(id); av = null; }
-    if (!av) av = makeRemotePlayer(id, d);
-    const u = av.userData; u.d = d; u.slot = LOBBY_SLOTS[i % LOBBY_SLOTS.length]; u.spawn = SPAWN[ids.indexOf(id) % SPAWN.length];
+    let fresh = false;
+    if (!av) { av = makeRemotePlayer(id, d); fresh = true; av.userData.deadAt = d.deadAt || null; av.visible = !d.deadAt; }
+    const u = av.userData; u.d = d;
+    if (!fresh) {
+      if (d.deadAt && u.deadAt !== d.deadAt) { // pemain lain jatuh ke lava: badannya hancur di layar kita juga
+        u.deadAt = d.deadAt;
+        if (serverNow() - d.deadAt < 6000) spawnShatter(d.x != null ? tmpV.set(Number(d.x) || 0, Number(d.y) || 0, Number(d.z) || 0) : av.position, d.equipped);
+        av.visible = false;
+      } else if (!d.deadAt && u.deadAt) { u.deadAt = null; av.visible = true; u.first = true; }
+    } u.slot = LOBBY_SLOTS[i % LOBBY_SLOTS.length]; u.spawn = SPAWN[ids.indexOf(id) % SPAWN.length];
     const lbl = { name: String(d.username || 'Pemain').slice(0, 14), owner: !!d.isDev, host: !!(roomMeta && roomMeta.host === id), costume: u.costumeName };
     const text = JSON.stringify(lbl);
     if (u.labelText !== text) {
@@ -1575,6 +1750,7 @@ function animate() {
     if (p.life <= 0) { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); trailParticles.splice(i, 1); }
   }
 
+  updateDebris(delta);
   for (let i = jumpParticles.length - 1; i >= 0; i--) {
     let p = jumpParticles[i];
     p.life -= delta;
@@ -1697,7 +1873,7 @@ function animate() {
   if (godMode && character.position.y < -3) { character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z); physics.velocityY = 0; }
   if (!godMode && !flyMode && character.position.y < -3) {
     gameState = 'GAMEOVER'; 
-    showGameOver('fall');
+    shatterLocal(); setTimeout(() => { if (gameState === 'GAMEOVER') showGameOver('fall'); }, 900);
   }
 
   // KONDISI MENANG DI PUNCAK
@@ -1744,7 +1920,7 @@ function animate() {
   damp(leftArmPivot.rotation, 'z', -armZ); damp(rightArmPivot.rotation, 'z', armZ);
   damp(headGroup.rotation, 'y', headY);
   damp(rig.position, 'y', bob); damp(rig.rotation, 'x', lean); damp(rig.rotation, 'y', twist); damp(rig.rotation, 'z', sway);
-  for (const cp of [capePivot, capeB]) if (cp && cp.visible) damp(cp.rotation, 'x', 0.08 + hSpeed * 0.05 + (physics.isGrounded ? 0 : 0.4) + Math.sin(t * 7) * (isMoving ? 0.05 : 0.01));
+  for (const cp of [capePivot, capeB, capeT]) if (cp && cp.visible) damp(cp.rotation, 'x', 0.08 + hSpeed * 0.05 + (physics.isGrounded ? 0 : 0.4) + Math.sin(t * 7) * (isMoving ? 0.05 : 0.01));
   const air = physics.isGrounded ? 0 : THREE.MathUtils.clamp(physics.velocityY / 13, -1, 1) * 0.1;
   const st = THREE.MathUtils.clamp(sq.x + air, -0.35, 0.35);
   rig.scale.set(1 - st * 0.5, 1 + st, 1 - st * 0.5);
