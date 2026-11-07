@@ -1206,7 +1206,7 @@ const LOBBY_SLOTS = [[-1.7, 0], [1.7, 0], [-3.4, 0], [3.4, 0], [0, 2], [-1.7, 2]
 const SPAWN = [[0, 0], [-1.5, 0], [1.5, 0], [-3, 0], [3, 0], [-1.5, 1.5], [1.5, 1.5], [0, 1.5]];
 let mpUid = null, mpReady = false, mpOffset = 0;
 let roomCode = null, roomMeta = null, roomPlayers = {}, roomUnsub = null, roomStartAt = null, roomStarted = false;
-let myRef = null, myJoinedAt = 0, mpLastSend = 0, mpEquipTimer = null, soloStart = 0, finishMs = null, lastLobbyCount = -1, lastTimerText = '';
+let myRef = null, myJoinedAt = 0, mpLastSend = 0, mpEquipTimer = null, soloStart = 0, finishMs = null, lastLobbyCount = -1, lastTimerText = '', rpCollapsed = false;
 const remotePlayers = new Map(), announcedFinish = new Set(), tmpV = new THREE.Vector3();
 const serverNow = () => Date.now() + mpOffset;
 const genCode = () => Array.from({ length: 5 }, () => ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]).join('');
@@ -1249,6 +1249,7 @@ async function enterRoom(code) {
   myJoinedAt = Date.now();
   await set(myRef, { username: String(playerData.username).slice(0, 18), isDev: !!playerData.isDev, equipped: myEquipped(), status: 'LOBBY', joinedAt: myJoinedAt, updatedAt: Date.now() });
   roomUnsub = onValue(ref(multiplayerDb, `rooms/${code}`), onRoomSnapshot, (err) => { console.error(err); setRoomMsg(mpErr(err)); });
+  rpCollapsed = true; // setelah masuk room, panel langsung mengecil
   updateRoomUI();
 }
 
@@ -1281,7 +1282,7 @@ async function leaveRoom(silent) {
     if (alone && !silent) await remove(ref(multiplayerDb, `rooms/${code}`));
   } catch (e) { console.warn(e); }
   for (const id of [...remotePlayers.keys()]) disposeAvatar(id);
-  roomCode = null; roomMeta = null; roomPlayers = {}; myRef = null; roomStartAt = null; roomStarted = false; lastLobbyCount = -1;
+  roomCode = null; roomMeta = null; roomPlayers = {}; myRef = null; roomStartAt = null; roomStarted = false; lastLobbyCount = -1; rpCollapsed = false;
   if (camera && controls) { camera.position.set(0, 3, -5); controls.target.set(0, 1.5, 0); }
   updateRoomUI();
 }
@@ -1422,6 +1423,10 @@ function updateRoomUI() {
   const panel = document.getElementById('room-panel'); if (!panel) return;
   const inLobby = gameState === 'LOBBY';
   panel.style.display = inLobby ? 'flex' : 'none';
+  panel.classList.toggle('rp-collapsed', rpCollapsed);
+  document.getElementById('rp-min').textContent = rpCollapsed ? '▢' : '—';
+  document.getElementById('rp-qstart').style.display = (rpCollapsed && roomCode && roomMeta && roomMeta.host === mpUid && !roomMeta.startAt) ? 'block' : 'none';
+  document.getElementById('rp-title').textContent = roomCode ? '🎮 Room ' + roomCode + ' · ' + Object.keys(roomPlayers).length + ' pemain' : '🎮 Mabar';
   const sb = document.getElementById('btn-start-game'); if (sb && inLobby) sb.style.display = roomCode ? 'none' : 'flex';
   document.getElementById('rp-menu').style.display = roomCode ? 'none' : 'flex';
   document.getElementById('rp-room').style.display = roomCode ? 'flex' : 'none';
@@ -1436,30 +1441,42 @@ function updateRoomUI() {
   });
   const isHost = !!roomMeta && roomMeta.host === mpUid;
   const st = document.getElementById('rp-start'); st.style.display = isHost ? 'block' : 'none'; st.textContent = '▶ MULAI (' + ids.length + ' pemain)';
-  document.getElementById('rp-wait').style.display = isHost ? 'none' : 'block';
+  document.getElementById('rp-wait').style.display = isHost ? 'none' : 'flex';
 }
 function buildRoomUI() {
   if (document.getElementById('room-panel')) { updateRoomUI(); return; }
   const css = document.createElement('style');
-  css.textContent = `#room-panel{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:60;width:min(92vw,340px);background:rgba(15,18,32,.92);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:12px;font-family:sans-serif;font-size:14px;display:none;flex-direction:column;gap:8px}
-#room-panel button{padding:10px;border:0;border-radius:10px;background:#2d3550;color:#fff;font-weight:700;font-size:14px}
+  css.textContent = `#room-panel{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:60;width:min(92vw,320px);max-height:calc(100vh - 80px);overflow-y:auto;background:rgba(15,18,32,.92);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 10px;font-family:sans-serif;font-size:13px;display:none;flex-direction:column;gap:6px}
+#room-panel.rp-collapsed{width:auto;max-width:92vw;padding:5px 10px;cursor:pointer}
+#room-panel.rp-collapsed #rp-body{display:none}
+#rp-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#rp-title{white-space:nowrap}
+#rp-min{width:34px;padding:4px 0!important;font-size:16px!important}
+#rp-qstart{background:#00b86b!important;padding:4px 10px!important}
+#room-panel button{padding:8px;border:0;border-radius:9px;background:#2d3550;color:#fff;font-weight:700;font-size:13px}
 #room-panel #rp-start{background:#00b86b}#room-panel #rp-create{background:#3b6cf6}
-#rp-menu,#rp-room{flex-direction:column;gap:8px}.rp-row{display:flex;gap:6px}
-#rp-code{flex:1;min-width:0;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:16px;letter-spacing:3px;text-transform:uppercase;text-align:center}
-.rp-codebox{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border-radius:10px;padding:8px 10px}
-.rp-codebox span{font-size:11px;opacity:.7}.rp-codebox b{flex:1;font-size:24px;letter-spacing:5px;text-align:center}
-.rp-player{padding:5px 8px;background:rgba(255,255,255,.06);border-radius:8px}
-#rp-wait{text-align:center;opacity:.85}#rp-msg{font-size:12px;color:#ffd166;min-height:14px;text-align:center}
+#rp-body{display:flex;flex-direction:column;gap:6px}
+#rp-menu,#rp-room{flex-direction:column;gap:6px}.rp-row{display:flex;gap:6px}.rp-row>*{flex:1}
+#rp-code{min-width:0;padding:8px;border-radius:9px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:15px;letter-spacing:3px;text-transform:uppercase;text-align:center}
+.rp-codebox{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border-radius:9px;padding:4px 8px}
+.rp-codebox span{font-size:10px;opacity:.7}.rp-codebox b{flex:1;font-size:21px;letter-spacing:4px;text-align:center}.rp-codebox button{flex:none}
+#rp-list{max-height:84px;overflow-y:auto;display:flex;flex-direction:column;gap:3px}
+.rp-player{padding:4px 8px;background:rgba(255,255,255,.06);border-radius:7px}
+#rp-wait{display:flex;align-items:center;justify-content:center;opacity:.85;text-align:center}
+#rp-msg{font-size:12px;color:#ffd166;text-align:center}#rp-msg:empty{display:none}
 #race-timer{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:55;display:none;background:rgba(0,0,0,.55);color:#fff;font:700 18px sans-serif;padding:4px 14px;border-radius:12px}
 #countdown{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;font:900 140px sans-serif;color:#fff;text-shadow:0 0 30px #3b6cf6;pointer-events:none}`;
   document.head.appendChild(css);
   const panel = document.createElement('div'); panel.id = 'room-panel';
-  panel.innerHTML = `<b>🎮 Mabar</b>
-<div id="rp-menu"><button id="rp-solo">🧍 Main Sendiri</button><button id="rp-create">➕ Buat Room (jadi Host)</button>
+  panel.innerHTML = `<div id="rp-head"><b id="rp-title">🎮 Mabar</b><button id="rp-qstart" style="display:none">▶ MULAI</button><button id="rp-min" title="Kecilkan / buka">—</button></div>
+<div id="rp-body">
+<div id="rp-menu"><div class="rp-row"><button id="rp-solo">🧍 Main Sendiri</button><button id="rp-create">➕ Buat Room</button></div>
 <div class="rp-row"><input id="rp-code" maxlength="5" placeholder="KODE" autocapitalize="characters" autocomplete="off"><button id="rp-join">Gabung</button></div></div>
-<div id="rp-room" style="display:none"><div class="rp-codebox"><span>KODE ROOM</span><b id="rp-codetext">-----</b><button id="rp-copy">📋</button></div>
-<div id="rp-list"></div><button id="rp-start">▶ MULAI</button><div id="rp-wait">⏳ Menunggu host memulai…</div><button id="rp-leave">🚪 Keluar Room</button></div>
-<div id="rp-msg"></div>`;
+<div id="rp-room" style="display:none"><div class="rp-codebox"><span>KODE</span><b id="rp-codetext">-----</b><button id="rp-copy">📋</button></div>
+<div id="rp-list"></div>
+<div class="rp-row"><button id="rp-start">▶ MULAI</button><div id="rp-wait">⏳ Menunggu host…</div><button id="rp-leave">🚪 Keluar</button></div></div>
+<div id="rp-msg"></div>
+</div>`;
   const timer = document.createElement('div'); timer.id = 'race-timer';
   const cd = document.createElement('div'); cd.id = 'countdown';
   document.body.append(panel, timer, cd);
@@ -1473,6 +1490,9 @@ function buildRoomUI() {
   document.getElementById('rp-copy').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(roomCode).then(() => showToast('📋 Kode disalin: ' + roomCode)).catch(() => showToast('Kode: ' + roomCode)); };
   document.getElementById('rp-start').onclick = () => busy('Memulai…', hostStart);
   document.getElementById('rp-leave').onclick = () => busy('Keluar…', () => leaveRoom());
+  document.getElementById('rp-qstart').onclick = (e) => { e.stopPropagation(); busy('Memulai…', hostStart); };
+  document.getElementById('rp-min').onclick = (e) => { e.stopPropagation(); rpCollapsed = !rpCollapsed; updateRoomUI(); };
+  document.getElementById('rp-head').onclick = () => { if (rpCollapsed) { rpCollapsed = false; updateRoomUI(); } };
   updateRoomUI();
 }
 
