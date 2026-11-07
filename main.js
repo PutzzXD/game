@@ -1339,12 +1339,28 @@ function disposeAvatar(id) {
   av.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map && !Object.values(webTexCache).includes(o.material.map)) o.material.map.dispose(); o.material.dispose(); } });
   remotePlayers.delete(id);
 }
-function makeLabelSprite(text) {
-  const c = document.createElement('canvas'); c.width = 512; c.height = 128; const x = c.getContext('2d');
-  x.fillStyle = 'rgba(0,0,0,.68)'; x.beginPath(); x.roundRect(8, 8, 496, 112, 22); x.fill();
-  x.font = 'bold 44px sans-serif'; x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text.slice(0, 22), 256, 66);
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
-  sp.position.y = 3.0; sp.scale.set(2.4, 0.6, 1); return sp;
+function makeLabelSprite(o) { // o: { name, owner, host, costume }
+  const c = document.createElement('canvas'); c.width = 512; c.height = 176; const x = c.getContext('2d');
+  x.fillStyle = 'rgba(0,0,0,0.6)'; x.beginPath(); x.roundRect(10, 10, 492, 88, 20); x.fill();
+  x.textBaseline = 'middle'; x.textAlign = 'left';
+  const prefix = o.host ? '👑 ' : '';
+  x.font = 'bold 46px sans-serif'; const w1 = x.measureText(prefix + o.name).width;
+  let w2 = 0, w3 = 0;
+  if (o.owner) { x.font = 'bold 30px sans-serif'; w2 = x.measureText(' owner').width; w3 = 62; }
+  let cx = 256 - (w1 + w2 + w3) / 2;
+  x.font = 'bold 46px sans-serif'; x.fillStyle = '#ffffff'; x.fillText(prefix + o.name, cx, 56); cx += w1;
+  if (o.owner) {
+    x.font = 'bold 30px sans-serif'; x.fillStyle = '#ffd166'; x.fillText(' owner', cx, 58); cx += w2 + 8;
+    // centang biru digambar langsung (bukan emoji) supaya tampil di semua HP
+    x.beginPath(); x.arc(cx + 22, 54, 24, 0, Math.PI * 2); x.fillStyle = '#1DA1F2'; x.fill(); x.strokeStyle = '#ffffff'; x.lineWidth = 3; x.stroke();
+    x.beginPath(); x.moveTo(cx + 11, 54); x.lineTo(cx + 19, 63); x.lineTo(cx + 34, 44); x.lineWidth = 5; x.lineCap = 'round'; x.lineJoin = 'round'; x.stroke();
+  }
+  if (o.costume) {
+    x.fillStyle = 'rgba(0,0,0,0.55)'; x.beginPath(); x.roundRect(60, 106, 392, 56, 16); x.fill();
+    x.font = 'bold 30px sans-serif'; x.fillStyle = '#ffd166'; x.textAlign = 'center'; x.fillText(o.costume, 256, 135);
+  }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, depthWrite: false }));
+  sp.position.y = 3.3; sp.scale.set(2, 0.6875, 1); return sp;
 }
 function makeRemotePlayer(uid, data) {
   const eq = data.equipped || {};
@@ -1367,7 +1383,7 @@ function makeRemotePlayer(uid, data) {
   const shoe = (p) => add(new THREE.BoxGeometry(0.2, 0.15, 0.35), mS, 0, -0.84, 0.05, p);
   const legL = limb(-0.15, 0.9, new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), mC, -0.4, shoe), legR = limb(0.15, 0.9, new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), mC, -0.4, shoe);
   const emoji = b.web ? ' 🕸️' : b.bat ? ' 🦇' : b.iron ? ' 🤖' : '';
-  Object.assign(g.userData, { eqKey: JSON.stringify(eq), body, armL, armR, legL, legR, emoji, ph: Math.random() * 6, spd: 0, last: new THREE.Vector3(), lastY: 0, d: data, slot: [0, 0], spawn: [0, 0], first: true });
+  Object.assign(g.userData, { eqKey: JSON.stringify(eq), body, armL, armR, legL, legR, emoji, costumeName: b.name, ph: Math.random() * 6, spd: 0, last: new THREE.Vector3(), lastY: 0, d: data, slot: [0, 0], spawn: [0, 0], first: true });
   scene.add(g); remotePlayers.set(uid, g); return g;
 }
 function updateRemoteAvatars() {
@@ -1379,10 +1395,11 @@ function updateRemoteAvatars() {
     if (av && av.userData.eqKey !== JSON.stringify(d.equipped || {})) { disposeAvatar(id); av = null; }
     if (!av) av = makeRemotePlayer(id, d);
     const u = av.userData; u.d = d; u.slot = LOBBY_SLOTS[i % LOBBY_SLOTS.length]; u.spawn = SPAWN[ids.indexOf(id) % SPAWN.length];
-    const text = (roomMeta && roomMeta.host === id ? '👑 ' : '') + String(d.username || 'Pemain').slice(0, 16) + u.emoji;
+    const lbl = { name: String(d.username || 'Pemain').slice(0, 14), owner: !!d.isDev, host: !!(roomMeta && roomMeta.host === id), costume: u.costumeName };
+    const text = JSON.stringify(lbl);
     if (u.labelText !== text) {
       if (u.label) { av.remove(u.label); u.label.material.map.dispose(); u.label.material.dispose(); }
-      u.label = makeLabelSprite(text); u.labelText = text; av.add(u.label);
+      u.label = makeLabelSprite(lbl); u.labelText = text; av.add(u.label);
     }
     if (d.finishMs != null && !announcedFinish.has(id)) { announcedFinish.add(id); showToast('🏁 ' + String(d.username || 'Pemain') + ' finish! ⏱ ' + fmtTime(d.finishMs)); }
   });
