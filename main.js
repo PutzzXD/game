@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js';
-import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js';
-import { getDatabase, ref, set, onValue, onDisconnect, remove } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-database.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
+import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
+import { getDatabase, ref, set, get, update, onValue, onDisconnect, remove } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-database.js';
 
 // Firebase multiplayer: memakai project PARKOUR 3D yang sudah terdaftar.
 const firebaseConfig = {
@@ -174,11 +174,7 @@ window.addEventListener('DOMContentLoaded', () => {
     chatBox.style.display = 'none'; 
     chatToggle.textContent = '💬 Chat Global';
     isGameStarted = true;
-    gameState = 'PLAYING';
-    connectGlobalMultiplayer().catch((error) => {
-      console.error('Multiplayer Firebase gagal tersambung:', error);
-      showToast('⚠️ Multiplayer gagal tersambung');
-    });
+    onGameBegin();
     profileModal.style.display = 'none';
     shopModal.style.display = 'none';
     camera.position.set(0, 4, 8);
@@ -302,6 +298,7 @@ function startLobby() {
   init3DGame();
   camera.position.set(0, 3, -5);
   controls.target.set(0, 1.5, 0);
+  buildRoomUI();
 }
 
 function renderShopTab(category) {
@@ -444,6 +441,7 @@ function updateCharacterVisuals() {
   const a = playerData.equipped.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => { acc[id].visible = !iron && id === a; });
   if (nameSprite) updateCharacterNameSprite(playerData.username, playerData.isDev);
+  mpSyncEquipped();
 }
 
 // ============ 6. EFEK PARTIKEL ============
@@ -660,7 +658,7 @@ function init3DGame() {
     platforms.push({ 
       mesh, width, depth, type, 
       startX: x, startY: y, startZ: z, 
-      range: 2.5, speed: 1.5, phase: Math.random() * Math.PI * 2, 
+      range: 2.5, speed: 1.5, phase: (platforms.length * 2.39996) % (Math.PI * 2), 
       isFallen: false, tell, revealTimer: 0, dx: 0, r: shape === 'round' ? width / 2 : (shape === 'hex' ? width * 0.45 : 0) 
     });
   }
@@ -1202,141 +1200,290 @@ function updateCharacterNameSprite(username, isDev) {
   character.add(nameSprite);
 }
 
-// ============ MULTIPLAYER GLOBAL FIREBASE (tambahan, tidak mengubah fisika game) ============
-const GLOBAL_ROOM_PATH = 'rooms/global/players';
-const MULTIPLAYER_SEND_INTERVAL = 100; // sekitar 10 update/detik per pemain
-let multiplayerUid = null;
-let multiplayerPlayerRef = null;
-let multiplayerConnected = false;
-let multiplayerLastSend = 0;
-const remotePlayers = new Map();
+// ============ MULTIPLAYER ROOM: kode lobby, host yang memulai, waktu sinkron ============
+const MAX_PLAYERS = 8, ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const LOBBY_SLOTS = [[-1.7, 0], [1.7, 0], [-3.4, 0], [3.4, 0], [0, 2], [-1.7, 2], [1.7, 2], [-3.4, 2], [3.4, 2]];
+const SPAWN = [[0, 0], [-1.5, 0], [1.5, 0], [-3, 0], [3, 0], [-1.5, 1.5], [1.5, 1.5], [0, 1.5]];
+let mpUid = null, mpReady = false, mpOffset = 0;
+let roomCode = null, roomMeta = null, roomPlayers = {}, roomUnsub = null, roomStartAt = null, roomStarted = false;
+let myRef = null, myJoinedAt = 0, mpLastSend = 0, mpEquipTimer = null, soloStart = 0, finishMs = null, lastLobbyCount = -1, lastTimerText = '';
+const remotePlayers = new Map(), announcedFinish = new Set(), tmpV = new THREE.Vector3();
+const serverNow = () => Date.now() + mpOffset;
+const genCode = () => Array.from({ length: 5 }, () => ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]).join('');
+const sortedIds = () => Object.keys(roomPlayers).sort((a, b) => ((roomPlayers[a].joinedAt || 0) - (roomPlayers[b].joinedAt || 0)) || a.localeCompare(b));
+const myEquipped = () => ({ baju: playerData.equipped.baju, celana: playerData.equipped.celana, sepatu: playerData.equipped.sepatu, aksesoris: playerData.equipped.aksesoris || 'aks_none' });
+function fmtTime(ms) { const s = Math.max(0, ms) / 1000; return String(Math.floor(s / 60)).padStart(2, '0') + ':' + (s % 60).toFixed(1).padStart(4, '0'); }
+function mpErr(e) { const m = String((e && (e.code || e.message)) || e); return /permission/i.test(m) ? 'Izin ditolak Firebase. Cek Rules (lihat README).' : m.replace(/^Error: /, ''); }
 
+async function ensureMp() {
+  if (mpReady) return;
+  try { mpUid = (await signInAnonymously(multiplayerAuth)).user.uid; }
+  catch (e) { console.warn('Anonymous auth gagal, lanjut tanpa auth:', e); mpUid = 'g' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+  onValue(ref(multiplayerDb, '.info/serverTimeOffset'), (sn) => { mpOffset = sn.val() || 0; });
+  mpReady = true;
+}
+
+async function createRoom() {
+  await ensureMp();
+  let code = null;
+  for (let i = 0; i < 6; i++) { const c = genCode(); if (!(await get(ref(multiplayerDb, `rooms/${c}/meta`))).exists()) { code = c; break; } }
+  if (!code) throw new Error('Gagal membuat kode, coba lagi');
+  await set(ref(multiplayerDb, `rooms/${code}/meta`), { host: mpUid, hostName: String(playerData.username).slice(0, 18), createdAt: Date.now() });
+  await enterRoom(code);
+}
+
+async function joinRoom(code) {
+  await ensureMp();
+  const meta = await get(ref(multiplayerDb, `rooms/${code}/meta`));
+  if (!meta.exists()) throw new Error('Kode room tidak ditemukan');
+  if (Date.now() - (meta.val().createdAt || 0) > 6 * 3600 * 1000) throw new Error('Room sudah kedaluwarsa');
+  const ps = await get(ref(multiplayerDb, `rooms/${code}/players`));
+  if (ps.exists() && Object.keys(ps.val()).length >= MAX_PLAYERS) throw new Error('Room penuh (maks ' + MAX_PLAYERS + ')');
+  await enterRoom(code);
+}
+
+async function enterRoom(code) {
+  roomCode = code; roomStarted = false; roomStartAt = null; announcedFinish.clear();
+  myRef = ref(multiplayerDb, `rooms/${code}/players/${mpUid}`);
+  await onDisconnect(myRef).remove();
+  myJoinedAt = Date.now();
+  await set(myRef, { username: String(playerData.username).slice(0, 18), isDev: !!playerData.isDev, equipped: myEquipped(), status: 'LOBBY', joinedAt: myJoinedAt, updatedAt: Date.now() });
+  roomUnsub = onValue(ref(multiplayerDb, `rooms/${code}`), onRoomSnapshot, (err) => { console.error(err); setRoomMsg(mpErr(err)); });
+  updateRoomUI();
+}
+
+function onRoomSnapshot(sn) {
+  const room = sn.val();
+  if (!room || !room.meta) { if (roomCode && !roomStarted) { leaveRoom(true); setRoomMsg('Room ditutup'); } return; }
+  roomMeta = room.meta; roomPlayers = room.players || {};
+  if (!roomPlayers[roomMeta.host]) { // host keluar: pemain paling lama jadi host baru
+    const ids = sortedIds();
+    if (ids[0] === mpUid) update(ref(multiplayerDb, `rooms/${roomCode}/meta`), { host: mpUid, hostName: String(playerData.username).slice(0, 18) }).catch(() => {});
+  }
+  updateRoomUI(); updateRemoteAvatars();
+  if (roomMeta.startAt && !roomStarted) { // host menekan MULAI (atau kamu gabung saat game sudah jalan)
+    roomStarted = true; roomStartAt = roomMeta.startAt;
+    document.getElementById('btn-start-game').click();
+  }
+}
+
+async function hostStart() {
+  if (!roomCode || !roomMeta || roomMeta.host !== mpUid || roomMeta.startAt) return;
+  await update(ref(multiplayerDb, `rooms/${roomCode}/meta`), { startAt: serverNow() + 4500 });
+}
+
+async function leaveRoom(silent) {
+  const code = roomCode; if (!code) return;
+  const alone = Object.keys(roomPlayers).length <= 1;
+  if (roomUnsub) { roomUnsub(); roomUnsub = null; }
+  try {
+    if (myRef) { await onDisconnect(myRef).cancel(); await remove(myRef); }
+    if (alone && !silent) await remove(ref(multiplayerDb, `rooms/${code}`));
+  } catch (e) { console.warn(e); }
+  for (const id of [...remotePlayers.keys()]) disposeAvatar(id);
+  roomCode = null; roomMeta = null; roomPlayers = {}; myRef = null; roomStartAt = null; roomStarted = false; lastLobbyCount = -1;
+  if (camera && controls) { camera.position.set(0, 3, -5); controls.target.set(0, 1.5, 0); }
+  updateRoomUI();
+}
+
+function mpSyncEquipped() {
+  if (!myRef) return;
+  clearTimeout(mpEquipTimer);
+  mpEquipTimer = setTimeout(() => update(myRef, { equipped: myEquipped() }).catch(() => {}), 400);
+}
+
+// dipanggil tombol start (solo) ATAU saat host memulai room
+function onGameBegin() {
+  const rp = document.getElementById('room-panel'); if (rp) rp.style.display = 'none';
+  const rt = document.getElementById('race-timer'); if (rt) rt.style.display = 'block';
+  finishMs = null;
+  if (roomCode && roomStartAt) {
+    const idx = Math.max(0, sortedIds().indexOf(mpUid)), sp = SPAWN[idx % SPAWN.length];
+    character.position.set(sp[0], 0.25, sp[1]); checkpoint.x = sp[0]; checkpoint.z = sp[1];
+    gameState = serverNow() < roomStartAt ? 'COUNTDOWN' : 'PLAYING';
+    update(myRef, { status: 'PLAYING' }).catch(() => {});
+  } else { soloStart = performance.now(); gameState = 'PLAYING'; }
+}
+
+function onFinish() {
+  finishMs = roomStartAt ? serverNow() - roomStartAt : performance.now() - soloStart;
+  if (myRef) update(myRef, { finishMs: Math.round(finishMs) }).catch(() => {});
+}
+function finishSummary() {
+  let s = ' ⏱ ' + fmtTime(finishMs);
+  if (roomCode) s += ' • Peringkat #' + (Object.entries(roomPlayers).filter(([id, p]) => id !== mpUid && p.finishMs != null && p.finishMs < finishMs).length + 1);
+  return s;
+}
+
+function tickMultiplayer() {
+  if (gameState === 'COUNTDOWN' && roomStartAt) {
+    const left = roomStartAt - serverNow(), el = document.getElementById('countdown');
+    if (left <= 0) { gameState = 'PLAYING'; if (el) el.style.display = 'none'; showToast('🏁 MULAI!'); }
+    else if (el) { el.style.display = 'flex'; el.textContent = Math.ceil(left / 1000); }
+  }
+  const rt = document.getElementById('race-timer');
+  if (rt && rt.style.display === 'block') {
+    const ms = finishMs != null ? finishMs : (gameState === 'COUNTDOWN' ? 0 : (roomStartAt ? serverNow() - roomStartAt : performance.now() - soloStart));
+    const txt = '⏱ ' + fmtTime(ms); if (txt !== lastTimerText) { rt.textContent = txt; lastTimerText = txt; }
+  }
+  if (!roomCode || !myRef || !character || !(gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN')) return;
+  const now = performance.now(); if (now - mpLastSend < 100) return; mpLastSend = now;
+  update(myRef, { x: +character.position.x.toFixed(2), y: +character.position.y.toFixed(2), z: +character.position.z.toFixed(2), rot: +character.rotation.y.toFixed(2), status: 'PLAYING', username: String(playerData.username).slice(0, 18), isDev: !!playerData.isDev, joinedAt: myJoinedAt, updatedAt: Date.now() }).catch(() => {});
+}
+
+// ----- avatar pemain lain (kostum ikut dipakai) -----
+function disposeAvatar(id) {
+  const av = remotePlayers.get(id); if (!av) return;
+  scene.remove(av);
+  av.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map && !Object.values(webTexCache).includes(o.material.map)) o.material.map.dispose(); o.material.dispose(); } });
+  remotePlayers.delete(id);
+}
+function makeLabelSprite(text) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128; const x = c.getContext('2d');
+  x.fillStyle = 'rgba(0,0,0,.68)'; x.beginPath(); x.roundRect(8, 8, 496, 112, 22); x.fill();
+  x.font = 'bold 44px sans-serif'; x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text.slice(0, 22), 256, 66);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+  sp.position.y = 3.0; sp.scale.set(2.4, 0.6, 1); return sp;
+}
 function makeRemotePlayer(uid, data) {
-  const group = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x36a2ff, roughness: 0.75 });
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd1a4, roughness: 0.85 });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.85, 4, 8), bodyMat);
-  body.position.y = 1.05;
-  body.castShadow = true;
-  group.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 16, 12), skinMat);
-  head.position.y = 1.88;
-  head.castShadow = true;
-  group.add(head);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = 512; canvas.height = 128;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = 'rgba(0,0,0,.68)';
-  ctx.beginPath(); ctx.roundRect(8, 8, 496, 112, 22); ctx.fill();
-  ctx.font = 'bold 48px sans-serif'; ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(String(data.username || 'Pemain').slice(0, 18), 256, 64);
-  const texture = new THREE.CanvasTexture(canvas);
-  const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
-  label.position.y = 2.65; label.scale.set(2.2, 0.55, 1);
-  group.add(label);
-  group.userData.remoteUid = uid;
-  group.userData.targetPosition = new THREE.Vector3(
-    Number(data.x) || 0, Number(data.y) || 0, Number(data.z) || 0
-  );
-  group.userData.targetRotation = Number(data.rotation) || 0;
-  scene.add(group);
-  remotePlayers.set(uid, group);
-  return group;
+  const eq = data.equipped || {};
+  const find = (cat, id, def) => SHOP_ITEMS[cat].find(i => i.id === id) || SHOP_ITEMS[cat].find(i => i.id === def);
+  const b = find('baju', eq.baju, 'baju_default'), iron = !!b.iron;
+  const c = iron ? { color: 0xb01020, iron: true } : find('celana', eq.celana, 'celana_default');
+  const sh = iron ? { color: 0xd4a017, iron: true } : find('sepatu', eq.sepatu, 'sepatu_default');
+  const acc = iron ? 'iron' : (eq.aksesoris || 'aks_none');
+  const mat = (it) => new THREE.MeshStandardMaterial({ color: it.web ? 0xffffff : it.color, map: it.web ? getWebTex(it.color) : null, metalness: it.iron ? 0.75 : 0, roughness: it.iron ? 0.28 : 0.7 });
+  const mB = mat(b), mC = mat(c), mS = mat(sh), skin = new THREE.MeshStandardMaterial({ color: 0xe0ac84, roughness: 0.8 });
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const add = (geo, m, x, y, z, par = body) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; par.add(o); return o; };
+  add(new THREE.CapsuleGeometry(0.3, 0.8, 4, 12), mB, 0, 1.4, 0);
+  const headCol = { aks_topeng_spider: 0xd91e2b, aks_topeng_batman: 0x15151c, iron: 0xb01020 }[acc];
+  add(new THREE.SphereGeometry(headCol ? 0.34 : 0.3, 20, 16), headCol ? new THREE.MeshStandardMaterial({ color: headCol, metalness: acc === 'iron' ? 0.7 : 0 }) : skin, 0, 2.25, 0);
+  if (!headCol) for (const sd of [-1, 1]) add(new THREE.SphereGeometry(0.035, 8, 8), new THREE.MeshBasicMaterial({ color: 0x111111 }), sd * 0.1, 2.3, 0.27);
+  else for (const sd of [-1, 1]) add(new THREE.BoxGeometry(0.11, 0.04, 0.03), new THREE.MeshBasicMaterial({ color: 0xffffff }), sd * 0.12, 2.3, 0.33);
+  const limb = (x, y, geo, m, cy, extra) => { const p = new THREE.Group(); p.position.set(x, y, 0); body.add(p); add(geo, m, 0, cy, 0, p); if (extra) extra(p); return p; };
+  const armL = limb(-0.4, 1.8, new THREE.CapsuleGeometry(0.09, 0.5, 4, 8), mB, -0.3), armR = limb(0.4, 1.8, new THREE.CapsuleGeometry(0.09, 0.5, 4, 8), mB, -0.3);
+  const shoe = (p) => add(new THREE.BoxGeometry(0.2, 0.15, 0.35), mS, 0, -0.84, 0.05, p);
+  const legL = limb(-0.15, 0.9, new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), mC, -0.4, shoe), legR = limb(0.15, 0.9, new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), mC, -0.4, shoe);
+  const emoji = b.web ? ' 🕸️' : b.bat ? ' 🦇' : b.iron ? ' 🤖' : '';
+  Object.assign(g.userData, { eqKey: JSON.stringify(eq), body, armL, armR, legL, legR, emoji, ph: Math.random() * 6, spd: 0, last: new THREE.Vector3(), lastY: 0, d: data, slot: [0, 0], spawn: [0, 0], first: true });
+  scene.add(g); remotePlayers.set(uid, g); return g;
 }
-
-function updateRemotePlayers(snapshot) {
-  if (!scene || !snapshot) return;
-  const activeIds = new Set();
-  Object.entries(snapshot).forEach(([uid, data]) => {
-    if (!data || uid === multiplayerUid || data.status !== 'PLAYING') return;
-    activeIds.add(uid);
-    let avatar = remotePlayers.get(uid);
-    if (!avatar) avatar = makeRemotePlayer(uid, data);
-    avatar.userData.targetPosition.set(Number(data.x) || 0, Number(data.y) || 0, Number(data.z) || 0);
-    avatar.userData.targetRotation = Number(data.rotation) || 0;
-  });
-  for (const [uid, avatar] of remotePlayers) {
-    if (!activeIds.has(uid)) {
-      scene.remove(avatar);
-      avatar.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) {
-          const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
-          materials.forEach((mat) => { if (mat.map) mat.map.dispose(); mat.dispose(); });
-        }
-      });
-      remotePlayers.delete(uid);
+function updateRemoteAvatars() {
+  if (!scene) return;
+  const ids = sortedIds(), others = ids.filter(id => id !== mpUid), alive = new Set(others);
+  others.forEach((id, i) => {
+    const d = roomPlayers[id]; if (!d) return;
+    let av = remotePlayers.get(id);
+    if (av && av.userData.eqKey !== JSON.stringify(d.equipped || {})) { disposeAvatar(id); av = null; }
+    if (!av) av = makeRemotePlayer(id, d);
+    const u = av.userData; u.d = d; u.slot = LOBBY_SLOTS[i % LOBBY_SLOTS.length]; u.spawn = SPAWN[ids.indexOf(id) % SPAWN.length];
+    const text = (roomMeta && roomMeta.host === id ? '👑 ' : '') + String(d.username || 'Pemain').slice(0, 16) + u.emoji;
+    if (u.labelText !== text) {
+      if (u.label) { av.remove(u.label); u.label.material.map.dispose(); u.label.material.dispose(); }
+      u.label = makeLabelSprite(text); u.labelText = text; av.add(u.label);
     }
-  }
-}
-
-async function connectGlobalMultiplayer() {
-  if (multiplayerConnected || !playerData.username) return;
-  const credential = await signInAnonymously(multiplayerAuth);
-  multiplayerUid = credential.user.uid;
-  multiplayerPlayerRef = ref(multiplayerDb, `${GLOBAL_ROOM_PATH}/${multiplayerUid}`);
-  await onDisconnect(multiplayerPlayerRef).remove();
-  await set(multiplayerPlayerRef, {
-    username: String(playerData.username).slice(0, 18),
-    isDev: !!playerData.isDev,
-    status: 'PLAYING', x: character ? character.position.x : 0,
-    y: character ? character.position.y : 0,
-    z: character ? character.position.z : 0,
-    rotation: character ? character.rotation.y : 0,
-    updatedAt: Date.now()
+    if (d.finishMs != null && !announcedFinish.has(id)) { announcedFinish.add(id); showToast('🏁 ' + String(d.username || 'Pemain') + ' finish! ⏱ ' + fmtTime(d.finishMs)); }
   });
-  onValue(ref(multiplayerDb, GLOBAL_ROOM_PATH), (snapshot) => {
-    updateRemotePlayers(snapshot.val() || {});
-  }, (error) => console.error('Gagal membaca pemain global:', error));
-  multiplayerConnected = true;
-  showToast('🌍 Multiplayer global aktif');
+  for (const id of [...remotePlayers.keys()]) if (!alive.has(id)) disposeAvatar(id);
+  if (gameState === 'LOBBY' && remotePlayers.size !== lastLobbyCount && camera) { // zoom out otomatis supaya semua pemain kelihatan
+    lastLobbyCount = remotePlayers.size;
+    camera.position.set(0, 3 + 0.25 * lastLobbyCount, -(5 + 1.2 * lastLobbyCount)); controls.target.set(0, 1.5, 0.5 * lastLobbyCount);
+  }
 }
-
-function tickGlobalMultiplayer() {
-  if (!multiplayerConnected || !multiplayerPlayerRef || !character || gameState !== 'PLAYING') return;
-  const now = performance.now();
-  if (now - multiplayerLastSend < MULTIPLAYER_SEND_INTERVAL) return;
-  multiplayerLastSend = now;
-  const payload = {
-    username: String(playerData.username || 'Pemain').slice(0, 18),
-    isDev: !!playerData.isDev,
-    status: 'PLAYING',
-    x: Number(character.position.x.toFixed(3)),
-    y: Number(character.position.y.toFixed(3)),
-    z: Number(character.position.z.toFixed(3)),
-    rotation: Number(character.rotation.y.toFixed(3)),
-    updatedAt: Date.now()
-  };
-  set(multiplayerPlayerRef, payload).catch((error) => console.error('Gagal mengirim posisi pemain:', error));
-}
-
 function animateRemotePlayers(delta) {
-  const blend = 1 - Math.exp(-delta * 12);
-  for (const avatar of remotePlayers.values()) {
-    avatar.position.lerp(avatar.userData.targetPosition, blend);
-    const diff = Math.atan2(
-      Math.sin(avatar.userData.targetRotation - avatar.rotation.y),
-      Math.cos(avatar.userData.targetRotation - avatar.rotation.y)
-    );
-    avatar.rotation.y += diff * blend;
+  if (!remotePlayers.size) return;
+  const blend = 1 - Math.exp(-delta * 12), now = performance.now() / 1000, inGame = !!roomStartAt;
+  for (const av of remotePlayers.values()) {
+    const u = av.userData, d = u.d || {};
+    let rot;
+    if (inGame && d.status === 'PLAYING' && d.x != null) { tmpV.set(Number(d.x) || 0, Number(d.y) || 0, Number(d.z) || 0); rot = Number(d.rot) || 0; }
+    else if (inGame) { tmpV.set(u.spawn[0], 0.25, u.spawn[1]); rot = 0; }
+    else { tmpV.set(u.slot[0], 0.25, u.slot[1]); rot = character ? character.rotation.y : 0; }
+    if (u.first || av.position.distanceTo(tmpV) > 14) { av.position.copy(tmpV); u.first = false; u.last.copy(tmpV); u.lastY = tmpV.y; }
+    else av.position.lerp(tmpV, blend);
+    av.rotation.y += Math.atan2(Math.sin(rot - av.rotation.y), Math.cos(rot - av.rotation.y)) * blend;
+    const dt = Math.max(delta, 1e-3), hv = Math.hypot(av.position.x - u.last.x, av.position.z - u.last.z) / dt, vy = (av.position.y - u.lastY) / dt;
+    u.last.copy(av.position); u.lastY = av.position.y; u.spd += (hv - u.spd) * 0.2;
+    const air = Math.abs(vy) > 2.5, k = 1 - Math.exp(-delta * 14);
+    u.ph += delta * u.spd * 1.7;
+    const sw = air ? 0 : Math.sin(u.ph) * Math.min(0.9, u.spd * 0.12), moving = u.spd > 0.4;
+    const damp = (o, v) => { o.rotation.x += (v - o.rotation.x) * k; };
+    damp(u.legL, air ? -0.6 : sw); damp(u.legR, air ? 0.4 : -sw);
+    damp(u.armL, air ? -1.6 : -sw); damp(u.armR, air ? -1.6 : sw);
+    u.body.position.y += ((moving ? Math.abs(Math.sin(u.ph)) * 0.05 : Math.sin(now * 2 + u.ph) * 0.01) - u.body.position.y) * k;
+    u.body.rotation.x += ((moving ? 0.12 : 0) - u.body.rotation.x) * k;
   }
 }
 
-window.addEventListener('pagehide', () => {
-  if (multiplayerPlayerRef) remove(multiplayerPlayerRef).catch(() => {});
-});
+// ----- UI room -----
+function setRoomMsg(m) { const el = document.getElementById('rp-msg'); if (el) el.textContent = m || ''; }
+function updateRoomUI() {
+  const panel = document.getElementById('room-panel'); if (!panel) return;
+  const inLobby = gameState === 'LOBBY';
+  panel.style.display = inLobby ? 'flex' : 'none';
+  const sb = document.getElementById('btn-start-game'); if (sb && inLobby) sb.style.display = roomCode ? 'none' : 'flex';
+  document.getElementById('rp-menu').style.display = roomCode ? 'none' : 'flex';
+  document.getElementById('rp-room').style.display = roomCode ? 'flex' : 'none';
+  if (!roomCode) return;
+  document.getElementById('rp-codetext').textContent = roomCode;
+  const list = document.getElementById('rp-list'); list.innerHTML = '';
+  const ids = sortedIds();
+  ids.forEach(id => {
+    const p = roomPlayers[id], row = document.createElement('div'); row.className = 'rp-player';
+    row.textContent = (roomMeta && roomMeta.host === id ? '👑 ' : '🧍 ') + String(p.username || 'Pemain') + (p.isDev ? ' ✔' : '') + (id === mpUid ? ' (kamu)' : '');
+    list.appendChild(row);
+  });
+  const isHost = !!roomMeta && roomMeta.host === mpUid;
+  const st = document.getElementById('rp-start'); st.style.display = isHost ? 'block' : 'none'; st.textContent = '▶ MULAI (' + ids.length + ' pemain)';
+  document.getElementById('rp-wait').style.display = isHost ? 'none' : 'block';
+}
+function buildRoomUI() {
+  if (document.getElementById('room-panel')) { updateRoomUI(); return; }
+  const css = document.createElement('style');
+  css.textContent = `#room-panel{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:60;width:min(92vw,340px);background:rgba(15,18,32,.92);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:12px;font-family:sans-serif;font-size:14px;display:none;flex-direction:column;gap:8px}
+#room-panel button{padding:10px;border:0;border-radius:10px;background:#2d3550;color:#fff;font-weight:700;font-size:14px}
+#room-panel #rp-start{background:#00b86b}#room-panel #rp-create{background:#3b6cf6}
+#rp-menu,#rp-room{flex-direction:column;gap:8px}.rp-row{display:flex;gap:6px}
+#rp-code{flex:1;min-width:0;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:16px;letter-spacing:3px;text-transform:uppercase;text-align:center}
+.rp-codebox{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border-radius:10px;padding:8px 10px}
+.rp-codebox span{font-size:11px;opacity:.7}.rp-codebox b{flex:1;font-size:24px;letter-spacing:5px;text-align:center}
+.rp-player{padding:5px 8px;background:rgba(255,255,255,.06);border-radius:8px}
+#rp-wait{text-align:center;opacity:.85}#rp-msg{font-size:12px;color:#ffd166;min-height:14px;text-align:center}
+#race-timer{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:55;display:none;background:rgba(0,0,0,.55);color:#fff;font:700 18px sans-serif;padding:4px 14px;border-radius:12px}
+#countdown{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;font:900 140px sans-serif;color:#fff;text-shadow:0 0 30px #3b6cf6;pointer-events:none}`;
+  document.head.appendChild(css);
+  const panel = document.createElement('div'); panel.id = 'room-panel';
+  panel.innerHTML = `<b>🎮 Mabar</b>
+<div id="rp-menu"><button id="rp-solo">🧍 Main Sendiri</button><button id="rp-create">➕ Buat Room (jadi Host)</button>
+<div class="rp-row"><input id="rp-code" maxlength="5" placeholder="KODE" autocapitalize="characters" autocomplete="off"><button id="rp-join">Gabung</button></div></div>
+<div id="rp-room" style="display:none"><div class="rp-codebox"><span>KODE ROOM</span><b id="rp-codetext">-----</b><button id="rp-copy">📋</button></div>
+<div id="rp-list"></div><button id="rp-start">▶ MULAI</button><div id="rp-wait">⏳ Menunggu host memulai…</div><button id="rp-leave">🚪 Keluar Room</button></div>
+<div id="rp-msg"></div>`;
+  const timer = document.createElement('div'); timer.id = 'race-timer';
+  const cd = document.createElement('div'); cd.id = 'countdown';
+  document.body.append(panel, timer, cd);
 
-const clock = new THREE.Clock();
-let walkTime = 0;
+  const busy = async (label, fn) => { setRoomMsg(label); try { await fn(); setRoomMsg(''); } catch (e) { console.error(e); setRoomMsg('⚠️ ' + mpErr(e)); } };
+  const codeInput = document.getElementById('rp-code');
+  codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+  document.getElementById('rp-solo').onclick = () => document.getElementById('btn-start-game').click();
+  document.getElementById('rp-create').onclick = () => busy('Membuat room…', createRoom);
+  document.getElementById('rp-join').onclick = () => { const c = codeInput.value.trim(); if (c.length !== 5) { setRoomMsg('Kode harus 5 karakter'); return; } busy('Menggabung…', () => joinRoom(c)); };
+  document.getElementById('rp-copy').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(roomCode).then(() => showToast('📋 Kode disalin: ' + roomCode)).catch(() => showToast('Kode: ' + roomCode)); };
+  document.getElementById('rp-start').onclick = () => busy('Memulai…', hostStart);
+  document.getElementById('rp-leave').onclick = () => busy('Keluar…', () => leaveRoom());
+  updateRoomUI();
+}
+
+window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() => {}); });
 
 function animate() {
   requestAnimationFrame(animate);
   if (!renderer) return;
   const delta = Math.min(clock.getDelta(), 0.1);
-  const t = clock.getElapsedTime();
-  tickGlobalMultiplayer();
+  const t = roomStartAt ? Math.max(0, (serverNow() - roomStartAt) / 1000) : clock.getElapsedTime();
+  tickMultiplayer();
   animateRemotePlayers(delta);
   if (scene && camera) renderer.render(scene, camera);
 
@@ -1493,7 +1640,8 @@ function animate() {
     playerData.coins = (playerData.coins || 0) + 700;
     updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins;
-    showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +700 🪙', '#00ff00');
+    onFinish();
+    showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +700 🪙' + finishSummary(), '#00ff00');
   }
 
   // ===== Animasi karakter: damping + squash & stretch + condong badan =====
