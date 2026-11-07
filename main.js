@@ -1478,6 +1478,9 @@ function buildRoomUI() {
 
 window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() => {}); });
 
+const clock = new THREE.Clock();
+let walkTime = 0;
+
 function animate() {
   requestAnimationFrame(animate);
   if (!renderer) return;
