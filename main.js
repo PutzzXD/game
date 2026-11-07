@@ -481,11 +481,13 @@ let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
 let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
 let batGrp, capeB, ironHelm, ironBody;
+let guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 const ROASTS = {
   hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
   fall: ['Beruntung banget jatuh ke lava, hangat kan? 🔥😹', 'Pemain paling beruntung sedunia: jatuh dari tempat yang sama lagi 🍀💀', 'Mantap, rekor jatuh terbaru! Lava bangga sama kamu 🏅🔥'],
   fake: ['Beruntung banget ketipu kotak palsu, yang asli malah kamu lewatin 😹🍀', 'Kotak palsu aja kamu percaya, pantes paling beruntung 🤣👻', 'Insting kamu emang paling beruntung... beruntung salah terus 🍀👻'],
-  laser: ['Lasernya nyala sebentar, kamu tetap kena. Bakat langka 🍀💥', 'Kena laser lagi? Rekor kesialan paling beruntung 🏅💥', 'Tinggal lompat doang lho, beruntung banget kamu 😹⚡']
+  laser: ['Lasernya nyala sebentar, kamu tetap kena. Bakat langka 🍀💥', 'Kena laser lagi? Rekor kesialan paling beruntung 🏅💥', 'Tinggal lompat doang lho, beruntung banget kamu 😹⚡'],
+  shot: ['Ditembak NPC gara-gara salah belok. Beruntung banget kamu 🍀🔫', 'Peta nggak bisa dibaca, tapi pistolnya akurat. Beruntung kamu 😹🔫', 'NPC: "makasih udah nyasar ke sini" 🔫💀', 'Satu lorong benar, kamu pilih yang salah. Pecah rekor 🏅🔫']
 };
 const isAdminUser = () => !!(playerData && playerData.username && playerData.username.toLowerCase() === DEV_USERNAME);
 // Pemain biasa di-roasting; admin/dev tidak (admin cuma dapat pesan biasa)
@@ -498,7 +500,7 @@ let flyMode = false, godMode = false, flyUp = false, flyDown = false, flySpeed =
 
 function respawn() {
   character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z);
-  physics.velocityY = 0; moveVel.set(0, 0); knock.set(0, 0); gameState = 'PLAYING';
+  physics.velocityY = 0; moveVel.set(0, 0); knock.set(0, 0); guards.forEach(gd => gd.reset()); gameState = 'PLAYING';
   document.getElementById('overlay').style.display = 'none';
 }
 
@@ -511,7 +513,7 @@ function setupAdminPanel() {
   const wrap = document.createElement('div'); wrap.id = 'admin-wrap';
   const btn = document.createElement('button'); btn.id = 'admin-btn'; btn.textContent = '🛠️ Admin';
   const panel = document.createElement('div'); panel.id = 'admin-panel';
-  panel.innerHTML = '<b id="admin-title">☰ Admin Panel - Putzzdev (geser)</b><button id="ad-fly">✈️ Terbang: OFF (F)</button><label>Kecepatan: <span id="ad-spd">14</span><input id="ad-speed" type="range" min="5" max="40" value="14" style="width:100%"></label><button id="ad-god">🛡️ Anti-mati: OFF</button><button data-tp="start">📍 Ke Start</button><button data-tp="hub">📍 Ke Hub Tower</button><button data-tp="top">🏁 Ke Puncak</button><button id="ad-coin">🪙 +1000 Koin</button>';
+  panel.innerHTML = '<b id="admin-title">☰ Admin Panel - Putzzdev (geser)</b><button id="ad-fly">✈️ Terbang: OFF (F)</button><label>Kecepatan: <span id="ad-spd">14</span><input id="ad-speed" type="range" min="5" max="40" value="14" style="width:100%"></label><button id="ad-god">🛡️ Anti-mati: OFF</button><button data-tp="start">📍 Ke Start</button><button data-tp="hub">📍 Ke Hub Tower</button><button data-tp="top">🏁 Ke Puncak Tower</button><button data-tp="maze">🧩 Ke Labirin</button><button data-tp="finish">🎉 Ke Finish</button><button id="ad-coin">🪙 +1000 Koin</button>';
   const fc = document.createElement('div'); fc.id = 'fly-ctrl';
   fc.innerHTML = '<button id="fly-up">▲</button><button id="fly-down">▼</button>';
   wrap.append(btn, panel); document.body.append(wrap, fc);
@@ -541,7 +543,7 @@ function setupAdminPanel() {
   document.getElementById('ad-speed').oninput = (e) => { flySpeed = +e.target.value; document.getElementById('ad-spd').textContent = flySpeed; };
   document.getElementById('ad-god').onclick = (e) => { godMode = !godMode; e.target.classList.toggle('on', godMode); e.target.textContent = '🛡️ Anti-mati: ' + (godMode ? 'ON' : 'OFF'); };
   panel.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => {
-    const d = { start: [0, 0.25, 0], hub: [0, 13.75, -68], top: [0, FIN_Y, -77] }[b.dataset.tp];
+    const d = { start: [0, 0.25, 0], hub: [0, 13.75, -68], top: [0, FIN_Y, -77], maze: [-2, FIN_Y, -85], finish: [WIN.x, FIN_Y, WIN.z] }[b.dataset.tp];
     character.position.set(...d); physics.velocityY = 0; moveVel.set(0, 0);
     if (gameState === 'GAMEOVER') { gameState = 'PLAYING'; document.getElementById('overlay').style.display = 'none'; }
   });
@@ -773,15 +775,120 @@ function init3DGame() {
   createPlatform(TC.x, FY, TC.z, 8, 8, 'static'); // PUNCAK / FINISH
   const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, FY - 12.25, 16), new THREE.MeshStandardMaterial({ color: 0x2a2a3a }));
   pillar.position.set(TC.x, (12 + FY - 0.25) / 2, TC.z); scene.add(pillar);
+  { const tp = platforms.find(pl => Math.abs(pl.mesh.position.x - TC.x) < 0.01 && Math.abs(pl.mesh.position.z - TC.z) < 0.01 && Math.abs(pl.mesh.position.y - FY) < 0.01); if (tp) { tp.checkpoint = true; tp.mesh.material = checkMat; } }
+
+  // ===== LABIRIN DI ATAS TOWER (salah lorong = ditembak NPC) =====
+  const MN = 6, CS = 4, mcx = 0, mcz = -101, wallH = 7, floorTop = FY + 0.25;
+  WIN = { x: mcx - 10 + 4 * 3, y: FY, z: mcz - 12 - 4 };
+  createPlatform(mcx - 10 + 4 * 2, FY, -85, 4, 8, 'static'); markCheckpoint(); // jembatan = checkpoint
+  createPlatform(mcx, FY, mcz, 24, 24, 'static');   // lantai labirin
+  createPlatform(WIN.x, FY, WIN.z, 8, 8, 'static'); // area finish setelah labirin
+
+  const cells = [];
+  for (let r = 0; r < MN; r++) { cells[r] = []; for (let c = 0; c < MN; c++) cells[r][c] = { n: true, e: true, s: true, w: true, v: false }; }
+  let seed = 13; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const stack = [[0, 2]]; cells[0][2].v = true;
+  while (stack.length) {
+    const [r, c] = stack[stack.length - 1], nb = [];
+    if (r > 0 && !cells[r - 1][c].v) nb.push([r - 1, c, 'n', 's']);
+    if (r < MN - 1 && !cells[r + 1][c].v) nb.push([r + 1, c, 's', 'n']);
+    if (c > 0 && !cells[r][c - 1].v) nb.push([r, c - 1, 'w', 'e']);
+    if (c < MN - 1 && !cells[r][c + 1].v) nb.push([r, c + 1, 'e', 'w']);
+    if (!nb.length) { stack.pop(); continue; }
+    const [nr, nc, d1, d2] = nb[Math.floor(rnd() * nb.length)];
+    cells[r][c][d1] = false; cells[nr][nc][d2] = false; cells[nr][nc].v = true; stack.push([nr, nc]);
+  }
+  cells[0][2].n = false; cells[MN - 1][3].s = false; // pintu masuk & keluar
+
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x5b6180, roughness: 0.8 });
+  const addWall = (x, z, w, d) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, wallH, d), wallMat);
+    mesh.position.set(x, floorTop + wallH / 2, z); scene.add(mesh);
+    platforms.push({ mesh, width: w, depth: d, type: 'wall', hh: wallH / 2, startX: x, startY: mesh.position.y, startZ: z, range: 0, speed: 0, phase: 0, isFallen: false, tell: 0, revealTimer: 0, dx: 0, r: 0 });
+  };
+  const cxOf = (c) => mcx - 10 + CS * c, czOf = (r) => mcz + 10 - CS * r;
+  for (let r = 0; r < MN; r++) for (let c = 0; c < MN; c++) {
+    const k = cells[r][c], x = cxOf(c), z = czOf(r);
+    if (r === 0 && k.n) addWall(x, z + 2, CS + 0.6, 0.6);
+    if (c === 0 && k.w) addWall(x - 2, z, 0.6, CS + 0.6);
+    if (k.s) addWall(x, z - 2, CS + 0.6, 0.6);
+    if (k.e) addWall(x + 2, z, 0.6, CS + 0.6);
+  }
+
+  // jalur benar (BFS pintu masuk -> keluar); semua sel di luar jalur = lorong salah
+  const key = (r, c) => r + ',' + c;
+  const nbrs = (r, c) => { const o = [], k = cells[r][c]; if (!k.n && r > 0) o.push([r - 1, c]); if (!k.s && r < MN - 1) o.push([r + 1, c]); if (!k.w && c > 0) o.push([r, c - 1]); if (!k.e && c < MN - 1) o.push([r, c + 1]); return o; };
+  const prev = { [key(0, 2)]: null }, bq = [[0, 2]];
+  while (bq.length) { const [r, c] = bq.shift(); for (const [nr, nc] of nbrs(r, c)) if (!(key(nr, nc) in prev)) { prev[key(nr, nc)] = [r, c]; bq.push([nr, nc]); } }
+  const onPath = new Set(); for (let cur = [MN - 1, 3]; cur; cur = prev[key(cur[0], cur[1])]) onPath.add(key(cur[0], cur[1]));
+
+  // NPC penembak berdiri di ujung buntu tiap cabang lorong salah
+  const AIM_TIME = 1.1;
+  function makeGuard(gx, gz, set) {
+    const g = new THREE.Group(); g.position.set(gx, floorTop, gz); scene.add(g);
+    const armor = new THREE.MeshStandardMaterial({ color: 0x1f2740, metalness: 0.5, roughness: 0.4 });
+    const add = (geo, mat, x, y, z, par = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); par.add(m); return m; };
+    add(new THREE.CapsuleGeometry(0.3, 0.8, 4, 12), armor, 0, 1.4, 0);
+    add(new THREE.SphereGeometry(0.28, 20, 16), new THREE.MeshStandardMaterial({ color: 0x2a2a35, metalness: 0.4 }), 0, 2.4, 0);
+    add(new THREE.BoxGeometry(0.4, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: 0xff2200 }), 0, 2.42, 0.22);
+    for (const sd of [-1, 1]) add(new THREE.CapsuleGeometry(0.12, 0.45, 4, 8), armor, sd * 0.15, 0.5, 0);
+    add(new THREE.CapsuleGeometry(0.09, 0.5, 4, 8), armor, -0.42, 1.55, 0);
+    const armR = new THREE.Group(); armR.position.set(0.4, 1.95, 0); armR.rotation.x = -1.45; g.add(armR);
+    add(new THREE.CapsuleGeometry(0.09, 0.45, 4, 8), armor, 0, -0.35, 0, armR);
+    add(new THREE.BoxGeometry(0.13, 0.36, 0.16), new THREE.MeshStandardMaterial({ color: 0x111118, metalness: 0.7 }), 0, -0.82, 0, armR);
+    const muzzle = add(new THREE.SphereGeometry(0.07, 8, 8), new THREE.MeshBasicMaterial({ color: 0x66f6ff }), 0, -1.02, 0, armR);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8), new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.9 }));
+    beam.visible = false; scene.add(beam);
+    const A = new THREE.Vector3(), B = new THREE.Vector3(), D = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+    const setBeam = (pp, rad) => { muzzle.getWorldPosition(A); B.set(pp.x, pp.y + 1.2, pp.z); D.subVectors(B, A); const len = D.length() || 0.01; beam.position.copy(A).addScaledVector(D, 0.5); beam.scale.set(rad, len, rad); beam.quaternion.setFromUnitVectors(UP, D.normalize()); };
+    let state = 'idle', timer = 0;
+    return {
+      reset() { state = 'idle'; timer = 0; beam.visible = false; },
+      update(delta, pp, t, canKill) {
+        const col = Math.floor((pp.x - (mcx - 12)) / CS), row = Math.floor(((mcz + 12) - pp.z) / CS);
+        const inside = pp.y > FY - 1 && pp.y < FY + 4 && set.has(key(row, col));
+        if (state === 'idle') {
+          g.rotation.y = Math.sin(t * 0.8 + gx) * 0.5;
+          if (inside) { state = 'aim'; timer = 0; showToast('🔫 Salah lorong!'); }
+          return false;
+        }
+        let df = Math.atan2(pp.x - gx, pp.z - gz) - g.rotation.y; df = Math.atan2(Math.sin(df), Math.cos(df));
+        g.rotation.y += df * (1 - Math.exp(-delta * 10));
+        timer += delta;
+        if (state === 'aim') {
+          if (!inside) { this.reset(); return false; }
+          setBeam(pp, 0.03); beam.material.color.setHex(0xff2200); beam.visible = Math.sin(timer * 30) > -0.3;
+          if (timer >= AIM_TIME) { state = 'fire'; timer = 0; setBeam(pp, 0.12); beam.material.color.setHex(0x66f6ff); beam.visible = true; return canKill; }
+        } else if (state === 'fire') {
+          setBeam(pp, 0.12);
+          if (timer > 0.35) this.reset();
+        }
+        return false;
+      }
+    };
+  }
+  const seen = new Set();
+  for (const pk of onPath) {
+    const [pr, pc] = pk.split(',').map(Number);
+    for (const [r0, c0] of nbrs(pr, pc)) {
+      if (onPath.has(key(r0, c0)) || seen.has(key(r0, c0))) continue;
+      const set = new Set([key(r0, c0)]), dq = [[r0, c0, 0]]; let deep = [r0, c0, 0]; seen.add(key(r0, c0));
+      while (dq.length) {
+        const [r, c, d] = dq.shift(); if (d > deep[2]) deep = [r, c, d];
+        for (const [nr, nc] of nbrs(r, c)) if (!onPath.has(key(nr, nc)) && !set.has(key(nr, nc))) { set.add(key(nr, nc)); seen.add(key(nr, nc)); dq.push([nr, nc, d + 1]); }
+      }
+      guards.push(makeGuard(cxOf(deep[1]), czOf(deep[0]), set));
+    }
+  }
       // Puncak / Finish
 
   // FINISH LINE
   const finishLine = new THREE.Mesh(new THREE.BoxGeometry(7, 0.1, 7), new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1 }));
-  finishLine.position.set(0, FY + 0.3, -77); scene.add(finishLine);
+  finishLine.position.set(WIN.x, FY + 0.3, WIN.z); scene.add(finishLine);
 
   const poleMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-  const leftPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); leftPole.position.set(-4, FY + 3, -77); scene.add(leftPole);
-  const rightPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); rightPole.position.set(4, FY + 3, -77); scene.add(rightPole);
+  const leftPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); leftPole.position.set(WIN.x - 4, FY + 3, WIN.z); scene.add(leftPole);
+  const rightPole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), poleMat); rightPole.position.set(WIN.x + 4, FY + 3, WIN.z); scene.add(rightPole);
 
   const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 256;
   const ctx = canvas.getContext('2d');
@@ -793,7 +900,7 @@ function init3DGame() {
 
   const texture = new THREE.CanvasTexture(canvas); texture.needsUpdate = true;
   const board = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide, emissive: 0x00ff00, emissiveIntensity: 0.2 }));
-  board.position.set(0, FY + 4, -77); scene.add(board);
+  board.position.set(WIN.x, FY + 4, WIN.z); scene.add(board);
 
   character = new THREE.Group();
   character.position.set(0, 0.25, 0);
@@ -994,7 +1101,7 @@ function checkGroundCollision(x, z, y) {
   for (let p of platforms) {
     if (p.isFallen || p.type === 'fake') continue;
     if (insidePlat(p, x, z, 0)) {
-      const topY = p.mesh.position.y + 0.25;
+      const topY = p.mesh.position.y + (p.hh || 0.25);
       if (feetY >= topY - tolerance && feetY <= topY + 0.5) return { y: topY, platform: p };
     }
   }
@@ -1005,7 +1112,7 @@ function checkWallCollision(x, z, y) {
   const radius = 0.35; const feetY = y;
   for (let p of platforms) {
     if (p.isFallen || p.type === 'fake') continue;
-    const topY = p.mesh.position.y + 0.25, bottomY = p.mesh.position.y - 0.25;
+    const hh = p.hh || 0.25, topY = p.mesh.position.y + hh, bottomY = p.mesh.position.y - hh;
     if (feetY < topY - 0.1 && feetY > bottomY - 1 && insidePlat(p, x, z, radius)) return true;
   }
   return false;
@@ -1021,7 +1128,7 @@ function showOverlay(title, desc, color) {
 // Pengganti tulisan GAME OVER: kalimat roasting, lalu "Coba lagi" di bawahnya (admin/dev tidak di-roasting)
 function showGameOver(kind) {
   const arr = ROASTS[kind];
-  const msg = isAdminUser() ? 'BOT BOT GITU AJA GA BISA😹!' : arr[Math.floor(Math.random() * arr.length)];
+  const msg = isAdminUser() ? '💥 Kena!' : arr[Math.floor(Math.random() * arr.length)];
   showOverlay(msg, 'Coba lagi 👇', '#ff3333');
   const t = document.getElementById('overlay-title');
   t.style.fontSize = 'clamp(22px, 6vw, 34px)'; t.style.maxWidth = '90vw'; t.style.textAlign = 'center'; t.style.lineHeight = '1.3';
@@ -1130,10 +1237,12 @@ function animate() {
   });
 
   hazards.forEach(h => h.update(t));
+  if (!mazeHinted && character.position.y > FIN_Y - 1 && Math.abs(character.position.x) < 12 && character.position.z < -89 && character.position.z > -113) { mazeHinted = true; showToast('🧩 Labirin! Salah lorong = ditembak NPC 🔫'); }
+  for (const gd of guards) { if (gd.update(delta, character.position, t, !godMode && !flyMode)) { gameState = 'GAMEOVER'; showGameOver('shot'); break; } }
   hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 2.5));
   if (hitCD <= 0 && !godMode && !flyMode) for (const h of hazards) {
     const n = h.test(character.position);
-    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; roast('hit', ' Kena rintangan buta ya?😹'); break; }
+    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; roast('hit', '💥 Kena rintangan!'); break; }
   }
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
   const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
@@ -1213,12 +1322,12 @@ function animate() {
   }
 
   // KONDISI MENANG DI PUNCAK
-  if (character.position.y > FIN_Y - 0.5 && Math.abs(character.position.x) < 4.5 && Math.abs(character.position.z + 77) < 4.5) {
+  if (character.position.y > FIN_Y - 0.5 && Math.abs(character.position.x - WIN.x) < 4.5 && Math.abs(character.position.z - WIN.z) < 4.5) {
     gameState = 'WIN'; 
-    playerData.coins = (playerData.coins || 0) + 100;
+    playerData.coins = (playerData.coins || 0) + 700;
     updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins;
-    showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago melewati jebakan! +100 🪙', '#00ff00');
+    showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +700 🪙', '#00ff00');
   }
 
   // ===== Animasi karakter: damping + squash & stretch + condong badan =====
