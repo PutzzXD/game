@@ -1,5 +1,22 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-app.js';
+import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-auth.js';
+import { getDatabase, ref, set, onValue, onDisconnect, remove } from 'https://www.gstatic.com/firebasejs/13.2.0/firebase-database.js';
+
+// Firebase multiplayer: memakai project PARKOUR 3D yang sudah terdaftar.
+const firebaseConfig = {
+  apiKey: 'AIzaSyB7ue_o-x-QSc92vR6Zu5sCEAJiGt6QUeU',
+  authDomain: 'game3d-66134.firebaseapp.com',
+  databaseURL: 'https://game3d-66134-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId: 'game3d-66134',
+  storageBucket: 'game3d-66134.firebasestorage.app',
+  messagingSenderId: '229970848153',
+  appId: '1:229970848153:web:13c9626e65a84c6c300b08'
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const multiplayerAuth = getAuth(firebaseApp);
+const multiplayerDb = getDatabase(firebaseApp);
 
 // ============ 1. KONFIGURASI FIREBASE ============
 const FIREBASE_URL = "https://game3d-66134-default-rtdb.asia-southeast1.firebasedatabase.app/";
@@ -158,6 +175,10 @@ window.addEventListener('DOMContentLoaded', () => {
     chatToggle.textContent = '💬 Chat Global';
     isGameStarted = true;
     gameState = 'PLAYING';
+    connectGlobalMultiplayer().catch((error) => {
+      console.error('Multiplayer Firebase gagal tersambung:', error);
+      showToast('⚠️ Multiplayer gagal tersambung');
+    });
     profileModal.style.display = 'none';
     shopModal.style.display = 'none';
     camera.position.set(0, 4, 8);
@@ -1181,6 +1202,132 @@ function updateCharacterNameSprite(username, isDev) {
   character.add(nameSprite);
 }
 
+// ============ MULTIPLAYER GLOBAL FIREBASE (tambahan, tidak mengubah fisika game) ============
+const GLOBAL_ROOM_PATH = 'rooms/global/players';
+const MULTIPLAYER_SEND_INTERVAL = 100; // sekitar 10 update/detik per pemain
+let multiplayerUid = null;
+let multiplayerPlayerRef = null;
+let multiplayerConnected = false;
+let multiplayerLastSend = 0;
+const remotePlayers = new Map();
+
+function makeRemotePlayer(uid, data) {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x36a2ff, roughness: 0.75 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd1a4, roughness: 0.85 });
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.85, 4, 8), bodyMat);
+  body.position.y = 1.05;
+  body.castShadow = true;
+  group.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.31, 16, 12), skinMat);
+  head.position.y = 1.88;
+  head.castShadow = true;
+  group.add(head);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,.68)';
+  ctx.beginPath(); ctx.roundRect(8, 8, 496, 112, 22); ctx.fill();
+  ctx.font = 'bold 48px sans-serif'; ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(data.username || 'Pemain').slice(0, 18), 256, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }));
+  label.position.y = 2.65; label.scale.set(2.2, 0.55, 1);
+  group.add(label);
+  group.userData.remoteUid = uid;
+  group.userData.targetPosition = new THREE.Vector3(
+    Number(data.x) || 0, Number(data.y) || 0, Number(data.z) || 0
+  );
+  group.userData.targetRotation = Number(data.rotation) || 0;
+  scene.add(group);
+  remotePlayers.set(uid, group);
+  return group;
+}
+
+function updateRemotePlayers(snapshot) {
+  if (!scene || !snapshot) return;
+  const activeIds = new Set();
+  Object.entries(snapshot).forEach(([uid, data]) => {
+    if (!data || uid === multiplayerUid || data.status !== 'PLAYING') return;
+    activeIds.add(uid);
+    let avatar = remotePlayers.get(uid);
+    if (!avatar) avatar = makeRemotePlayer(uid, data);
+    avatar.userData.targetPosition.set(Number(data.x) || 0, Number(data.y) || 0, Number(data.z) || 0);
+    avatar.userData.targetRotation = Number(data.rotation) || 0;
+  });
+  for (const [uid, avatar] of remotePlayers) {
+    if (!activeIds.has(uid)) {
+      scene.remove(avatar);
+      avatar.traverse((obj) => {
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) {
+          const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+          materials.forEach((mat) => { if (mat.map) mat.map.dispose(); mat.dispose(); });
+        }
+      });
+      remotePlayers.delete(uid);
+    }
+  }
+}
+
+async function connectGlobalMultiplayer() {
+  if (multiplayerConnected || !playerData.username) return;
+  const credential = await signInAnonymously(multiplayerAuth);
+  multiplayerUid = credential.user.uid;
+  multiplayerPlayerRef = ref(multiplayerDb, `${GLOBAL_ROOM_PATH}/${multiplayerUid}`);
+  await onDisconnect(multiplayerPlayerRef).remove();
+  await set(multiplayerPlayerRef, {
+    username: String(playerData.username).slice(0, 18),
+    isDev: !!playerData.isDev,
+    status: 'PLAYING', x: character ? character.position.x : 0,
+    y: character ? character.position.y : 0,
+    z: character ? character.position.z : 0,
+    rotation: character ? character.rotation.y : 0,
+    updatedAt: Date.now()
+  });
+  onValue(ref(multiplayerDb, GLOBAL_ROOM_PATH), (snapshot) => {
+    updateRemotePlayers(snapshot.val() || {});
+  }, (error) => console.error('Gagal membaca pemain global:', error));
+  multiplayerConnected = true;
+  showToast('🌍 Multiplayer global aktif');
+}
+
+function tickGlobalMultiplayer() {
+  if (!multiplayerConnected || !multiplayerPlayerRef || !character || gameState !== 'PLAYING') return;
+  const now = performance.now();
+  if (now - multiplayerLastSend < MULTIPLAYER_SEND_INTERVAL) return;
+  multiplayerLastSend = now;
+  const payload = {
+    username: String(playerData.username || 'Pemain').slice(0, 18),
+    isDev: !!playerData.isDev,
+    status: 'PLAYING',
+    x: Number(character.position.x.toFixed(3)),
+    y: Number(character.position.y.toFixed(3)),
+    z: Number(character.position.z.toFixed(3)),
+    rotation: Number(character.rotation.y.toFixed(3)),
+    updatedAt: Date.now()
+  };
+  set(multiplayerPlayerRef, payload).catch((error) => console.error('Gagal mengirim posisi pemain:', error));
+}
+
+function animateRemotePlayers(delta) {
+  const blend = 1 - Math.exp(-delta * 12);
+  for (const avatar of remotePlayers.values()) {
+    avatar.position.lerp(avatar.userData.targetPosition, blend);
+    const diff = Math.atan2(
+      Math.sin(avatar.userData.targetRotation - avatar.rotation.y),
+      Math.cos(avatar.userData.targetRotation - avatar.rotation.y)
+    );
+    avatar.rotation.y += diff * blend;
+  }
+}
+
+window.addEventListener('pagehide', () => {
+  if (multiplayerPlayerRef) remove(multiplayerPlayerRef).catch(() => {});
+});
+
 const clock = new THREE.Clock();
 let walkTime = 0;
 
@@ -1189,6 +1336,8 @@ function animate() {
   if (!renderer) return;
   const delta = Math.min(clock.getDelta(), 0.1);
   const t = clock.getElapsedTime();
+  tickGlobalMultiplayer();
+  animateRemotePlayers(delta);
   if (scene && camera) renderer.render(scene, camera);
 
   // Animasi Berkedip pada Laser NPC
@@ -1254,12 +1403,12 @@ function animate() {
   });
 
   hazards.forEach(h => h.update(t));
-  if (!mazeHinted && character.position.y > FIN_Y - 1 && Math.abs(character.position.x) < 12 && character.position.z < -89 && character.position.z > -113) { mazeHinted = true; showToast('🧩 Labirin! Salah lorong = ditembak NPC 🔫'); }
+  if (!mazeHinted && character.position.y > FIN_Y - 1 && Math.abs(character.position.x) < 12 && character.position.z < -89 && character.position.z > -113) { mazeHinted = true; showToast('🧩 SALAH BEGO,MAMPUS'); }
   for (const gd of guards) { if (gd.update(delta, character.position, t, !godMode && !flyMode)) { gameState = 'GAMEOVER'; showGameOver('shot'); break; } }
   hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 2.5));
   if (hitCD <= 0 && !godMode && !flyMode) for (const h of hazards) {
     const n = h.test(character.position);
-    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; roast('hit', '💥 Kena rintangan!'); break; }
+    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; roast('hit', ' Kena rintangan!'); break; }
   }
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
   const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
@@ -1321,7 +1470,7 @@ function animate() {
     if (p.type !== 'fake' || p.revealTimer > 0) return;
     const m = p.mesh.position, ty = m.y + 0.25;
     if (Math.abs(character.position.x - m.x) < p.width / 2 && Math.abs(character.position.z - m.z) < p.depth / 2 && character.position.y < ty + 0.2 && character.position.y > ty - 1.2) {
-      p.revealTimer = 1.5; roast('fake', '👻 Kotak palsu!');
+      p.revealTimer = 1.5; roast('fake', ' Kotak palsu! bego');
     }
   });
 
