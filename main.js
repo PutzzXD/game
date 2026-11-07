@@ -153,7 +153,7 @@ window.addEventListener('DOMContentLoaded', () => {
     requestFullscreenAndLock();
     document.getElementById('btn-start-game').style.display = 'none';
     document.getElementById('btn-shop').style.display = 'none';
-    document.getElementById('in-game-controls').style.display = 'block';
+    document.getElementById('in-game-controls').style.display = 'block'; { const zc = document.getElementById('zoom-ctrl'); if (zc) zc.style.display = 'flex'; }
     chatBox.style.display = 'none'; 
     chatToggle.textContent = '💬 Chat Global';
     isGameStarted = true;
@@ -272,7 +272,7 @@ function startLobby() {
   }
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('btn-shop').style.display = 'flex';
-  document.getElementById('in-game-controls').style.display = 'none';
+  document.getElementById('in-game-controls').style.display = 'none'; { const zc = document.getElementById('zoom-ctrl'); if (zc) zc.style.display = 'none'; }
   document.getElementById('chat-container').style.display = 'flex';
 
   fetchGlobalChat();
@@ -481,7 +481,7 @@ let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
 let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
 let batGrp, capeB, ironHelm, ironBody;
-let guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
+let zoomDir = 0, guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 const ROASTS = {
   hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
   fall: ['Beruntung banget jatuh ke lava, hangat kan? 🔥😹', 'Pemain paling beruntung sedunia: jatuh dari tempat yang sama lagi 🍀💀', 'Mantap, rekor jatuh terbaru! Lava bangga sama kamu 🏅🔥'],
@@ -1021,8 +1021,25 @@ function init3DGame() {
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
-  controls.enablePan = false; controls.minDistance = 3; controls.maxDistance = 15;
-  controls.maxPolarAngle = Math.PI / 2 - 0.1;
+  controls.enablePan = false; controls.minDistance = 2.5; controls.maxDistance = 24;
+  controls.maxPolarAngle = Math.PI / 2 - 0.05;
+  controls.enableZoom = true; controls.zoomSpeed = 1.2; controls.rotateSpeed = 0.9;
+  controls.enableDamping = true; controls.dampingFactor = 0.12;
+  controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }; // 1 jari = putar kamera, 2 jari = cubit zoom
+
+  // Tombol zoom +/- (zoom tanpa cubit saat satu jempol sedang memegang analog)
+  const zcss = document.createElement('style');
+  zcss.textContent = '#zoom-ctrl{position:fixed;left:14px;top:42%;z-index:40;display:none;flex-direction:column;gap:10px}#zoom-ctrl button{width:48px;height:48px;border-radius:50%;border:0;background:rgba(255,255,255,.28);color:#fff;font-size:24px;font-weight:700;touch-action:none;user-select:none}';
+  document.head.appendChild(zcss);
+  const zc = document.createElement('div'); zc.id = 'zoom-ctrl';
+  zc.innerHTML = '<button id="zoom-in">＋</button><button id="zoom-out">－</button>';
+  document.body.appendChild(zc);
+  const holdZoom = (id, dir) => {
+    const el = document.getElementById(id);
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zoomDir = dir; });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => { zoomDir = 0; }));
+  };
+  holdZoom('zoom-in', -1); holdZoom('zoom-out', 1);
 
   controls.domElement.addEventListener('pointerdown', function(e) {
     if (!isGameStarted) return;
@@ -1372,11 +1389,14 @@ function animate() {
   if (embers) { const ep = embers.geometry.attributes.position; for (let i = 0; i < ep.count; i++) { let y = ep.getY(i) + delta * 1.5; if (y > 22) y = -8; ep.setY(i, y); } ep.needsUpdate = true; }
 
   const targetPos = character.position.clone(); targetPos.y += 1.5;
-  controls.target.lerp(targetPos, 0.1);
-  const camDir = camera.position.clone().sub(controls.target).normalize();
-  const desiredCamPos = controls.target.clone().add(camDir.multiplyScalar(8));
-  if (desiredCamPos.y < character.position.y + 2) desiredCamPos.y = character.position.y + 2;
-  camera.position.lerp(desiredCamPos, 0.1);
+  const prevT = controls.target.clone();
+  controls.target.lerp(targetPos, 1 - Math.exp(-delta * 8));
+  camera.position.add(controls.target.clone().sub(prevT)); // kamera ikut bergerak bersama pemain
+  if (zoomDir) {
+    const off = camera.position.clone().sub(controls.target);
+    off.setLength(THREE.MathUtils.clamp(off.length() * (1 + zoomDir * 1.2 * delta), controls.minDistance, controls.maxDistance));
+    camera.position.copy(controls.target).add(off);
+  }
   controls.update();
 
   lavaMat.color.setHSL(0.03 + Math.sin(t * 2) * 0.02, 1, 0.5);
