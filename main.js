@@ -293,6 +293,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const verifiedData = await ensurePlayerId(userKey, data);
       playerData = { ...playerData, ...verifiedData, inventory: verifiedData.inventory || playerData.inventory, equipped: verifiedData.equipped || playerData.equipped };
       localStorage.setItem('parkour_user', JSON.stringify({ username, isDev: data.isDev }));
+      tryAutoLandscape();
       startLobby();
     } catch(e) {
       loginMsg.textContent = "Gagal konek ke server."; loginMsg.className = "msg error";
@@ -300,21 +301,64 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // AUTO LOGIN
+  // AUTO LOGIN: pemain yang punya sesi valid langsung ke lobby dengan splash screen.
   const savedSession = localStorage.getItem('parkour_user');
   if (savedSession) {
-    try {
-      const session = JSON.parse(savedSession);
-      fetch(`${FIREBASE_URL}players/${session.username.toLowerCase()}.json`)
-        .then(res => res.json())
+    let session = null;
+    try { session = JSON.parse(savedSession); }
+    catch (e) { localStorage.removeItem('parkour_user'); }
+
+    if (session && session.username) {
+      const splash = document.getElementById('startup-loading');
+      const splashBar = document.getElementById('startup-bar');
+      const splashStatus = document.getElementById('startup-status');
+      const startedAt = performance.now();
+      let splashProgress = 8;
+      const splashTimer = setInterval(() => {
+        splashProgress = Math.min(92, splashProgress + 4 + Math.random() * 8);
+        if (splashBar) splashBar.style.width = splashProgress + '%';
+        if (splashStatus) splashStatus.textContent = 'Memeriksa akun dan menyiapkan lobby...';
+      }, 180);
+
+      fetch(`${FIREBASE_URL}players/${String(session.username).toLowerCase()}.json`)
+        .then(res => {
+          if (!res.ok) throw new Error('Gagal memeriksa sesi akun');
+          return res.json();
+        })
         .then(async data => {
-          if (data) {
-            const verifiedData = await ensurePlayerId(session.username.toLowerCase(), data);
-            playerData = { ...playerData, ...verifiedData, inventory: verifiedData.inventory || playerData.inventory, equipped: verifiedData.equipped || playerData.equipped };
+          if (!data) {
+            localStorage.removeItem('parkour_user');
+            document.getElementById('auth-container').style.display = 'flex';
+            splash.classList.add('is-hidden');
+            setTimeout(() => splash.remove(), 500);
+            return;
+          }
+          const verifiedData = await ensurePlayerId(String(session.username).toLowerCase(), data);
+          playerData = { ...playerData, ...verifiedData, inventory: verifiedData.inventory || playerData.inventory, equipped: verifiedData.equipped || playerData.equipped };
+          if (splashStatus) splashStatus.textContent = 'Lobby siap! Memasuki permainan...';
+          if (splashBar) splashBar.style.width = '100%';
+          const wait = Math.max(0, 1100 - (performance.now() - startedAt));
+          setTimeout(() => {
             startLobby();
-          } else { localStorage.removeItem('parkour_user'); }
-        });
-    } catch(e) { localStorage.removeItem('parkour_user'); }
+            splash.classList.add('is-hidden');
+            setTimeout(() => splash.remove(), 500);
+          }, wait);
+        })
+        .catch(err => {
+          console.warn('Auto-login gagal:', err);
+          document.getElementById('auth-container').style.display = 'flex';
+          splash.classList.add('is-hidden');
+          setTimeout(() => splash.remove(), 500);
+        })
+        .finally(() => clearInterval(splashTimer));
+    } else {
+      const splash = document.getElementById('startup-loading');
+      if (splash) splash.remove();
+    }
+  } else {
+    const splash = document.getElementById('startup-loading');
+    if (splash) splash.remove();
+    document.getElementById('auth-container').style.display = 'flex';
   }
 });
 
@@ -369,6 +413,7 @@ function setLobbyOnlyHud(show) {
 
 // ============ 4. FUNGSI LOBI & SHOP ============
 function startLobby() {
+  tryAutoLandscape();
   document.getElementById('auth-container').style.display = 'none';
   document.getElementById('game-ui').style.display = 'block';
   gameState = 'LOBBY'; 
@@ -846,12 +891,25 @@ function reviveLocal() {
   if (myRef) update(myRef, { deadAt: null }).catch(() => {});
 }
 
+function tryAutoLandscape() {
+  // Penguncian orientasi dicoba otomatis; browser tertentu hanya mengizinkannya
+  // setelah interaksi pengguna atau saat mode fullscreen.
+  try {
+    if (screen.orientation && typeof screen.orientation.lock === 'function') {
+      const result = screen.orientation.lock('landscape');
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+    }
+  } catch (e) { /* orientasi otomatis tidak didukung browser */ }
+}
+
 function requestFullscreenAndLock() {
   const elem = document.documentElement;
   if (elem.requestFullscreen) {
     elem.requestFullscreen().then(() => {
-      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(e => console.log(e));
+      tryAutoLandscape();
     }).catch(e => console.log(e));
+  } else {
+    tryAutoLandscape();
   }
 }
 
