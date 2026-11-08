@@ -203,6 +203,13 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('btn-start-game').addEventListener('click', () => {
+    // Di room, tombol ini hanya meminta host memulai. Semua pemain baru mulai
+    // setelah startAt tersinkron dari Firebase.
+    if (roomCode && !roomStartAt) {
+      if (roomMeta && roomMeta.host === mpUid) hostStart().catch(e => showToast(mpErr(e)));
+      else showToast('Menunggu pembuat room memulai permainan.');
+      return;
+    }
     requestFullscreenAndLock();
     document.getElementById('btn-start-game').style.display = 'none';
     document.getElementById('btn-shop').style.display = 'none';
@@ -678,6 +685,8 @@ let rig, leftElbow, rightElbow, leftKnee, rightKnee, embers;
 let sq = { x: 0, v: 0 }, moveVel = new THREE.Vector2(0, 0), wasGrounded = true, laserState = 'off';
 const LASER_Z = -44, LASER_Y = 9.3;
 let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
+let usedCheckpointMat = null;
+let activatedCheckpoints = new WeakSet(); // Setiap platform checkpoint hanya aktif sekali per putaran
 let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
 let batGrp, capeB, ironHelm, ironBody, thorHelm, thorBody, capeT;
@@ -1002,7 +1011,8 @@ function init3DGame() {
   createPlatform(-2, 12, -61.5, 3.2, 2.5, 'fake', 0.05); createPlatform(2, 12, -61.5, 3.2, 2.5, 'static');
   createPlatform(0, 13.5, -68, 8, 8, 'static');
   const checkMat = new THREE.MeshStandardMaterial({ color: 0x22aa55, emissive: 0x22aa55, emissiveIntensity: 0.4 });
-  const markCheckpoint = () => { const c = platforms[platforms.length - 1]; c.checkpoint = true; c.mesh.material = checkMat; };
+  usedCheckpointMat = new THREE.MeshStandardMaterial({ color: 0x666677, emissive: 0x222233, emissiveIntensity: 0.12, roughness: 0.85 });
+  const markCheckpoint = () => { const c = platforms[platforms.length - 1]; c.checkpoint = true; c.checkpointActivated = false; c.checkpointReadyMaterial = checkMat; c.mesh.material = checkMat; };
   markCheckpoint(); // Hub = checkpoint
 
   // ===== TOWER SPIRAL ala obby Roblox: muter naik ke atas =====
@@ -1051,7 +1061,7 @@ function init3DGame() {
   createPlatform(TC.x, FY, TC.z, 8, 8, 'static'); // PUNCAK / FINISH
   const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, FY - 12.25, 16), new THREE.MeshStandardMaterial({ color: 0x2a2a3a }));
   pillar.position.set(TC.x, (12 + FY - 0.25) / 2, TC.z); scene.add(pillar);
-  { const tp = platforms.find(pl => Math.abs(pl.mesh.position.x - TC.x) < 0.01 && Math.abs(pl.mesh.position.z - TC.z) < 0.01 && Math.abs(pl.mesh.position.y - FY) < 0.01); if (tp) { tp.checkpoint = true; tp.mesh.material = checkMat; } }
+  { const tp = platforms.find(pl => Math.abs(pl.mesh.position.x - TC.x) < 0.01 && Math.abs(pl.mesh.position.z - TC.z) < 0.01 && Math.abs(pl.mesh.position.y - FY) < 0.01); if (tp) { tp.checkpoint = true; tp.checkpointActivated = false; tp.checkpointReadyMaterial = checkMat; tp.mesh.material = checkMat; } }
 
   // ===== LABIRIN DI ATAS TOWER (salah lorong = ditembak NPC) =====
   const MN = 12, CS = 4, mcx = 0, MH = MN * CS / 2, mcz = -89 - MH, wallH = 7, floorTop = FY + 0.25, EC = Math.floor(MN / 2) - 1;
@@ -1103,7 +1113,7 @@ function init3DGame() {
   [Math.floor(pathArr.length / 3), Math.floor(pathArr.length * 2 / 3)].forEach(ix => {
     const [pr, pc] = pathArr[ix];
     createPlatform(cxOf(pc), FY + 0.01, czOf(pr), 2.4, 2.4, 'static', 0, 'round');
-    const pd = platforms.pop(); platforms.unshift(pd); pd.checkpoint = true; pd.mesh.material = checkMat;
+    const pd = platforms.pop(); platforms.unshift(pd); pd.checkpoint = true; pd.checkpointActivated = false; pd.checkpointReadyMaterial = checkMat; pd.mesh.material = checkMat;
   });
 
   // NPC penembak berdiri di ujung buntu tiap cabang lorong salah
@@ -1657,6 +1667,10 @@ function onRoomSnapshot(sn) {
 
 async function hostStart() {
   if (!roomCode || !roomMeta || roomMeta.host !== mpUid || roomMeta.startAt) return;
+  if (Object.keys(roomPlayers || {}).length < 2) {
+    showToast('Tunggu teman menerima undangan dan masuk lobby dulu.');
+    return;
+  }
   await update(ref(multiplayerDb, `rooms/${roomCode}/meta`), { startAt: serverNow() + 4500 });
 }
 
@@ -1689,6 +1703,10 @@ function onGameBegin() {
   const rp = document.getElementById('room-panel'); if (rp) rp.style.display = 'none';
   finishMs = null;
   personalRunScore = 0;
+  activatedCheckpoints = new WeakSet();
+  // Reset warna/status checkpoint hanya saat putaran baru dimulai. Respawn tidak meresetnya.
+  platforms.forEach(pl => { if (pl.checkpoint) { pl.checkpointActivated = false; if (pl.checkpointReadyMaterial) pl.mesh.material = pl.checkpointReadyMaterial; } });
+  checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
   if (camera && controls) { camera.position.set(0, 4, 8); controls.target.set(0, 1.5, 0); }
   if (roomCode && roomStartAt) {
     const idx = Math.max(0, sortedIds().indexOf(mpUid)), sp = SPAWN[idx % SPAWN.length];
@@ -2185,11 +2203,17 @@ async function removeFriend(targetKey) {
   await renderFriendsList();
 }
 async function sendGameInvite(targetKey, targetName) {
+  if (roomCode && roomMeta && roomMeta.host !== mpUid) {
+    showToast('Hanya pembuat room yang bisa mengundang teman.');
+    return;
+  }
+  if (roomCode && (roomStarted || roomMeta?.startAt)) {
+    showToast('Permainan sudah dimulai. Selesaikan dulu sebelum mengundang.');
+    return;
+  }
   if (!roomCode) {
-    showToast('Menyiapkan room untuk undangan…');
+    showToast('Menyiapkan lobby untuk undangan…');
     await createRoom();
-    // Mulai otomatis agar penerima undangan langsung masuk ke permainan yang sama.
-    await update(ref(multiplayerDb, `rooms/${roomCode}/meta`), { startAt: serverNow() + 6500 });
   }
   const invite = { from: myPlayerKey(), fromName: playerData.username, to: targetKey, roomCode, sentAt: Date.now(), status: 'pending' };
   await socialPatch(`gameInvites/${targetKey}`, { [myPlayerKey()]: invite });
@@ -2293,7 +2317,11 @@ async function respondGameInvite(accept) {
   await socialPatch(`gameInvites/${myPlayerKey()}/${from}`, { status: accept ? 'accepted' : 'declined', respondedAt: Date.now() });
   if (accept) {
     if (!code) { showToast('Kode room tidak valid'); return; }
-    try { await joinRoom(code); showToast('Berhasil bergabung ke room!'); }
+    try {
+      if (roomCode) await leaveRoom(true);
+      await joinRoom(code);
+      showToast('Berhasil masuk lobby! Tunggu host memulai permainan.');
+    }
     catch (e) { showToast('Tidak bisa bergabung: ' + e.message); }
   }
 }
@@ -2332,14 +2360,19 @@ function buildPlayerSearchUI() {
 function setRoomMsg(m) { const el = document.getElementById('rp-msg'); if (el) el.textContent = m || ''; }
 function updateRoomUI() {
   updateLobbyLeaderboard();
-  const panel = document.getElementById('room-panel'); if (!panel) return;
   const inLobby = gameState === 'LOBBY';
+  const startButton = document.getElementById('btn-start-game');
+  if (startButton && inLobby) {
+    const hostCanStart = !!roomCode && !!roomMeta && roomMeta.host === mpUid && !roomMeta.startAt;
+    startButton.style.display = roomCode ? (hostCanStart ? 'flex' : 'none') : 'flex';
+    startButton.title = roomCode ? (hostCanStart ? 'Mulai permainan bersama teman di lobby' : 'Menunggu pembuat room') : 'Mulai permainan solo';
+  }
+  const panel = document.getElementById('room-panel'); if (!panel) return;
   panel.style.display = inLobby ? 'flex' : 'none';
   panel.classList.toggle('rp-collapsed', rpCollapsed);
   document.getElementById('rp-min').textContent = rpCollapsed ? '▢' : '—';
   document.getElementById('rp-qstart').style.display = (rpCollapsed && roomCode && roomMeta && roomMeta.host === mpUid && !roomMeta.startAt) ? 'block' : 'none';
   document.getElementById('rp-title').textContent = roomCode ? '🎮 Room ' + roomCode + ' · ' + Object.keys(roomPlayers).length + ' pemain' : '🎮 Mabar';
-  const sb = document.getElementById('btn-start-game'); if (sb && inLobby) sb.style.display = roomCode ? 'none' : 'flex';
   document.getElementById('rp-menu').style.display = roomCode ? 'none' : 'flex';
   document.getElementById('rp-room').style.display = roomCode ? 'flex' : 'none';
   if (!roomCode) return;
@@ -2496,9 +2529,13 @@ function animate() {
     character.position.y = groundData.y;
     physics.velocityY = 0; physics.isGrounded = true; physics.jumpCount = 0;
     if (groundData.platform.type === 'moving_x') character.position.x += groundData.platform.dx;
-    if (groundData.platform.checkpoint && checkpoint.p !== groundData.platform) {
+    if (groundData.platform.checkpoint && !groundData.platform.checkpointActivated && !activatedCheckpoints.has(groundData.platform)) {
+      // Tandai platform secara permanen untuk putaran ini agar tidak aktif ulang setelah pemain jatuh/respawn.
+      groundData.platform.checkpointActivated = true;
+      activatedCheckpoints.add(groundData.platform);
       const m = groundData.platform.mesh.position;
       checkpoint = { p: groundData.platform, set: true, x: m.x, y: groundData.y, z: m.z };
+      if (usedCheckpointMat) groundData.platform.mesh.material = usedCheckpointMat;
       showToast('✅ Checkpoint tersimpan!');
     }
   } else {
