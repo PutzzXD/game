@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#1a1a24">
-  <title>Parkour 3D - Putzzdev</title>
+  <title>Parkour 3D - Akses</title>
+  
+  <link rel="manifest" href="./manifest.json">
   
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap');
@@ -14,18 +16,12 @@
       margin: 0; padding: 0; background: #0d0d15; font-family: 'Rajdhani', sans-serif; 
       user-select: none; -webkit-user-select: none; color: white;
       display: flex; justify-content: center; align-items: center; 
-      min-height: 100vh; overflow: hidden;
+      min-height: 100vh; overflow-y: auto; overflow-x: hidden;
       background-image: radial-gradient(circle at 50% 0%, #2a1b41 0%, #0d0d15 70%);
     }
 
-    /* Canvas 3D ditaruh paling belakang */
-    canvas { position: absolute; top: 0; left: 0; z-index: 0; display: block; }
-
     /* --- UI LOGIN --- */
-    #auth-container { 
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      background: #0d0d15; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    }
+    #auth-container { width: 90%; max-width: 400px; display: flex; flex-direction: column; align-items: center; z-index: 100; padding: 20px 0;}
     .logo-area { text-align: center; margin-bottom: 20px; }
     .logo-box { width: 70px; height: 70px; background: #9d4edd; border-radius: 20px; display: flex; justify-content: center; align-items: center; margin: 0 auto 10px auto; box-shadow: 0 0 20px rgba(157, 78, 221, 0.5); }
     .logo-box svg { width: 40px; height: 40px; fill: white; }
@@ -36,14 +32,14 @@
     .status-online { display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 255, 0, 0.1); border: 1px solid rgba(0, 255, 0, 0.3); padding: 5px 15px; border-radius: 20px; font-size: 12px; color: #00ff00; margin-top: 10px; font-weight: bold; }
     .status-dot { width: 8px; height: 8px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 10px #00ff00; }
 
-    .tabs { display: flex; width: 100%; max-width: 400px; margin-bottom: 20px; position: relative; z-index: 999; }
+    .tabs { display: flex; width: 100%; margin-bottom: 20px; position: relative; z-index: 999; }
     .tabs input[type="radio"] { display: none; }
     .tab-label { flex: 1; text-align: center; padding: 12px; background: #11111a; border: 1px solid #333; color: #888; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
     .tab-label:first-of-type { border-radius: 12px 0 0 12px; }
     .tab-label:last-of-type { border-radius: 0 12px 12px 0; }
     #tab1:checked ~ .tabs .tab-label[for="tab1"], #tab2:checked ~ .tabs .tab-label[for="tab2"] { background: #9d4edd; color: white; border-color: #9d4edd; box-shadow: 0 0 15px rgba(157, 78, 221, 0.4); }
 
-    .form-container { width: 90%; max-width: 400px; position: relative; z-index: 1; }
+    .form-container { width: 100%; position: relative; z-index: 1; }
     .form-box { width: 100%; display: none; flex-direction: column; }
     #tab1:checked ~ .form-container #form-login { display: flex; }
     #tab2:checked ~ .form-container #form-register { display: flex; }
@@ -64,19 +60,19 @@
     .msg.success { color: #00ff00; }
 
     /* --- UI LOBBY & GAME --- */
-    #game-ui { 
-      display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; 
-      pointer-events: none; z-index: 10;
-    }
+    #game-ui { display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; pointer-events: none; }
     
-    #top-hud { position: absolute; top: 15px; left: 15px; z-index: 10; display: flex; gap: 10px; pointer-events: auto; }
-    #btn-profile { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.6); padding: 8px 15px; border-radius: 20px; color: white; font-weight: bold; font-family: sans-serif; font-size: 16px; cursor: pointer; border: 1px solid #555; transition: 0.2s; }
+    /* Top HUD (Kiri Atas) */
+    #top-hud { position: absolute; top: 12px; left: 12px; z-index: 10; display: flex; gap: 7px; align-items: center; pointer-events: auto; }
+    #btn-profile { display: flex; align-items: center; gap: 6px; background: rgba(8,14,28,0.82); padding: 6px 10px; border-radius: 14px; color: white; font-weight: bold; font-family: sans-serif; font-size: 13px; cursor: pointer; border: 1px solid rgba(255,255,255,.28); transition: 0.2s; }
     #btn-profile:active { transform: scale(0.95); }
     #hud-verified { display: none; width: 18px; height: 18px; background: #1DA1F2; border-radius: 50%; align-items: center; justify-content: center; font-size: 12px; color: white; }
 
-    #coin-hud { position: absolute; top: 15px; right: 15px; z-index: 10; background: rgba(0,0,0,0.6); padding: 8px 15px; border-radius: 20px; color: #ffd700; font-weight: bold; font-family: sans-serif; font-size: 18px; border: 1px solid #ffd700; display: flex; align-items: center; gap: 5px; pointer-events: auto; }
-    #coin-icon { font-size: 20px; }
+    /* Koin (Kanan Atas) */
+    #coin-hud { position: static; z-index: 10; background: rgba(8,14,28,0.82); padding: 6px 9px; border-radius: 12px; color: #ffd700; font-weight: bold; font-family: sans-serif; font-size: 12px; border: 1px solid rgba(255,215,0,.65); display: flex; align-items: center; gap: 4px; pointer-events: auto; }
+    #coin-icon { font-size: 14px; }
 
+    /* Modal Profil */
     #profile-modal { position: absolute; top: 60px; left: 15px; background: #22222e; border: 1px solid #444; border-radius: 12px; padding: 20px; color: white; z-index: 20; width: 250px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); pointer-events: auto; display: none; }
     #profile-modal h3 { margin: 0 0 10px 0; color: #e0aaff; border-bottom: 1px solid #444; padding-bottom: 5px; display: flex; justify-content: space-between; }
     #close-modal { cursor: pointer; color: #ff3333; font-weight: bold; }
@@ -84,7 +80,7 @@
     #profile-modal .dev-badge { color: #1DA1F2; font-weight: bold; }
     .btn-logout { width: 100%; padding: 10px; margin-top: 15px; background: #ff3333; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-family: sans-serif; }
 
-    /* SHOP */
+    /* --- UI SHOP MODAL --- */
     #shop-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a24; border: 2px solid #9d4edd; border-radius: 15px; width: 90%; max-width: 600px; padding: 20px; z-index: 50; display: none; flex-direction: column; pointer-events: auto; box-shadow: 0 0 30px rgba(157,78,221,0.3); max-height: 80vh; overflow-y: auto; }
     #shop-modal h2 { margin: 0 0 15px 0; text-align: center; color: #e0aaff; font-family: 'Rajdhani', sans-serif; letter-spacing: 2px; }
     .shop-tabs { display: flex; gap: 5px; margin-bottom: 15px; flex-wrap: wrap; justify-content: center; }
@@ -99,14 +95,26 @@
     .shop-buy-btn:disabled { background: #555; color: #999; cursor: not-allowed; }
     .btn-close-shop { position: absolute; top: 15px; right: 20px; font-size: 20px; font-weight: bold; color: #ff3333; cursor: pointer; }
 
-    /* BOTTOM CONTROLS */
-    #bottom-controls { position: absolute; bottom: 40px; right: 40px; display: flex; gap: 15px; align-items: flex-end; z-index: 10; pointer-events: auto; }
-    #btn-shop { width: 80px; height: 80px; background: linear-gradient(135deg, #ffd700, #ff8c00); color: black; border: 3px solid white; border-radius: 50%; font-size: 30px; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 0 15px rgba(255, 215, 0, 0.5); }
+    #vault-modal { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:#151f33; border:1px solid #42d9ff; border-radius:15px; width:90%; max-width:600px; padding:18px; z-index:51; display:none; flex-direction:column; pointer-events:auto; box-shadow:0 0 28px rgba(66,217,255,.22); max-height:80vh; overflow-y:auto; }
+    #vault-modal h2 { margin:0 0 14px; text-align:center; color:#8be8ff; letter-spacing:2px; }
+    .vault-tabs { display:flex; gap:5px; margin-bottom:14px; flex-wrap:wrap; justify-content:center; }
+    .vault-tab-btn { padding:8px 13px; background:#293957; color:white; border:0; border-radius:8px; font-weight:bold; }
+    .vault-tab-btn.active { background:#1685a8; }
+    .inventory-empty { grid-column:1/-1; padding:24px 12px; text-align:center; color:#aab7cc; background:rgba(255,255,255,.05); border-radius:10px; }
+    .owned-label { color:#6ee7b7!important; }
+    #btn-vault { position:absolute; left:12px; top:50%; transform:translateY(-50%); z-index:12; width:58px; min-height:58px; border:1px solid rgba(255,255,255,.45); border-radius:14px; background:rgba(12,24,43,.88); color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font:700 11px sans-serif; pointer-events:auto; }
+    #btn-vault span:first-child { font-size:22px; }
+
+    /* Tombol Shop & Mulai (Kanan Bawah) */
+    #bottom-controls { position: absolute; bottom: 18px; right: 18px; display: flex; gap: 10px; align-items: flex-end; z-index: 10; pointer-events: auto; }
+    #btn-shop { width: 58px; height: 58px; background: linear-gradient(135deg, #ffd700, #ff8c00); color: black; border: 3px solid white; border-radius: 50%; font-size: 23px; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 0 15px rgba(255, 215, 0, 0.5); }
     #btn-shop:active { transform: scale(0.95); }
-    #btn-start-game { width: 120px; height: 60px; background: #00ff00; color: black; border: 3px solid white; border-radius: 15px; font-family: 'Rajdhani', sans-serif; font-size: 24px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 0 20px rgba(0, 255, 0, 0.5); }
+    #btn-start-game { width: 104px; height: 52px; background: #00ff00; color: black; border: 3px solid white; border-radius: 15px; font-family: 'Rajdhani', sans-serif; font-size: 20px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 0 20px rgba(0, 255, 0, 0.5); }
     #btn-start-game:active { transform: scale(0.95); }
 
-    /* GAME CONTROLS */
+    @media (max-width: 700px) { #btn-profile {font-size:11px;padding:5px 7px} #coin-hud{font-size:11px;padding:5px 7px} #btn-vault{left:8px;width:50px;min-height:52px} #room-panel{right:7px;width:min(32vw,210px);font-size:11px;padding:7px} #room-panel.rp-collapsed{max-width:32vw} #bottom-controls{right:10px;bottom:10px;gap:7px} #btn-shop{width:48px;height:48px;font-size:19px} #btn-start-game{width:88px;height:46px;font-size:17px} #chat-container{top:58px;left:9px;width:210px} }
+
+    /* Kontrol Game */
     #in-game-controls { display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; pointer-events: none; }
     #joystick-area { position: absolute; bottom: 20px; left: 20px; width: 160px; height: 160px; z-index: 5; touch-action: none; pointer-events: auto; }
     #joystick-zone { position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.4); border-radius: 50%; pointer-events: none; }
@@ -116,7 +124,19 @@
     #btn-run { position: absolute; bottom: 40px; right: 140px; width: 70px; height: 70px; background: rgba(255, 59, 59, 0.6); border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%; color: white; font-weight: bold; display: flex; align-items: center; justify-content: center; user-select: none; touch-action: none; z-index: 5; cursor: pointer; pointer-events: auto; font-family: sans-serif;}
     #btn-run:active { background: rgba(255, 59, 59, 0.9); transform: scale(0.95); }
 
-    /* CHAT */
+    /* Overlay Game Over */
+    #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: sans-serif; text-align: center; z-index: 30; pointer-events: auto; }
+    #overlay h1 { margin: 0 0 10px 0; font-size: 40px; }
+    #overlay p { margin: 0 0 20px 0; font-size: 18px; }
+    #overlay button { padding: 10px 30px; font-size: 20px; background: #ff4c00; color: white; border: none; border-radius: 8px; font-weight: bold; }
+
+    /* Overlay Putar HP */
+    #rotate-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a24; color: white; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; transition: opacity 0.3s; }
+    #rotate-overlay .icon { font-size: 60px; margin-bottom: 20px; animation: rotate 2s infinite ease-in-out; }
+    @keyframes rotate { 0% { transform: rotate(0deg); } 50% { transform: rotate(-90deg); } 100% { transform: rotate(0deg); } }
+    @media (orientation: landscape) { #rotate-overlay { display: none !important; } }
+
+    /* Chat */
     #chat-container { position: absolute; top: 70px; left: 15px; width: 280px; z-index: 15; pointer-events: auto; display: flex; flex-direction: column; }
     #chat-toggle { background: #9d4edd; color: white; border: 2px solid white; padding: 6px 12px; border-radius: 20px; font-weight: bold; cursor: pointer; align-self: flex-start; margin-bottom: 5px; font-family: sans-serif; font-size: 13px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
     #chat-box { background: rgba(0,0,0,0.85); border: 1px solid #555; border-radius: 10px; display: none; flex-direction: column; height: 180px; backdrop-filter: blur(5px); margin-top: 5px;}
@@ -129,18 +149,7 @@
     #chat-input { flex: 1; background: transparent; border: none; color: white; padding: 5px; outline: none; font-family: sans-serif; font-size: 13px; }
     #chat-send { background: #9d4edd; border: none; color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold; cursor: pointer; }
 
-    /* OVERLAYS */
-    #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; flex-direction: column; justify-content: center; align-items: center; color: white; font-family: sans-serif; text-align: center; z-index: 30; pointer-events: auto; }
-    #overlay h1 { margin: 0 0 10px 0; font-size: 40px; }
-    #overlay p { margin: 0 0 20px 0; font-size: 18px; }
-    #overlay button { padding: 10px 30px; font-size: 20px; background: #ff4c00; color: white; border: none; border-radius: 8px; font-weight: bold; }
-
-    #rotate-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a24; color: white; z-index: 9999; display: none; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
-    #rotate-overlay .icon { font-size: 60px; margin-bottom: 20px; animation: rotate 2s infinite ease-in-out; }
-    @keyframes rotate { 0% { transform: rotate(0deg); } 50% { transform: rotate(-90deg); } 100% { transform: rotate(0deg); } }
-    @media (orientation: portrait) { #rotate-overlay { display: flex !important; } }
-
-    /* TOAST */
+    /* --- NOTIFIKASI CUSTOM (TOAST) --- */
     #custom-toast {
       position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8);
       background: rgba(20, 20, 30, 0.95); border: 2px solid #9d4edd; border-radius: 15px;
@@ -197,12 +206,12 @@
         <span id="hud-username">Player</span>
         <div id="hud-verified">✔</div>
       </div>
-    </div>
-    
-    <div id="coin-hud">
+      <div id="coin-hud">
       <span id="coin-icon">🪙</span>
       <span id="coin-amount">0</span>
+      </div>
     </div>
+    <button id="btn-vault" type="button" style="display:none"><span>🎒</span><span>VAULT</span></button>
 
     <div id="chat-container">
       <button id="chat-toggle">💬 Chat Global</button>
@@ -232,6 +241,19 @@
         <button class="shop-tab-btn" data-cat="efek">Efek</button>
       </div>
       <div class="shop-items" id="shop-items-container"></div>
+    </div>
+
+    <div id="vault-modal">
+      <span class="btn-close-shop" id="close-vault">✖</span>
+      <h2>🎒 VAULT / KOLEKSI</h2>
+      <div class="vault-tabs">
+        <button class="vault-tab-btn active" data-cat="baju">Baju</button>
+        <button class="vault-tab-btn" data-cat="celana">Celana</button>
+        <button class="vault-tab-btn" data-cat="sepatu">Sepatu</button>
+        <button class="vault-tab-btn" data-cat="efek">Efek</button>
+        <button class="vault-tab-btn" data-cat="aksesoris">Aksesoris</button>
+      </div>
+      <div class="shop-items" id="vault-items-container"></div>
     </div>
 
     <div id="bottom-controls">

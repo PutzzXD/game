@@ -122,6 +122,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const regMsg = document.getElementById('reg-msg');
   const profileModal = document.getElementById('profile-modal');
   const shopModal = document.getElementById('shop-modal');
+  const vaultModal = document.getElementById('vault-modal');
   
   const chatBox = document.getElementById('chat-box');
   const chatToggle = document.getElementById('chat-toggle');
@@ -160,6 +161,12 @@ window.addEventListener('DOMContentLoaded', () => {
     renderShopTab('baju'); 
   });
   document.getElementById('close-shop').addEventListener('click', () => { shopModal.style.display = 'none'; });
+  document.getElementById('btn-vault').addEventListener('click', () => { vaultModal.style.display = 'flex'; renderVaultTab('baju'); });
+  document.getElementById('close-vault').addEventListener('click', () => { vaultModal.style.display = 'none'; });
+  document.querySelectorAll('.vault-tab-btn').forEach(btn => btn.addEventListener('click', (e) => {
+    document.querySelectorAll('.vault-tab-btn').forEach(b => b.classList.remove('active'));
+    e.currentTarget.classList.add('active'); renderVaultTab(e.currentTarget.dataset.cat);
+  }));
 
   document.querySelectorAll('.shop-tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -173,6 +180,7 @@ window.addEventListener('DOMContentLoaded', () => {
     requestFullscreenAndLock();
     document.getElementById('btn-start-game').style.display = 'none';
     document.getElementById('btn-shop').style.display = 'none';
+    document.getElementById('btn-vault').style.display = 'none';
     document.getElementById('in-game-controls').style.display = 'block'; { const zc = document.getElementById('zoom-ctrl'); if (zc) zc.style.display = 'flex'; }
     chatBox.style.display = 'none'; 
     chatToggle.textContent = '💬 Chat Global';
@@ -325,6 +333,7 @@ function startLobby() {
   }
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('btn-shop').style.display = 'flex';
+  document.getElementById('btn-vault').style.display = 'flex';
   document.getElementById('in-game-controls').style.display = 'none'; { const zc = document.getElementById('zoom-ctrl'); if (zc) zc.style.display = 'none'; }
   document.getElementById('chat-container').style.display = 'flex';
 
@@ -332,8 +341,12 @@ function startLobby() {
   setInterval(fetchGlobalChat, 3000);
 
   init3DGame();
-  camera.position.set(0, 3, -5);
-  controls.target.set(0, 1.5, 0);
+  if (parkourWorldGroup) parkourWorldGroup.visible = false;
+  if (lobbyWorldGroup) lobbyWorldGroup.visible = true;
+  scene.fog = null;
+  character.position.set(0, 0.25, 0); character.rotation.y = 0;
+  camera.position.set(0, 3.8, 9.5);
+  controls.target.set(0, 1.45, 0);
   buildRoomUI();
 }
 
@@ -341,9 +354,12 @@ function renderShopTab(category) {
   const container = document.getElementById('shop-items-container');
   container.innerHTML = '';
   
+  let visibleCount = 0;
   SHOP_ITEMS[category].forEach(item => {
     const isOwned = playerData.inventory.includes(item.id);
+    if (isOwned) return; // item yang sudah dibeli pindah ke Vault
     const isEquipped = Object.values(playerData.equipped).includes(item.id);
+    visibleCount++;
     const div = document.createElement('div');
     div.className = 'shop-item';
     
@@ -361,6 +377,27 @@ function renderShopTab(category) {
     div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? `<div class="item-price">🪙 ${item.price}</div>` : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
     container.appendChild(div);
   });
+  if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Semua item kategori ini sudah kamu miliki. Cek Vault!</div>';
+}
+
+function renderVaultTab(category) {
+  const container = document.getElementById('vault-items-container');
+  if (!container) return;
+  container.innerHTML = '';
+  let visibleCount = 0;
+  (SHOP_ITEMS[category] || []).forEach(item => {
+    if (!playerData.inventory.includes(item.id)) return;
+    visibleCount++;
+    const isEquipped = Object.values(playerData.equipped).includes(item.id);
+    const div = document.createElement('div'); div.className = 'shop-item';
+    const previewHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center">${itemIcon(category, item)}</div>`;
+    const btnHTML = isEquipped
+      ? '<button class="shop-buy-btn" disabled>DIPAKAI</button>'
+      : `<button class="shop-buy-btn" onclick="equipItem('${category}', '${item.id}')">PAKAI</button>`;
+    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div><div class="item-price owned-label">SUDAH DIMILIKI</div>${btnHTML}`;
+    container.appendChild(div);
+  });
+  if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Belum ada item di kategori ini.</div>';
 }
 
 window.buyItem = async function(category, itemId, price) {
@@ -370,6 +407,7 @@ window.buyItem = async function(category, itemId, price) {
   await updatePlayerFirebase();
   document.getElementById('coin-amount').textContent = playerData.coins;
   renderShopTab(category);
+  if (document.getElementById('vault-modal').style.display === 'flex') renderVaultTab(category);
   showToast("✅ Berhasil dibeli!");
 };
 
@@ -381,6 +419,7 @@ window.equipItem = async function(category, itemId) {
   await updatePlayerFirebase();
   updateCharacterVisuals();
   renderShopTab(category);
+  if (document.getElementById('vault-modal').style.display === 'flex') renderVaultTab(category);
   showToast("✅ Item berhasil dipakai!");
 };
 
@@ -580,6 +619,7 @@ function createJumpEffect() {
 
 // ============ 7. SETUP 3D & GAME LOOP ============
 let scene, camera, renderer, character, nameSprite, controls;
+let parkourWorldGroup = null, lobbyWorldGroup = null, lobbyAccentRing = null;
 let platforms = [], physics, lavaMat;
 let leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot, headGroup;
 let joystickVector = new THREE.Vector2(0, 0);
@@ -1084,6 +1124,52 @@ function init3DGame() {
   const board = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide, emissive: 0x00ff00, emissiveIntensity: 0.2 }));
   board.position.set(WIN.x, FY + 4, WIN.z); scene.add(board);
 
+  // Pisahkan arena parkour dari area lobby. Seluruh logika arena tetap utuh;
+  // hanya visibilitas grup yang berganti saat pemain menekan MULAI.
+  parkourWorldGroup = new THREE.Group();
+  parkourWorldGroup.name = 'PARKOUR_WORLD';
+  [...scene.children].forEach(obj => { scene.remove(obj); parkourWorldGroup.add(obj); });
+  scene.add(parkourWorldGroup);
+  parkourWorldGroup.visible = false;
+
+  lobbyWorldGroup = new THREE.Group();
+  lobbyWorldGroup.name = 'FREE_FIRE_STYLE_LOBBY';
+  scene.add(lobbyWorldGroup);
+  lobbyWorldGroup.add(new THREE.HemisphereLight(0xd9e9ff, 0x182039, 1.25));
+  const lobbyKey = new THREE.DirectionalLight(0xffffff, 1.8); lobbyKey.position.set(-7, 14, 9); lobbyKey.castShadow = true; lobbyWorldGroup.add(lobbyKey);
+  const lobbyFloorMat = new THREE.MeshStandardMaterial({ color: 0x202b45, metalness: 0.35, roughness: 0.62 });
+  const lobbyFloor = new THREE.Mesh(new THREE.CylinderGeometry(19, 19, 0.7, 64), lobbyFloorMat);
+  lobbyFloor.position.y = -0.38; lobbyFloor.receiveShadow = true; lobbyFloor.castShadow = true; lobbyWorldGroup.add(lobbyFloor);
+  const lobbyInner = new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 0.12, 64), new THREE.MeshStandardMaterial({ color: 0x34486c, metalness: 0.45, roughness: 0.42 }));
+  lobbyInner.position.y = 0.02; lobbyInner.receiveShadow = true; lobbyWorldGroup.add(lobbyInner);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(15.5, 0.12, 12, 96), new THREE.MeshBasicMaterial({ color: 0x42d9ff }));
+  rim.rotation.x = Math.PI / 2; rim.position.y = 0.08; lobbyWorldGroup.add(rim);
+  lobbyAccentRing = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.045, 10, 64), new THREE.MeshBasicMaterial({ color: 0xb36bff }));
+  lobbyAccentRing.rotation.x = Math.PI / 2; lobbyAccentRing.position.set(0, 0.12, 0); lobbyWorldGroup.add(lobbyAccentRing);
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 9, 0.8), new THREE.MeshStandardMaterial({ color: 0x10182b, metalness: 0.25, roughness: 0.7 }));
+  backWall.position.set(0, 4.1, -10); lobbyWorldGroup.add(backWall);
+  const signCanvas = document.createElement('canvas'); signCanvas.width = 1024; signCanvas.height = 256;
+  const signCtx = signCanvas.getContext('2d');
+  signCtx.fillStyle = '#10182b'; signCtx.fillRect(0, 0, 1024, 256);
+  signCtx.strokeStyle = '#42d9ff'; signCtx.lineWidth = 12; signCtx.strokeRect(12, 12, 1000, 232);
+  signCtx.textAlign = 'center'; signCtx.textBaseline = 'middle'; signCtx.font = 'bold 100px sans-serif'; signCtx.fillStyle = '#ffffff'; signCtx.fillText('PARKOUR 3D', 512, 112);
+  signCtx.font = 'bold 34px sans-serif'; signCtx.fillStyle = '#42d9ff'; signCtx.fillText('LOBBY', 512, 194);
+  const signTex = new THREE.CanvasTexture(signCanvas);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.5), new THREE.MeshBasicMaterial({ map: signTex }));
+  sign.position.set(0, 5.3, -9.55); lobbyWorldGroup.add(sign);
+  for (const side of [-1, 1]) {
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 6, 1.2), new THREE.MeshStandardMaterial({ color: 0x293957, metalness: 0.55, roughness: 0.35 }));
+    pillar.position.set(side * 10, 2.7, -7); lobbyWorldGroup.add(pillar);
+    const glow = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.12, 1.28), new THREE.MeshBasicMaterial({ color: side < 0 ? 0x42d9ff : 0xb36bff }));
+    glow.position.set(side * 10, 4.5, -7); lobbyWorldGroup.add(glow);
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, 0.45, 32), new THREE.MeshStandardMaterial({ color: 0x34486c, metalness: 0.5, roughness: 0.35 }));
+    pad.position.set(side * 5.3, 0.25, -1.2); lobbyWorldGroup.add(pad);
+  }
+  const lobbyMark = new THREE.Mesh(new THREE.CircleGeometry(3.2, 64), new THREE.MeshBasicMaterial({ color: 0x172744 }));
+  lobbyMark.rotation.x = -Math.PI / 2; lobbyMark.position.y = 0.095; lobbyWorldGroup.add(lobbyMark);
+  lobbyWorldGroup.visible = true;
+  scene.background = new THREE.Color(0x10182b); scene.fog = null;
+
   character = new THREE.Group();
   character.position.set(0, 0.25, 0);
   scene.add(character);
@@ -1526,7 +1612,7 @@ async function leaveRoom(silent) {
   } catch (e) { console.warn(e); }
   for (const id of [...remotePlayers.keys()]) disposeAvatar(id);
   roomCode = null; roomMeta = null; roomPlayers = {}; myRef = null; roomStartAt = null; roomStarted = false; lastLobbyCount = -1; rpCollapsed = false;
-  if (camera && controls) { camera.position.set(0, 3, -5); controls.target.set(0, 1.5, 0); }
+  if (camera && controls) { camera.position.set(0, 3.8, 9.5); controls.target.set(0, 1.45, 0); }
   updateRoomUI();
 }
 
@@ -1538,15 +1624,19 @@ function mpSyncEquipped() {
 
 // dipanggil tombol start (solo) ATAU saat host memulai room
 function onGameBegin() {
+  if (parkourWorldGroup) parkourWorldGroup.visible = true;
+  if (lobbyWorldGroup) lobbyWorldGroup.visible = false;
+  if (scene) { scene.background = new THREE.Color(0x1a1a24); scene.fog = new THREE.Fog(0x1a1a24, 20, 150); }
   const rp = document.getElementById('room-panel'); if (rp) rp.style.display = 'none';
   const rt = document.getElementById('race-timer'); if (rt) rt.style.display = 'block';
   finishMs = null;
+  if (camera && controls) { camera.position.set(0, 4, 8); controls.target.set(0, 1.5, 0); }
   if (roomCode && roomStartAt) {
     const idx = Math.max(0, sortedIds().indexOf(mpUid)), sp = SPAWN[idx % SPAWN.length];
     character.position.set(sp[0], 0.25, sp[1]); checkpoint.x = sp[0]; checkpoint.z = sp[1];
     gameState = serverNow() < roomStartAt ? 'COUNTDOWN' : 'PLAYING';
     update(myRef, { status: 'PLAYING', deadAt: null }).catch(() => {});
-  } else { soloStart = performance.now(); gameState = 'PLAYING'; }
+  } else { soloStart = performance.now(); gameState = 'PLAYING'; character.position.set(0, 0.25, 0); checkpoint.x = 0; checkpoint.z = 0; }
 }
 
 function onFinish() {
@@ -1668,7 +1758,7 @@ function updateRemoteAvatars() {
   for (const id of [...remotePlayers.keys()]) if (!alive.has(id)) disposeAvatar(id);
   if (gameState === 'LOBBY' && remotePlayers.size !== lastLobbyCount && camera) { // zoom out otomatis supaya semua pemain kelihatan
     lastLobbyCount = remotePlayers.size;
-    camera.position.set(0, 3 + 0.25 * lastLobbyCount, -(5 + 1.2 * lastLobbyCount)); controls.target.set(0, 1.5, 0.5 * lastLobbyCount);
+    camera.position.set(0, 3.8 + 0.2 * lastLobbyCount, 9.5 + 1.2 * lastLobbyCount); controls.target.set(0, 1.45, 0.35 * lastLobbyCount);
   }
 }
 function animateRemotePlayers(delta) {
@@ -1738,8 +1828,8 @@ function updateRoomUI() {
 function buildRoomUI() {
   if (document.getElementById('room-panel')) { updateRoomUI(); return; }
   const css = document.createElement('style');
-  css.textContent = `#room-panel{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:60;width:min(92vw,320px);max-height:calc(100vh - 80px);overflow-y:auto;background:rgba(15,18,32,.92);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 10px;font-family:sans-serif;font-size:13px;display:none;flex-direction:column;gap:6px}
-#room-panel.rp-collapsed{width:auto;max-width:92vw;padding:5px 10px;cursor:pointer}
+  css.textContent = `#room-panel{position:fixed;top:50%;right:12px;left:auto;transform:translateY(-50%);z-index:60;width:min(31vw,250px);max-height:calc(100vh - 110px);overflow-y:auto;background:rgba(15,18,32,.92);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 10px;font-family:sans-serif;font-size:13px;display:none;flex-direction:column;gap:6px}
+#room-panel.rp-collapsed{width:auto;max-width:31vw;padding:5px 8px;cursor:pointer}
 #room-panel.rp-collapsed #rp-body{display:none}
 #rp-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 #rp-title{white-space:nowrap}
@@ -1800,6 +1890,7 @@ function animate() {
   const t = roomStartAt ? Math.max(0, (serverNow() - roomStartAt) / 1000) : clock.getElapsedTime();
   tickMultiplayer();
   animateRemotePlayers(delta);
+  if (lobbyAccentRing && gameState === 'LOBBY') lobbyAccentRing.rotation.z += delta * 0.12;
   if (scene && camera) renderer.render(scene, camera);
 
   // Animasi Berkedip pada Laser NPC
