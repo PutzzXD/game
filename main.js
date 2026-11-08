@@ -50,7 +50,8 @@ const SHOP_ITEMS = {
     { id: 'baju_spiderman', name: 'Kostum Spiderman', price: 500, color: 0xd91e2b, web: true },
     { id: 'baju_batman', name: 'Kostum Batman', price: 550, color: 0x2b2f3a, bat: true, suit: 'bat' },
     { id: 'baju_ironman', name: 'Kostum Ironman', price: 2000, color: 0xb01020, iron: true },
-    { id: 'baju_thor', name: 'Kostum Thor', price: 1500, color: 0x3b4252, thor: true, suit: 'mail' }
+    { id: 'baju_thor', name: 'Kostum Thor', price: 1500, color: 0x3b4252, thor: true, suit: 'mail' },
+    { id: 'baju_hulk', name: 'Kostum Hulk', price: 1800, color: 0x57b84a, hulk: true }
   ],
   celana: [
     { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
@@ -175,12 +176,14 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('in-game-controls').style.display = 'block'; { const zc = document.getElementById('zoom-ctrl'); if (zc) zc.style.display = 'flex'; }
     chatBox.style.display = 'none'; 
     chatToggle.textContent = '💬 Chat Global';
-    isGameStarted = true;
-    onGameBegin();
     profileModal.style.display = 'none';
     shopModal.style.display = 'none';
-    camera.position.set(0, 4, 8);
-    controls.target.set(0, 1.5, 0);
+    showLoadingScreen(() => {
+      isGameStarted = true;
+      onGameBegin();
+      camera.position.set(0, 4, 8);
+      controls.target.set(0, 1.5, 0);
+    });
   });
 
   // --- PROSES REGISTRASI & LOGIN ---
@@ -270,6 +273,37 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch(e) { localStorage.removeItem('parkour_user'); }
   }
 });
+
+// ============ LOADING SCREEN (saat tekan MULAI) ============
+let loadingActive = false;
+function showLoadingScreen(done) {
+  if (loadingActive) return; loadingActive = true;
+  let el = document.getElementById('loading-screen');
+  if (!el) {
+    const css = document.createElement('style');
+    css.textContent = '#loading-screen{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:radial-gradient(circle at 50% 40%,#2a2f55,#0d0f1f);color:#fff;font-family:sans-serif;transition:opacity .35s}#ls-title{font:900 clamp(28px,8vw,52px) sans-serif;letter-spacing:2px;text-shadow:0 0 24px #3b6cf6}#ls-spin{width:54px;height:54px;border-radius:50%;border:6px solid rgba(255,255,255,.18);border-top-color:#00e0a0;animation:lsspin 0.9s linear infinite}@keyframes lsspin{to{transform:rotate(360deg)}}#ls-barwrap{width:min(78vw,420px);height:16px;border-radius:10px;background:rgba(255,255,255,.14);overflow:hidden}#ls-bar{height:100%;width:0;border-radius:10px;background:linear-gradient(90deg,#3b6cf6,#00e0a0);transition:width .1s linear}#ls-text{font-size:14px;opacity:.9}#ls-tip{max-width:80vw;text-align:center;font-size:13px;color:#ffd166;min-height:34px}';
+    document.head.appendChild(css);
+    el = document.createElement('div'); el.id = 'loading-screen';
+    el.innerHTML = '<div id="ls-title">🏃 PARKOUR 3D</div><div id="ls-spin"></div><div id="ls-barwrap"><div id="ls-bar"></div></div><div id="ls-text"></div><div id="ls-tip"></div>';
+    document.body.appendChild(el);
+  }
+  const bar = document.getElementById('ls-bar'), txt = document.getElementById('ls-text'), tip = document.getElementById('ls-tip');
+  const steps = ['Menyiapkan arena...', 'Memasang jebakan...', 'Mengunci laser & penjaga...', 'Membangun labirin...', 'Menyiapkan karakter...', 'Siap!'];
+  const tips = ['💡 Kotak yang berkedip aneh biasanya palsu, jangan percaya!', '💡 Lompat dua kali untuk jarak lebih jauh.', '💡 Di labirin, salah lorong = ditembak NPC.', '💡 Checkpoint hijau menyimpan progresmu.', '💡 Jatuh ke lava? Badanmu hancur, semua pemain bisa lihat 😹'];
+  tip.textContent = tips[Math.floor(Math.random() * tips.length)];
+  el.style.opacity = '1'; el.style.display = 'flex';
+  try { if (renderer && scene && camera) renderer.compile(scene, camera); } catch (e) { /* abaikan */ }
+  const t0 = performance.now(), DUR = 2200; let finished = false;
+  const tick = () => {
+    const f = Math.min(1, (performance.now() - t0) / DUR), e = 1 - Math.pow(1 - f, 2);
+    bar.style.width = (e * 100).toFixed(0) + '%';
+    txt.textContent = steps[Math.min(steps.length - 1, Math.floor(f * steps.length))] + ' ' + (e * 100).toFixed(0) + '%';
+    if (f < 1) { requestAnimationFrame(tick); return; }
+    if (finished) return; finished = true;
+    setTimeout(() => { done(); el.style.opacity = '0'; setTimeout(() => { el.style.display = 'none'; loadingActive = false; }, 380); }, 150);
+  };
+  tick();
+}
 
 // ============ 4. FUNGSI LOBI & SHOP ============
 function startLobby() {
@@ -430,15 +464,29 @@ function applyItemMat(m, it) {
 }
 function pickCostume(eq) {
   const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
-  const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor;
-  const celana = iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : pick('celana', 'celana_default');
-  const sepatu = iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : pick('sepatu', 'sepatu_default');
-  return { baju, celana, sepatu, iron, thor };
+  const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor, hulk = !!baju.hulk;
+  const celana = iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
+  const sepatu = iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
+  return { baju, celana, sepatu, iron, thor, hulk };
 }
-const costumeParts = { spider: [], bat: [], iron: [], thor: [] };
+const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [] };
 function setCostumeVis(baju, get) {
-  const on = { spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor };
+  const on = { spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk };
   for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
+}
+
+// tubuh Hulk: kulit hijau, otot besar (badan/lengan/kaki melebar), tangan besar
+function applyBodyType(root, P, hulk) {
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    const t = o.userData.type;
+    if (t === 'kulit') { o.material.color.setHex(hulk ? 0x57b84a : 0xffd1b3); if (o.userData.hand) o.scale.setScalar(hulk ? 1.7 : 1); }
+    else if (t === 'rambut') o.material.color.setHex(hulk ? 0x141a12 : 0xd1d1d6);
+    else if (t === 'baju') o.scale.set(hulk ? 1.4 : 1, 1, hulk ? 1.4 : 1);
+    else if (t === 'celana') o.scale.set(hulk ? 1.3 : 1, 1, hulk ? 1.3 : 1);
+  });
+  P.armL.position.x = hulk ? -0.58 : -0.4; P.armR.position.x = hulk ? 0.58 : 0.4;
+  P.legL.position.x = hulk ? -0.2 : -0.15; P.legR.position.x = hulk ? 0.2 : 0.15;
 }
 
 const ACC_ICONS = {
@@ -462,6 +510,7 @@ function itemIcon(cat, it) {
     inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linejoin="round"/>`;
     if (it.web) inner += `<g clip-path="url(#cp-${it.id})" stroke="rgba(0,0,0,.5)" stroke-width=".8" fill="none"><path d="M32 4V60M20 4V60M44 4V60M8 4V60M56 4V60M4 16Q32 24 60 16M4 28Q32 36 60 28M4 40Q32 48 60 40M4 52Q32 60 60 52"/></g>`;
     if (it.iron && cat === 'baju') inner += '<path d="M20 8L8 16L13 27L19 24Z" fill="#d4a017"/><path d="M44 8L56 16L51 27L45 24Z" fill="#d4a017"/><circle cx="32" cy="30" r="5" fill="#9ff3ff" stroke="#d4a017" stroke-width="2"/><rect x="19" y="46" width="26" height="4" fill="#d4a017"/>';
+    if (it.hulk && cat === 'baju') inner += '<path d="M24 24Q32 34 40 24" stroke="#2c6b27" stroke-width="2" fill="none"/><circle cx="25" cy="28" r="5" fill="#6fd35f"/><circle cx="39" cy="28" r="5" fill="#6fd35f"/><path d="M32 32V46M26 38H38M27 44H37" stroke="#2c6b27" stroke-width="1.5"/><rect x="19" y="47" width="26" height="5" fill="#6b3fa0"/>';
     if (it.thor && cat === 'baju') inner += '<path d="M20 8L8 16L13 27L19 24Z" fill="#c9d1d9"/><path d="M44 8L56 16L51 27L45 24Z" fill="#c9d1d9"/><circle cx="25" cy="29" r="5.5" fill="#dfe6ec" stroke="#7b8794" stroke-width="1.5"/><circle cx="39" cy="29" r="5.5" fill="#dfe6ec" stroke="#7b8794" stroke-width="1.5"/><rect x="19" y="46" width="26" height="4" fill="#4a2f1b"/><rect x="28" y="38" width="8" height="5" rx="1" fill="#6b7480"/><path d="M33 33L29 38H32L30 43L36 36H33Z" fill="#4aa8ff"/>';
     if (it.bat && cat === 'baju') inner += '<rect x="19" y="47" width="26" height="4" fill="#f5c400"/><ellipse cx="32" cy="30" rx="8" ry="5" fill="#f5c400" stroke="#111"/><path d="M32 26L33 25L33.5 26.5Q38 26 40 28Q38 28.5 37 31Q35 30 34 31L32 33L30 31Q29 30 27 31Q26 28.5 24 28Q26 26 30.5 26.5L31 25Z" fill="#111"/>';
     if (it.web && cat === 'baju') inner += '<g stroke="#111" stroke-width="1.6" fill="#111" stroke-linecap="round"><ellipse cx="32" cy="35" rx="2.6" ry="5"/><circle cx="32" cy="28.5" r="1.8"/><path fill="none" d="M32 33L24 28M32 35L23 35M32 37L24 42M32 38L25 46M32 33L40 28M32 35L41 35M32 37L40 42M32 38L39 46"/></g>';
@@ -481,6 +530,7 @@ function updateCharacterVisuals() {
     if (child.userData.type === 'sepatu') ap(child, sepatuV);
   });
   setCostumeVis(baju, o => o);
+  applyBodyType(character, { armL: leftArmPivot, armR: rightArmPivot, legL: leftLegPivot, legR: rightLegPivot }, baju.hulk);
   const a = playerData.equipped.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => { acc[id].visible = !(iron || thor) && id === a; });
   if (nameSprite) updateCharacterNameSprite(playerData.username, playerData.isDev);
@@ -543,6 +593,7 @@ let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
 let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
 let batGrp, capeB, ironHelm, ironBody, thorHelm, thorBody, capeT;
+let MAZE_H = 12, MAZE_Z = -101;
 let zoomDir = 0, guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 const ROASTS = {
   hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
@@ -648,9 +699,9 @@ function spawnShatter(pos, eq) {
   const rnd = (a, b) => a + Math.random() * (b - a);
   const px = pos.x, py = pos.y, pz = pos.z;
   const groups = [ // [warna, jumlah, y0, y1, sebaran x, ukuran, logam]
-    [0xffd1b3, 6, 2.0, 2.4, 0.15, 0.2, 0], [0xd1d1d6, 4, 2.3, 2.5, 0.15, 0.14, 0],
+    [c.hulk ? 0x57b84a : 0xffd1b3, 6, 2.0, 2.4, 0.15, 0.2, 0], [c.hulk ? 0x141a12 : 0xd1d1d6, 4, 2.3, 2.5, 0.15, 0.14, 0],
     [c.baju.color, 10, 1.0, 1.9, 0.3, 0.26, metal], [c.baju.color, 6, 1.2, 1.9, 0.55, 0.2, metal],
-    [0xffd1b3, 2, 1.0, 1.4, 0.55, 0.16, 0], [c.celana.color, 8, 0.3, 0.9, 0.2, 0.22, 0], [c.sepatu.color, 4, 0.05, 0.3, 0.25, 0.2, 0]
+    [c.hulk ? 0x57b84a : 0xffd1b3, 2, 1.0, 1.4, 0.55, 0.16, 0], [c.celana.color, 8, 0.3, 0.9, 0.2, 0.22, 0], [c.sepatu.color, 4, 0.05, 0.3, 0.25, 0.2, 0]
   ];
   if (c.iron) groups.push([0xd4a017, 6, 1.0, 2.2, 0.4, 0.15, 0.8]);
   if (c.thor) groups.push([0xc9d1d9, 6, 1.0, 2.4, 0.4, 0.15, 0.85], [0xc0132b, 4, 1.2, 2.0, 0.4, 0.22, 0]);
@@ -901,16 +952,17 @@ function init3DGame() {
   { const tp = platforms.find(pl => Math.abs(pl.mesh.position.x - TC.x) < 0.01 && Math.abs(pl.mesh.position.z - TC.z) < 0.01 && Math.abs(pl.mesh.position.y - FY) < 0.01); if (tp) { tp.checkpoint = true; tp.mesh.material = checkMat; } }
 
   // ===== LABIRIN DI ATAS TOWER (salah lorong = ditembak NPC) =====
-  const MN = 6, CS = 4, mcx = 0, mcz = -101, wallH = 7, floorTop = FY + 0.25;
-  WIN = { x: mcx - 10 + 4 * 3, y: FY, z: mcz - 12 - 4 };
-  createPlatform(mcx - 10 + 4 * 2, FY, -85, 4, 8, 'static'); markCheckpoint(); // jembatan = checkpoint
-  createPlatform(mcx, FY, mcz, 24, 24, 'static');   // lantai labirin
+  const MN = 12, CS = 4, mcx = 0, MH = MN * CS / 2, mcz = -89 - MH, wallH = 7, floorTop = FY + 0.25, EC = Math.floor(MN / 2) - 1;
+  MAZE_H = MH; MAZE_Z = mcz;
+  WIN = { x: mcx - MH + CS / 2 + CS * (EC + 1), y: FY, z: mcz - MH - 4 };
+  createPlatform(mcx - MH + CS / 2 + CS * EC, FY, -85, 4, 8, 'static'); markCheckpoint(); // jembatan = checkpoint
+  createPlatform(mcx, FY, mcz, 2 * MH, 2 * MH, 'static');   // lantai labirin
   createPlatform(WIN.x, FY, WIN.z, 8, 8, 'static'); // area finish setelah labirin
 
   const cells = [];
   for (let r = 0; r < MN; r++) { cells[r] = []; for (let c = 0; c < MN; c++) cells[r][c] = { n: true, e: true, s: true, w: true, v: false }; }
   let seed = 13; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  const stack = [[0, 2]]; cells[0][2].v = true;
+  const stack = [[0, EC]]; cells[0][EC].v = true;
   while (stack.length) {
     const [r, c] = stack[stack.length - 1], nb = [];
     if (r > 0 && !cells[r - 1][c].v) nb.push([r - 1, c, 'n', 's']);
@@ -921,7 +973,7 @@ function init3DGame() {
     const [nr, nc, d1, d2] = nb[Math.floor(rnd() * nb.length)];
     cells[r][c][d1] = false; cells[nr][nc][d2] = false; cells[nr][nc].v = true; stack.push([nr, nc]);
   }
-  cells[0][2].n = false; cells[MN - 1][3].s = false; // pintu masuk & keluar
+  cells[0][EC].n = false; cells[MN - 1][EC + 1].s = false; // pintu masuk & keluar
 
   const wallMat = new THREE.MeshStandardMaterial({ color: 0x5b6180, roughness: 0.8 });
   const addWall = (x, z, w, d) => {
@@ -929,7 +981,7 @@ function init3DGame() {
     mesh.position.set(x, floorTop + wallH / 2, z); scene.add(mesh);
     platforms.push({ mesh, width: w, depth: d, type: 'wall', hh: wallH / 2, startX: x, startY: mesh.position.y, startZ: z, range: 0, speed: 0, phase: 0, isFallen: false, tell: 0, revealTimer: 0, dx: 0, r: 0 });
   };
-  const cxOf = (c) => mcx - 10 + CS * c, czOf = (r) => mcz + 10 - CS * r;
+  const cxOf = (c) => mcx - MH + CS / 2 + CS * c, czOf = (r) => mcz + MH - CS / 2 - CS * r;
   for (let r = 0; r < MN; r++) for (let c = 0; c < MN; c++) {
     const k = cells[r][c], x = cxOf(c), z = czOf(r);
     if (r === 0 && k.n) addWall(x, z + 2, CS + 0.6, 0.6);
@@ -941,9 +993,16 @@ function init3DGame() {
   // jalur benar (BFS pintu masuk -> keluar); semua sel di luar jalur = lorong salah
   const key = (r, c) => r + ',' + c;
   const nbrs = (r, c) => { const o = [], k = cells[r][c]; if (!k.n && r > 0) o.push([r - 1, c]); if (!k.s && r < MN - 1) o.push([r + 1, c]); if (!k.w && c > 0) o.push([r, c - 1]); if (!k.e && c < MN - 1) o.push([r, c + 1]); return o; };
-  const prev = { [key(0, 2)]: null }, bq = [[0, 2]];
+  const prev = { [key(0, EC)]: null }, bq = [[0, EC]];
   while (bq.length) { const [r, c] = bq.shift(); for (const [nr, nc] of nbrs(r, c)) if (!(key(nr, nc) in prev)) { prev[key(nr, nc)] = [r, c]; bq.push([nr, nc]); } }
-  const onPath = new Set(); for (let cur = [MN - 1, 3]; cur; cur = prev[key(cur[0], cur[1])]) onPath.add(key(cur[0], cur[1]));
+  const onPath = new Set(); for (let cur = [MN - 1, EC + 1]; cur; cur = prev[key(cur[0], cur[1])]) onPath.add(key(cur[0], cur[1]));
+  // checkpoint di tengah labirin (1/3 dan 2/3 jalur benar) supaya tidak mulai dari awal terus
+  const pathArr = [...onPath].map(sk => sk.split(',').map(Number)).reverse();
+  [Math.floor(pathArr.length / 3), Math.floor(pathArr.length * 2 / 3)].forEach(ix => {
+    const [pr, pc] = pathArr[ix];
+    createPlatform(cxOf(pc), FY + 0.01, czOf(pr), 2.4, 2.4, 'static', 0, 'round');
+    const pd = platforms.pop(); platforms.unshift(pd); pd.checkpoint = true; pd.mesh.material = checkMat;
+  });
 
   // NPC penembak berdiri di ujung buntu tiap cabang lorong salah
   const AIM_TIME = 1.1;
@@ -968,7 +1027,7 @@ function init3DGame() {
     return {
       reset() { state = 'idle'; timer = 0; beam.visible = false; },
       update(delta, pp, t, canKill) {
-        const col = Math.floor((pp.x - (mcx - 12)) / CS), row = Math.floor(((mcz + 12) - pp.z) / CS);
+        const col = Math.floor((pp.x - (mcx - MH)) / CS), row = Math.floor(((mcz + MH) - pp.z) / CS);
         const inside = pp.y > FY - 1 && pp.y < FY + 4 && set.has(key(row, col));
         if (state === 'idle') {
           g.rotation.y = Math.sin(t * 0.8 + gx) * 0.5;
@@ -1041,13 +1100,13 @@ function init3DGame() {
 
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 0.8, 16, 48), matShirt); torso.position.y = 1.4; torso.castShadow = true; torso.userData.type = 'baju'; character.add(torso);
   headGroup = new THREE.Group(); headGroup.position.y = 2.2; character.add(headGroup);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 32), matSkin); head.castShadow = true; headGroup.add(head);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 32), matSkin); head.userData.type = 'kulit'; head.castShadow = true; headGroup.add(head);
 
   const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), matEyeWhite); leftEye.position.set(-0.1, 0.05, 0.27); headGroup.add(leftEye);
   const leftPupil = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 16), matPupil); leftPupil.position.set(-0.1, 0.05, 0.31); headGroup.add(leftPupil);
   const rightEye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 16), matEyeWhite); rightEye.position.set(0.1, 0.05, 0.27); headGroup.add(rightEye);
   const rightPupil = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 16), matPupil); rightPupil.position.set(0.1, 0.05, 0.31); headGroup.add(rightPupil);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 16), matSkin); nose.rotation.x = Math.PI / 2; nose.position.set(0, -0.02, 0.3); headGroup.add(nose);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 16), matSkin); nose.userData.type = 'kulit'; nose.rotation.x = Math.PI / 2; nose.position.set(0, -0.02, 0.3); headGroup.add(nose);
   const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.02), matPupil); mouth.position.set(0, -0.12, 0.28); headGroup.add(mouth);
 
   const hairGroup = new THREE.Group(); headGroup.add(hairGroup);
@@ -1056,13 +1115,14 @@ function init3DGame() {
   const bangLeft = new THREE.Mesh(bangGeo, matHair); bangLeft.position.set(-0.15, 0.15, 0.24); bangLeft.rotation.set(0.2, 0, -0.3); hairGroup.add(bangLeft);
   const bangCenter = new THREE.Mesh(bangGeo, matHair); bangCenter.position.set(0, 0.2, 0.27); bangCenter.rotation.set(0.1, 0, 0); bangCenter.scale.set(1.2, 1, 1.2); hairGroup.add(bangCenter);
   const bangRight = new THREE.Mesh(bangGeo, matHair); bangRight.position.set(0.15, 0.15, 0.24); bangRight.rotation.set(0.2, 0, 0.3); hairGroup.add(bangRight);
+  hairGroup.traverse(o => { if (o.isMesh) o.userData.type = 'rambut'; });
 
   const makeArm = (x) => {
     const pivot = new THREE.Group(); pivot.position.set(x, 1.8, 0);
     const up = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.25, 10, 28), matShirt); up.position.y = -0.22; up.castShadow = true; up.userData.type = 'baju'; pivot.add(up);
     const elbow = new THREE.Group(); elbow.position.y = -0.42; pivot.add(elbow);
     const low = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.25, 10, 28), matShirt); low.position.y = -0.2; low.castShadow = true; low.userData.type = 'baju'; elbow.add(low);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 24, 24), matSkin); hand.position.y = -0.43; elbow.add(hand);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 24, 24), matSkin); hand.userData.type = 'kulit'; hand.userData.hand = true; hand.position.y = -0.43; elbow.add(hand);
     return { pivot, elbow };
   };
   const makeLeg = (x) => {
@@ -1207,6 +1267,19 @@ function init3DGame() {
   for (const dy of [-0.06, 0.06]) mk(new THREE.BoxGeometry(0.3, 0.03, 0.205), steel, 0, 0.58 + dy, 0, hammer);
   mk(new THREE.BoxGeometry(0.31, 0.012, 0.206), glowBlue, 0, 0.58, 0, hammer);
 
+  // HULK: otot, pinggang celana ungu, alis marah
+  const hulkSkin = accMat(0x57b84a, { roughness: 0.55 }), hulkDark = accMat(0x2c6b27, { roughness: 0.6 }), hulkPurple = accMat(0x6b3fa0, { roughness: 0.8 });
+  const hulkBody = grp(rig, costumeParts.hulk);
+  for (const sd of [-1, 1]) {
+    const pec = mk(new THREE.SphereGeometry(0.17, 24, 16), hulkSkin, sd * 0.15, 1.68, 0.3, hulkBody); pec.scale.set(1, 0.8, 0.7);
+    const trap = mk(new THREE.SphereGeometry(0.17, 20, 14), hulkSkin, sd * 0.3, 1.98, -0.02, hulkBody); trap.scale.set(1, 0.7, 1);
+    mk(new THREE.SphereGeometry(0.2, 24, 16), hulkSkin, sd * 0.58, 1.9, 0, hulkBody);
+    for (let i = 0; i < 3; i++) { const ab = mk(new THREE.SphereGeometry(0.09, 16, 12), hulkSkin, sd * 0.1, 1.45 - i * 0.14, 0.38, hulkBody); ab.scale.set(1, 0.8, 0.5); }
+  }
+  mk(new THREE.CylinderGeometry(0.44, 0.44, 0.14, 40), hulkPurple, 0, 1.0, 0, hulkBody);
+  const hulkHead = grp(headGroup, costumeParts.hulk);
+  for (const sd of [-1, 1]) { const brow = mk(new THREE.BoxGeometry(0.16, 0.05, 0.08), hulkDark, sd * 0.09, 0.13, 0.275, hulkHead); brow.rotation.z = sd * 0.3; }
+
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -1344,7 +1417,7 @@ function updateCharacterNameSprite(username, isDev) {
   if (!character) return;
   if (nameSprite) { character.remove(nameSprite); scene.remove(nameSprite); nameSprite.material.map.dispose(); nameSprite.material.dispose(); }
   const bj = SHOP_ITEMS.baju.find(i => i.id === playerData.equipped.baju);
-  const label = bj ? (bj.web ? '🕸️ ' : bj.bat ? '🦇 ' : bj.iron ? '🤖 ' : bj.thor ? '⚡ ' : '👕 ') + bj.name : '';
+  const label = bj ? (bj.web ? '🕸️ ' : bj.bat ? '🦇 ' : bj.iron ? '🤖 ' : bj.thor ? '⚡ ' : bj.hulk ? '💚 ' : '👕 ') + bj.name : '';
   const canvasName = document.createElement('canvas');
   canvasName.width = 512; canvasName.height = 176;
   const ctxName = canvasName.getContext('2d');
@@ -1544,6 +1617,7 @@ function applyRemoteCostume(u, eq) {
   });
   const vis = (orig, v) => { const c = u.map.get(orig); if (c) c.visible = v; };
   setCostumeVis(baju, o => u.map.get(o));
+  applyBodyType(u.model, u.parts, baju.hulk);
   const a = eq.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => vis(acc[id], !(iron || thor) && id === a));
   u.costumeName = baju.name;
@@ -1792,7 +1866,7 @@ function animate() {
   });
 
   hazards.forEach(h => h.update(t));
-  if (!mazeHinted && character.position.y > FIN_Y - 1 && Math.abs(character.position.x) < 12 && character.position.z < -89 && character.position.z > -113) { mazeHinted = true; showToast('🧩 SALAH BEGO,MAMPUS'); }
+  if (!mazeHinted && character.position.y > FIN_Y - 1 && Math.abs(character.position.x) < MAZE_H && character.position.z < -89 && character.position.z > MAZE_Z - MAZE_H) { mazeHinted = true; showToast('🧩 SALAH BEGO,MAMPUS'); }
   for (const gd of guards) { if (gd.update(delta, character.position, t, !godMode && !flyMode)) { gameState = 'GAMEOVER'; showGameOver('shot'); break; } }
   hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 2.5));
   if (hitCD <= 0 && !godMode && !flyMode) for (const h of hazards) {
