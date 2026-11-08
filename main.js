@@ -1496,6 +1496,8 @@ function init3DGame() {
   updateCharacterNameSprite(playerData.username, playerData.isDev);
   buildLobbyLeaderboard();
   updateLobbyLeaderboard();
+  refreshSoloLeaderboard(true).catch(() => {});
+  if (!window.__soloLeaderboardTimer) window.__soloLeaderboardTimer = setInterval(() => { if (!roomCode) refreshSoloLeaderboard(); }, 10000);
   setupAdminPanel();
   animate();
 }
@@ -1582,13 +1584,14 @@ let mpUid = null, mpReady = false, mpOffset = 0;
 let roomCode = null, roomMeta = null, roomPlayers = {}, roomUnsub = null, roomStartAt = null, roomStarted = false;
 let lobbyLeaderboardGroup = null, lobbyLeaderboardTexture = null, lobbyLeaderboardCanvas = null, lobbyLeaderboardCtx = null, lobbyLeaderboardLastKey = '';
 const lobbyLeaderboardAvatars = new Map();
-let myRef = null, myJoinedAt = 0, mpLastSend = 0, mpEquipTimer = null, soloStart = 0, finishMs = null, lastLobbyCount = -1, lastTimerText = '', rpCollapsed = false;
+let myRef = null, myJoinedAt = 0, mpLastSend = 0, mpEquipTimer = null, soloStart = 0, finishMs = null, lastLobbyCount = -1, rpCollapsed = false;
+let soloLeaderboardEntries = [], soloLeaderboardLoading = false, soloLeaderboardLastFetch = 0;
+let personalRunScore = 0;
 const remotePlayers = new Map(), announcedFinish = new Set(), tmpV = new THREE.Vector3();
 const serverNow = () => Date.now() + mpOffset;
 const genCode = () => Array.from({ length: 5 }, () => ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)]).join('');
 const sortedIds = () => Object.keys(roomPlayers).sort((a, b) => ((roomPlayers[a].joinedAt || 0) - (roomPlayers[b].joinedAt || 0)) || a.localeCompare(b));
 const myEquipped = () => ({ baju: playerData.equipped.baju, celana: playerData.equipped.celana, sepatu: playerData.equipped.sepatu, aksesoris: playerData.equipped.aksesoris || 'aks_none' });
-function fmtTime(ms) { const s = Math.max(0, ms) / 1000; return String(Math.floor(s / 60)).padStart(2, '0') + ':' + (s % 60).toFixed(1).padStart(4, '0'); }
 function mpErr(e) { const m = String((e && (e.code || e.message)) || e); return /permission/i.test(m) ? 'Izin ditolak Firebase. Cek Rules (lihat README).' : m.replace(/^Error: /, ''); }
 
 async function ensureMp() {
@@ -1675,8 +1678,8 @@ function onGameBegin() {
   if (lobbyWorldGroup) lobbyWorldGroup.visible = false;
   if (scene) { scene.background = new THREE.Color(0x1a1a24); scene.fog = new THREE.Fog(0x1a1a24, 20, 150); }
   const rp = document.getElementById('room-panel'); if (rp) rp.style.display = 'none';
-  const rt = document.getElementById('race-timer'); if (rt) rt.style.display = 'block';
   finishMs = null;
+  personalRunScore = 0;
   if (camera && controls) { camera.position.set(0, 4, 8); controls.target.set(0, 1.5, 0); }
   if (roomCode && roomStartAt) {
     const idx = Math.max(0, sortedIds().indexOf(mpUid)), sp = SPAWN[idx % SPAWN.length];
@@ -1686,14 +1689,45 @@ function onGameBegin() {
   } else { soloStart = performance.now(); gameState = 'PLAYING'; character.position.set(0, 0.25, 0); checkpoint.x = 0; checkpoint.z = 0; }
 }
 
+function scoreFromTime(ms) {
+  // Semakin cepat menyelesaikan parkour, semakin tinggi skor.
+  return Math.max(0, 100000 - Math.floor(Math.max(0, ms) / 100));
+}
+
+async function savePersonalBest(score, timeMs) {
+  const key = String(playerData.username || '').trim().toLowerCase();
+  if (!key) return;
+  const latestRes = await fetch(`${FIREBASE_URL}leaderboard/${key}.json`, { cache: 'no-store' });
+  if (!latestRes.ok) throw new Error('Gagal membaca rekor sebelumnya');
+  const latestProfile = await latestRes.json() || {};
+  const oldScore = Number(latestProfile.bestScore) || 0;
+  // Rekor hanya diganti jika skor baru lebih tinggi; skor lebih rendah tidak menimpa rekor.
+  if (score <= oldScore) {
+    playerData.bestScore = oldScore;
+    playerData.bestTimeMs = Number(latestProfile.bestTimeMs) || 0;
+    return;
+  }
+  playerData.bestScore = score;
+  playerData.bestTimeMs = Math.round(timeMs);
+  const res = await fetch(`${FIREBASE_URL}leaderboard/${key}.json`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: String(playerData.username || key).slice(0, 18), playerId: String(playerData.playerId || ''), isDev: !!playerData.isDev, equipped: myEquipped(), bestScore: score, bestTimeMs: Math.round(timeMs), updatedAt: Date.now() })
+  });
+  if (!res.ok) throw new Error('Gagal menyimpan rekor leaderboard');
+  refreshSoloLeaderboard(true).catch(() => {});
+}
+
 function onFinish() {
+  if (finishMs != null) return;
   finishMs = roomStartAt ? serverNow() - roomStartAt : performance.now() - soloStart;
-  if (myRef) update(myRef, { finishMs: Math.round(finishMs) }).catch(() => {});
+  personalRunScore = scoreFromTime(finishMs);
+  if (myRef) update(myRef, { finishMs: Math.round(finishMs), score: personalRunScore }).catch(() => {});
+  savePersonalBest(personalRunScore, finishMs).catch(e => console.warn('Simpan rekor gagal:', e));
+  updateLobbyLeaderboard();
 }
 function finishSummary() {
-  let s = ' ⏱ ' + fmtTime(finishMs);
-  if (roomCode) s += ' • Peringkat #' + (Object.entries(roomPlayers).filter(([id, p]) => id !== mpUid && p.finishMs != null && p.finishMs < finishMs).length + 1);
-  return s;
+  if (!roomCode) return '';
+  return ' • Peringkat #' + (Object.entries(roomPlayers).filter(([id, p]) => id !== mpUid && p.finishMs != null && p.finishMs < finishMs).length + 1);
 }
 
 function tickMultiplayer() {
@@ -1701,11 +1735,6 @@ function tickMultiplayer() {
     const left = roomStartAt - serverNow(), el = document.getElementById('countdown');
     if (left <= 0) { gameState = 'PLAYING'; if (el) el.style.display = 'none'; showToast('🏁 MULAI!'); }
     else if (el) { el.style.display = 'flex'; el.textContent = Math.ceil(left / 1000); }
-  }
-  const rt = document.getElementById('race-timer');
-  if (rt && rt.style.display === 'block') {
-    const ms = finishMs != null ? finishMs : (gameState === 'COUNTDOWN' ? 0 : (roomStartAt ? serverNow() - roomStartAt : performance.now() - soloStart));
-    const txt = '⏱ ' + fmtTime(ms); if (txt !== lastTimerText) { rt.textContent = txt; lastTimerText = txt; }
   }
   if (!roomCode || !myRef || !character || !(gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN')) return;
   const now = performance.now(); if (now - mpLastSend < 100) return; mpLastSend = now;
@@ -1800,7 +1829,7 @@ function updateRemoteAvatars() {
       if (u.label) { av.remove(u.label); u.label.material.map.dispose(); u.label.material.dispose(); }
       u.label = makeLabelSprite(lbl); u.labelText = text; av.add(u.label);
     }
-    if (d.finishMs != null && !announcedFinish.has(id)) { announcedFinish.add(id); showToast('🏁 ' + String(d.username || 'Pemain') + ' finish! ⏱ ' + fmtTime(d.finishMs)); }
+    if (d.finishMs != null && !announcedFinish.has(id)) { announcedFinish.add(id); showToast('🏁 ' + String(d.username || 'Pemain') + ' berhasil finish!'); }
   });
   for (const id of [...remotePlayers.keys()]) if (!alive.has(id)) disposeAvatar(id);
   if (gameState === 'LOBBY' && remotePlayers.size !== lastLobbyCount && camera) { // zoom out otomatis supaya semua pemain kelihatan
@@ -1949,30 +1978,56 @@ function disposeLeaderboardAvatar(id) {
   lobbyLeaderboardAvatars.delete(id);
 }
 
+async function refreshSoloLeaderboard(force = false) {
+  if (soloLeaderboardLoading || ( !force && Date.now() - soloLeaderboardLastFetch < 10000)) return;
+  soloLeaderboardLoading = true;
+  try {
+    const data = await socialGet('leaderboard') || {};
+    soloLeaderboardEntries = Object.entries(data)
+      .filter(([key, p]) => p && Number(p.bestScore) > 0)
+      .map(([key, p]) => ({
+        id: key, username: String(p.username || key).slice(0, 18),
+        playerId: String(p.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')),
+        isDev: !!p.isDev, equipped: p.equipped || {},
+        bestScore: Number(p.bestScore) || 0, bestTimeMs: Number(p.bestTimeMs) || 0,
+        finishMs: Number(p.bestTimeMs) || null
+      }))
+      .sort((a, b) => b.bestScore - a.bestScore || a.bestTimeMs - b.bestTimeMs)
+      .slice(0, MAX_PLAYERS);
+    soloLeaderboardLastFetch = Date.now();
+    if (!roomCode) updateLobbyLeaderboard();
+  } catch (e) { console.warn('Leaderboard solo belum dapat dimuat:', e); }
+  finally { soloLeaderboardLoading = false; }
+}
+
 function updateLobbyLeaderboard() {
   if (!lobbyLeaderboardGroup || !lobbyLeaderboardCtx || !lobbyLeaderboardTexture) return;
 
-  const ids = Object.keys(roomPlayers || {}).sort((a, b) => {
-    const pa = roomPlayers[a] || {}, pb = roomPlayers[b] || {};
+  const sourcePlayers = roomCode ? (roomPlayers || {}) : Object.fromEntries(soloLeaderboardEntries.map(p => [p.id, p]));
+  const ids = Object.keys(sourcePlayers).sort((a, b) => {
+    const pa = sourcePlayers[a] || {}, pb = sourcePlayers[b] || {};
+    if (!roomCode) return (Number(pb.bestScore) || 0) - (Number(pa.bestScore) || 0) || (Number(pa.bestTimeMs) || 0) - (Number(pb.bestTimeMs) || 0);
     const af = Number.isFinite(Number(pa.finishMs)) && pa.finishMs != null;
     const bf = Number.isFinite(Number(pb.finishMs)) && pb.finishMs != null;
-    if (af && bf) return Number(pa.finishMs) - Number(pb.finishMs);
+    if (af && bf) return Number(pb.score || 0) - Number(pa.score || 0) || Number(pa.finishMs) - Number(pb.finishMs);
     if (af !== bf) return af ? -1 : 1;
     return (pa.joinedAt || 0) - (pb.joinedAt || 0);
   }).slice(0, MAX_PLAYERS);
 
   const entries = ids.map((id, index) => {
-    const p = roomPlayers[id] || {};
-    const finished = p.finishMs != null && Number.isFinite(Number(p.finishMs));
+    const p = sourcePlayers[id] || {};
+    const finished = roomCode ? (p.finishMs != null && Number.isFinite(Number(p.finishMs))) : Number(p.bestScore) > 0;
+    const score = roomCode ? (Number(p.score) || 0) : (Number(p.bestScore) || 0);
+    const timeMs = roomCode ? (Number(p.finishMs) || 0) : (Number(p.bestTimeMs) || 0);
     return {
       id, index, name: String(p.username || 'Pemain').slice(0, 18),
-      finished, time: finished ? fmtTime(Number(p.finishMs)) : 'BELUM FINISH',
+      finished, score, timeMs, time: finished ? `${score.toLocaleString('id-ID')} POIN` : 'BELUM ADA',
       host: !!(roomMeta && roomMeta.host === id),
-      isMe: id === mpUid,
+      isMe: roomCode ? id === mpUid : id === String(playerData.username || '').toLowerCase(),
       eqKey: JSON.stringify(p.equipped || {})
     };
   });
-  const key = JSON.stringify({ roomCode, entries: entries.map(e => [e.id, e.name, e.finished, e.time, e.host, e.isMe, e.eqKey]) });
+  const key = JSON.stringify({ roomCode, entries: entries.map(e => [e.id, e.name, e.finished, e.score, e.timeMs, e.host, e.isMe, e.eqKey]) });
   if (key === lobbyLeaderboardLastKey) return;
   lobbyLeaderboardLastKey = key;
 
@@ -1987,15 +2042,15 @@ function updateLobbyLeaderboard() {
   x.font = '900 76px sans-serif'; x.fillStyle = '#ffffff';
   x.fillText('LEADERBOARD', 512, 82);
   x.font = 'bold 30px sans-serif'; x.fillStyle = '#42d9ff';
-  x.fillText(roomCode ? `ROOM ${roomCode}  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : 'PEMAIN ONLINE', 512, 142);
+  x.fillText(roomCode ? `ROOM ${roomCode}  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : 'TOP SKOR TERBAIK • SOLO', 512, 142);
   x.strokeStyle = 'rgba(66,217,255,.55)'; x.lineWidth = 3;
   x.beginPath(); x.moveTo(55, 188); x.lineTo(969, 188); x.stroke();
 
-  if (!roomCode || !entries.length) {
+  if (!entries.length) {
     x.fillStyle = '#dce8ff'; x.font = 'bold 38px sans-serif';
-    x.fillText('BUAT / GABUNG ROOM', 512, 470);
+    x.fillText(roomCode ? 'MENUNGGU PEMAIN' : 'BELUM ADA REKOR', 512, 470);
     x.font = '28px sans-serif'; x.fillStyle = '#8fa9d4';
-    x.fillText('untuk melihat karakter pemain lain', 512, 525);
+    x.fillText(roomCode ? 'Mulai lomba untuk melihat peringkat' : 'Selesaikan parkour untuk masuk leaderboard', 512, 525);
   } else {
     entries.forEach((e, i) => {
       const top = 205 + i * 99;
@@ -2008,10 +2063,10 @@ function updateLobbyLeaderboard() {
       const name = (e.host ? '👑 ' : '') + e.name + (e.isMe ? ' (KAMU)' : '');
       x.fillText(name, 178, top + 34, 500);
       x.textAlign = 'left'; x.font = '22px sans-serif'; x.fillStyle = '#8fb9dc';
-      x.fillText('ID ' + String((roomPlayers[e.id] || {}).playerId || (e.name.toLowerCase() === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')), 180, top + 67, 460);
+      x.fillText('ID ' + String((sourcePlayers[e.id] || {}).playerId || (e.name.toLowerCase() === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')), 180, top + 67, 460);
       x.textAlign = 'right'; x.font = 'bold 27px sans-serif';
       x.fillStyle = e.finished ? '#7dffb0' : '#a9b8d2';
-      x.fillText(e.time, 950, top + 44);
+      x.fillText(e.finished ? `${e.score.toLocaleString('id-ID')} POIN` : e.time, 950, top + 44);
     });
   }
   lobbyLeaderboardTexture.needsUpdate = true;
@@ -2020,7 +2075,7 @@ function updateLobbyLeaderboard() {
   const alive = new Set(entries.map(e => e.id));
   for (const id of [...lobbyLeaderboardAvatars.keys()]) if (!alive.has(id)) disposeLeaderboardAvatar(id);
   entries.forEach((e, i) => {
-    const p = roomPlayers[e.id] || {};
+    const p = sourcePlayers[e.id] || {};
     let avatar = lobbyLeaderboardAvatars.get(e.id);
     if (avatar && avatar.userData.eqKey !== e.eqKey) {
       disposeLeaderboardAvatar(e.id);
@@ -2116,9 +2171,9 @@ async function searchGlobalPlayers(query) {
       const name = document.createElement('b'); name.textContent = String(pl.username || key);
       const meta = document.createElement('small'); meta.textContent = `ID: ${String(pl.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------'))} · ${key === DEV_USERNAME || pl.isDev ? 'ADMIN' : 'PLAYER'}`;
       info.append(name, meta);
-      const action = document.createElement('button'); action.className = 'ps-action';
-      if (friends[key]) { action.textContent = '✓ TEMAN'; action.disabled = true; }
-      else { action.textContent = '+ TAMBAH'; action.onclick = () => { action.disabled = true; addFriend(key, String(pl.username || key)).catch(e => { action.disabled = false; showToast(e.message); }); }; }
+      const action = document.createElement('button'); action.className = 'ps-action ps-add'; action.title = friends[key] ? 'Sudah berteman' : 'Tambah teman';
+      if (friends[key]) { action.textContent = '✓'; action.disabled = true; }
+      else { action.textContent = '+'; action.onclick = () => { action.disabled = true; action.textContent = '…'; addFriend(key, String(pl.username || key)).then(() => { action.textContent = '✓'; action.title = 'Sudah berteman'; }).catch(e => { action.disabled = false; action.textContent = '+'; showToast(e.message); }); }; }
       row.append(info, action); result.appendChild(row);
     });
   } catch (e) {
@@ -2134,7 +2189,7 @@ async function renderFriendsList() {
     const friends = await loadMyFriends();
     list.replaceChildren();
     const entries = Object.entries(friends);
-    if (!entries.length) { list.textContent = 'Belum ada teman. Cari pemain lalu tekan + TAMBAH.'; return; }
+    if (!entries.length) { list.textContent = 'Belum ada teman. Cari pemain lalu tekan ikon +.'; return; }
     for (const [key, saved] of entries) {
       const profile = await socialGet(`players/${key}`).catch(() => null);
       if (!profile) continue;
@@ -2195,11 +2250,14 @@ async function respondGameInvite(accept) {
 function buildPlayerSearchUI() {
   if (document.getElementById('player-search')) { renderFriendsList(); return; }
   const css = document.createElement('style');
-  css.textContent = `#player-search{position:fixed;top:12px;left:12px;z-index:58;width:min(310px,calc(100vw - 24px));max-height:75vh;overflow:auto;padding:10px;background:rgba(9,16,31,.95);border:1px solid rgba(66,217,255,.55);border-radius:13px;color:#fff;font:13px sans-serif;box-shadow:0 8px 28px #0006;backdrop-filter:blur(8px)}#ps-head{font-weight:900;color:#42d9ff;margin-bottom:7px}#ps-controls{display:flex;gap:6px}#ps-query{min-width:0;flex:1;padding:9px;border-radius:8px;border:1px solid #52627d;background:#101b30;color:#fff;outline:none}#ps-submit,.ps-action{border:0;border-radius:8px;padding:7px 10px;background:#167bd4;color:#fff;font-weight:800;font-size:11px}.ps-action:disabled{background:#176b51;color:#b8ffe3}.ps-result{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:rgba(255,255,255,.07)}.ps-info{display:flex;flex-direction:column;gap:3px;min-width:0}.ps-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ps-info small{color:#9fb4d5}#player-search-results,#ps-friends{display:flex;flex-direction:column;gap:5px;margin-top:7px;max-height:170px;overflow:auto}.ps-empty{padding:9px;color:#aab9d0;text-align:center}.ps-section{display:flex;align-items:center;justify-content:space-between;color:#42d9ff;font-weight:900;margin-top:12px;margin-bottom:5px}.ps-friend-actions{display:flex;gap:4px}.ps-invite{font-size:18px;min-width:32px;padding:3px}.ps-remove{border:0;border-radius:7px;background:#632d3c;color:#fff;font-size:18px;min-width:28px}.ps-notif{background:#e23c55;color:#fff;border-radius:50%;padding:2px 6px;font-size:10px}#social-invite-overlay{position:fixed;inset:0;z-index:10020;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.68);backdrop-filter:blur(5px);padding:18px}#social-invite-card{width:min(360px,100%);padding:24px;border:1px solid #42d9ff;border-radius:20px;background:linear-gradient(145deg,#142747,#080f20);box-shadow:0 0 35px #168bd766;color:#fff;text-align:center;font-family:sans-serif}#social-invite-card h2{margin:0 0 12px;color:#42d9ff}#social-invite-name{font-size:16px;font-weight:800}#social-invite-room{margin:15px 0;color:#a9c9ff;font-weight:900;letter-spacing:3px}.social-invite-actions{display:flex;gap:9px}.social-invite-actions button{flex:1;border:0;border-radius:10px;padding:12px;color:white;font-weight:900}.si-accept{background:#078b61}.si-decline{background:#713447}`;
+  css.textContent = `#player-search{position:fixed;top:54px;left:12px;z-index:58;width:min(310px,calc(100vw - 24px));max-height:75vh;overflow:auto;padding:10px;background:rgba(9,16,31,.95);border:1px solid rgba(66,217,255,.55);border-radius:13px;color:#fff;font:13px sans-serif;box-shadow:0 8px 28px #0006;backdrop-filter:blur(8px);display:none}#ps-head{display:flex;align-items:center;justify-content:space-between;font-weight:900;color:#42d9ff;margin-bottom:7px}#ps-close{border:0;background:#263a59;color:#fff;border-radius:7px;width:27px;height:27px;font-size:17px}#ps-launcher{position:fixed;top:12px;left:12px;z-index:59;width:34px;height:34px;border:1px solid rgba(66,217,255,.75);border-radius:50%;background:rgba(9,16,31,.92);color:#42d9ff;font-size:18px;font-weight:900;box-shadow:0 3px 12px #0008;display:flex;align-items:center;justify-content:center}#ps-launcher:active{transform:scale(.94)}#ps-controls{display:flex;gap:6px}#ps-query{min-width:0;flex:1;padding:9px;border-radius:8px;border:1px solid #52627d;background:#101b30;color:#fff;outline:none}#ps-submit,.ps-action{border:0;border-radius:8px;padding:7px 10px;background:#167bd4;color:#fff;font-weight:800;font-size:11px}.ps-action:disabled{background:#176b51;color:#b8ffe3}.ps-add{width:27px;height:27px;min-width:27px!important;padding:0!important;border-radius:50%!important;font-size:17px!important;line-height:27px}.ps-result{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:rgba(255,255,255,.07)}.ps-info{display:flex;flex-direction:column;gap:3px;min-width:0}.ps-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ps-info small{color:#9fb4d5}#player-search-results,#ps-friends{display:flex;flex-direction:column;gap:5px;margin-top:7px;max-height:170px;overflow:auto}.ps-empty{padding:9px;color:#aab9d0;text-align:center}.ps-section{display:flex;align-items:center;justify-content:space-between;color:#42d9ff;font-weight:900;margin-top:12px;margin-bottom:5px}.ps-friend-actions{display:flex;gap:4px}.ps-invite{font-size:18px;min-width:32px;padding:3px}.ps-remove{border:0;border-radius:7px;background:#632d3c;color:#fff;font-size:18px;min-width:28px}.ps-notif{background:#e23c55;color:#fff;border-radius:50%;padding:2px 6px;font-size:10px}#social-invite-overlay{position:fixed;inset:0;z-index:10020;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.68);backdrop-filter:blur(5px);padding:18px}#social-invite-card{width:min(360px,100%);padding:24px;border:1px solid #42d9ff;border-radius:20px;background:linear-gradient(145deg,#142747,#080f20);box-shadow:0 0 35px #168bd766;color:#fff;text-align:center;font-family:sans-serif}#social-invite-card h2{margin:0 0 12px;color:#42d9ff}#social-invite-name{font-size:16px;font-weight:800}#social-invite-room{margin:15px 0;color:#a9c9ff;font-weight:900;letter-spacing:3px}.social-invite-actions{display:flex;gap:9px}.social-invite-actions button{flex:1;border:0;border-radius:10px;padding:12px;color:white;font-weight:900}.si-accept{background:#078b61}.si-decline{background:#713447}`;
   document.head.appendChild(css);
+  const launcher = document.createElement('button'); launcher.id = 'ps-launcher'; launcher.type = 'button'; launcher.title = 'Teman & cari pemain'; launcher.textContent = '👤+';
   const box = document.createElement('section'); box.id = 'player-search';
-  box.innerHTML = `<div id="ps-head">🔎 CARI PLAYER <span id="ps-notif-count" class="ps-notif" style="display:none">0</span></div><div id="ps-controls"><input id="ps-query" maxlength="30" placeholder="Username / ID 6 digit" autocomplete="off"><button id="ps-submit">CARI</button></div><div id="player-search-results"><div class="ps-empty">Cari pemain dari seluruh server.</div></div><div class="ps-section">TEMAN SAYA</div><div id="ps-friends">Memuat teman…</div>`;
-  document.body.appendChild(box);
+  box.innerHTML = `<div id="ps-head"><span>👥 TEMAN & CARI PLAYER <span id="ps-notif-count" class="ps-notif" style="display:none">0</span></span><button id="ps-close" title="Tutup">×</button></div><div id="ps-controls"><input id="ps-query" maxlength="30" placeholder="Username / ID 6 digit" autocomplete="off"><button id="ps-submit">CARI</button></div><div id="player-search-results"><div class="ps-empty">Cari pemain dari seluruh server.</div></div><div class="ps-section">TEMAN SAYA</div><div id="ps-friends">Memuat teman…</div>`;
+  document.body.append(launcher, box);
+  launcher.onclick = () => { const open = box.style.display !== 'block'; box.style.display = open ? 'block' : 'none'; if (open) renderFriendsList(); };
+  document.getElementById('ps-close').onclick = () => { box.style.display = 'none'; };
   const overlay = document.createElement('div'); overlay.id = 'social-invite-overlay';
   overlay.innerHTML = `<div id="social-invite-card"><h2>🎮 UNDANGAN MAIN</h2><div id="social-invite-name">Pemain mengundangmu</div><div id="social-invite-room">ROOM -----</div><div class="social-invite-actions"><button class="si-decline" id="social-invite-no">TOLAK</button><button class="si-accept" id="social-invite-yes">GABUNG</button></div></div>`;
   document.body.appendChild(overlay);
@@ -2263,29 +2321,26 @@ function buildRoomUI() {
 .rp-player{padding:4px 8px;background:rgba(255,255,255,.06);border-radius:7px}
 #rp-wait{display:flex;align-items:center;justify-content:center;opacity:.85;text-align:center}
 #rp-msg{font-size:12px;color:#ffd166;text-align:center}#rp-msg:empty{display:none}
-#race-timer{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:55;display:none;background:rgba(0,0,0,.55);color:#fff;font:700 18px sans-serif;padding:4px 14px;border-radius:12px}
-#countdown{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;font:900 140px sans-serif;color:#fff;text-shadow:0 0 30px #3b6cf6;pointer-events:none}`;
+#countdown{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;font:900 140px sans-serif;color:#fff;text-shadow:0 0 30px #3b6cf6;pointer-events:none}
+#race-timer{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:69;padding:7px 15px;border:1px solid rgba(66,217,255,.7);border-radius:12px;background:rgba(7,15,30,.82);color:#fff;font:900 20px monospace;letter-spacing:1px;box-shadow:0 0 16px #168bd755;display:none;pointer-events:none}`;
   document.head.appendChild(css);
   const panel = document.createElement('div'); panel.id = 'room-panel';
   panel.innerHTML = `<div id="rp-head"><b id="rp-title">🎮 Mabar</b><button id="rp-qstart" style="display:none">▶ MULAI</button><button id="rp-min" title="Kecilkan / buka">—</button></div>
 <div id="rp-body">
 <div id="rp-menu"><div class="rp-row"><button id="rp-solo">🧍 Main Sendiri</button><button id="rp-create">➕ Buat Room</button></div>
-<div class="rp-row"><input id="rp-code" maxlength="5" placeholder="KODE" autocapitalize="characters" autocomplete="off"><button id="rp-join">Gabung</button></div></div>
+</div>
 <div id="rp-room" style="display:none"><div class="rp-codebox"><span>KODE</span><b id="rp-codetext">-----</b><button id="rp-copy">📋</button></div>
 <div id="rp-list"></div>
 <div class="rp-row"><button id="rp-start">▶ MULAI</button><div id="rp-wait">⏳ Menunggu host…</div><button id="rp-leave">🚪 Keluar</button></div></div>
 <div id="rp-msg"></div>
 </div>`;
-  const timer = document.createElement('div'); timer.id = 'race-timer';
   const cd = document.createElement('div'); cd.id = 'countdown';
-  document.body.append(panel, timer, cd);
+  const raceTimer = document.createElement('div'); raceTimer.id = 'race-timer'; raceTimer.textContent = '00:00.0';
+  document.body.append(panel, cd, raceTimer);
 
   const busy = async (label, fn) => { setRoomMsg(label); try { await fn(); setRoomMsg(''); } catch (e) { console.error(e); setRoomMsg('⚠️ ' + mpErr(e)); } };
-  const codeInput = document.getElementById('rp-code');
-  codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
   document.getElementById('rp-solo').onclick = () => document.getElementById('btn-start-game').click();
   document.getElementById('rp-create').onclick = () => busy('Membuat room…', createRoom);
-  document.getElementById('rp-join').onclick = () => { const c = codeInput.value.trim(); if (c.length !== 5) { setRoomMsg('Kode harus 5 karakter'); return; } busy('Menggabung…', () => joinRoom(c)); };
   document.getElementById('rp-copy').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(roomCode).then(() => showToast('📋 Kode disalin: ' + roomCode)).catch(() => showToast('Kode: ' + roomCode)); };
   document.getElementById('rp-start').onclick = () => busy('Memulai…', hostStart);
   document.getElementById('rp-leave').onclick = () => busy('Keluar…', () => leaveRoom());
@@ -2305,6 +2360,19 @@ function animate() {
   if (!renderer) return;
   const delta = Math.min(clock.getDelta(), 0.1);
   const t = roomStartAt ? Math.max(0, (serverNow() - roomStartAt) / 1000) : clock.getElapsedTime();
+  const timerEl = document.getElementById('race-timer');
+  if (timerEl) {
+    const running = gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN';
+    timerEl.style.display = running && (soloStart > 0 || roomStartAt) ? 'block' : 'none';
+    if (running && (soloStart > 0 || roomStartAt)) {
+      const elapsedMs = finishMs != null ? finishMs : (roomStartAt ? Math.max(0, serverNow() - roomStartAt) : Math.max(0, performance.now() - soloStart));
+      const totalTenths = Math.floor(elapsedMs / 100);
+      const mins = Math.floor(totalTenths / 600);
+      const secs = Math.floor((totalTenths % 600) / 10);
+      const tenth = totalTenths % 10;
+      timerEl.textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}.${tenth}`;
+    }
+  }
   tickMultiplayer();
   animateRemotePlayers(delta);
   if (lobbyAccentRing && gameState === 'LOBBY') lobbyAccentRing.rotation.z += delta * 0.12;
