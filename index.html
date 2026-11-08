@@ -7,7 +7,6 @@
   <title>Parkour 3D - Akses</title>
   
   <link rel="manifest" href="./manifest.json">
-  <link rel="preload" as="image" href="https://files.catbox.moe/0xw03u.jpg" referrerpolicy="no-referrer">
   
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap');
@@ -122,6 +121,8 @@
     #joystick-knob { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; background: rgba(255, 255, 255, 0.7); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
     #btn-jump { position: absolute; bottom: 40px; right: 40px; width: 80px; height: 80px; background: rgba(0, 255, 100, 0.6); border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%; color: white; font-weight: bold; display: flex; align-items: center; justify-content: center; user-select: none; font-size: 18px; touch-action: none; z-index: 5; cursor: pointer; pointer-events: auto; font-family: sans-serif;}
     #btn-jump:active { background: rgba(0, 255, 100, 0.9); transform: scale(0.95); }
+    #btn-exit-lobby { display: none; position: absolute; top: 10px; right: 10px; z-index: 40; height: 32px; padding: 0 11px; align-items: center; gap: 4px; background: rgba(8,14,28,0.82); color: #fff; border: 1px solid rgba(255,255,255,.45); border-radius: 10px; font: 700 12px sans-serif; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
+    #btn-exit-lobby:active { transform: scale(0.95); background: rgba(255,59,59,.85); }
     #btn-run { position: absolute; bottom: 40px; right: 140px; width: 70px; height: 70px; background: rgba(255, 59, 59, 0.6); border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%; color: white; font-weight: bold; display: flex; align-items: center; justify-content: center; user-select: none; touch-action: none; z-index: 5; cursor: pointer; pointer-events: auto; font-family: sans-serif;}
     #btn-run:active { background: rgba(255, 59, 59, 0.9); transform: scale(0.95); }
 
@@ -188,9 +189,30 @@
 <body>
   <div id="startup-loading" aria-label="Memuat PARKOUR 3D">
     <img class="startup-bg" id="startup-bg" alt="" decoding="async" fetchpriority="high" referrerpolicy="no-referrer"
-         src="https://files.catbox.moe/0xw03u.jpg"
-         data-fallback="./loading.jpg"
-         onerror="if(this.dataset.fallback){var f=this.dataset.fallback;this.dataset.fallback='';this.src=f;}else{this.style.display='none';}">
+         src="./loading.jpg">
+    <script>
+      // Coba beberapa sumber foto berurutan sampai ada yang berhasil dimuat
+      (function () {
+        var img = document.getElementById('startup-bg');
+        var srcs = [
+          './loading.jpg',
+          'https://wsrv.nl/?url=files.catbox.moe/0xw03u.jpg',
+          'https://images.weserv.nl/?url=files.catbox.moe/0xw03u.jpg',
+          'https://files.catbox.moe/0xw03u.jpg'
+        ], i = 0, timer;
+        function next() {
+          clearTimeout(timer);
+          i++;
+          if (i >= srcs.length) { img.style.display = 'none'; return; }
+          img.src = srcs[i];
+          timer = setTimeout(function () { if (!img.complete || !img.naturalWidth) next(); }, 4000);
+        }
+        img.onerror = next;
+        img.onload = function () { clearTimeout(timer); img.style.display = ''; };
+        img.src = srcs[0];
+        timer = setTimeout(function () { if (!img.complete || !img.naturalWidth) next(); }, 2500);
+      })();
+    </script>
     <div class="startup-content">
       <div class="startup-title">PARKOUR 3D</div>
       <div class="startup-sub">DEVELOPED BY PUTZZDEV</div>
@@ -298,6 +320,7 @@
       <div id="btn-start-game" style="display: flex;">MULAI</div>
     </div>
 
+    <button id="btn-exit-lobby" type="button" title="Keluar ke lobby">🚪 Lobby</button>
     <div id="in-game-controls">
       <div id="joystick-area"><div id="joystick-zone"><div id="joystick-knob"></div></div></div>
       <div id="btn-jump">LOMPAT</div>

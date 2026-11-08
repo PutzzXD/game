@@ -222,6 +222,7 @@ window.addEventListener('DOMContentLoaded', () => {
     showLoadingScreen(() => {
       isGameStarted = true;
       onGameBegin();
+      document.getElementById('btn-exit-lobby').style.display = 'flex';
       camera.position.set(0, 4, 8);
       controls.target.set(0, 1.5, 0);
     });
@@ -368,6 +369,39 @@ window.addEventListener('DOMContentLoaded', () => {
   } else {
     finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
   }
+});
+
+// ============ KELUAR KE LOBBY (tombol kecil kanan atas saat bermain) ============
+async function returnToLobby() {
+  if (gameState === 'LOBBY') return;
+  if (roomCode) { try { await leaveRoom(false); } catch (e) { console.warn(e); } }
+  gameState = 'LOBBY';
+  flyMode = false; flyUp = flyDown = false;
+  const fc = document.getElementById('fly-ctrl'); if (fc) fc.style.display = 'none';
+  const adFly = document.getElementById('ad-fly'); if (adFly) { adFly.classList.remove('on'); adFly.textContent = '✈️ Terbang: OFF (F)'; }
+  finishMs = null; deathFrozenMs = null; roomRunReset = 0; soloStart = 0;
+  try { guards.forEach(gd => gd.reset()); } catch (e) {}
+  if (character) { character.visible = true; character.position.set(0, 0.25, 0); character.rotation.y = 0; }
+  if (physics) physics.velocityY = 0;
+  moveVel.set(0, 0); knock.set(0, 0);
+  checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
+  ['overlay', 'countdown', 'race-timer'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  document.getElementById('in-game-controls').style.display = 'none';
+  document.getElementById('btn-exit-lobby').style.display = 'none';
+  document.getElementById('btn-start-game').style.display = 'flex';
+  document.getElementById('btn-shop').style.display = 'flex';
+  document.getElementById('btn-vault').style.display = 'flex';
+  document.getElementById('chat-container').style.display = 'flex';
+  setLobbyOnlyHud(true);
+  if (parkourWorldGroup) parkourWorldGroup.visible = false;
+  if (lobbyWorldGroup) lobbyWorldGroup.visible = true;
+  if (scene) { scene.background = new THREE.Color(0x10182b); scene.fog = null; }
+  if (camera && controls) { camera.position.set(0, 3.8, 9.5); controls.target.set(0, 1.45, 0); }
+  updateRoomUI();
+}
+window.addEventListener('DOMContentLoaded', () => {
+  const b = document.getElementById('btn-exit-lobby');
+  if (b) b.addEventListener('click', () => { returnToLobby(); });
 });
 
 // ============ LOADING SCREEN (saat tekan MULAI) ============
@@ -762,6 +796,7 @@ function roast(kind, plain) {
 let flyMode = false, godMode = false, flyUp = false, flyDown = false, flySpeed = 14;
 
 function respawn() {
+  resetRunTimer();
   reviveLocal();
   character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z);
   physics.velocityY = 0; moveVel.set(0, 0); knock.set(0, 0); guards.forEach(gd => gd.reset()); gameState = 'PLAYING';
@@ -772,7 +807,7 @@ function respawn() {
 function setupAdminPanel() {
   if (playerData.username.toLowerCase() !== DEV_USERNAME || document.getElementById('admin-btn')) return;
   const css = document.createElement('style');
-  css.textContent = '#admin-wrap{position:fixed;top:10px;right:10px;z-index:9999;display:flex;flex-direction:column;align-items:flex-end;gap:6px;font-family:sans-serif}#admin-btn{padding:8px 12px;border:0;border-radius:10px;background:#ff3366;color:#fff;font-weight:700;cursor:grab;touch-action:none}#admin-panel{width:220px;padding:12px;border-radius:12px;background:rgba(15,15,25,.92);color:#fff;display:none;flex-direction:column;gap:8px;font-size:13px}#admin-title{cursor:grab;padding:4px 0;touch-action:none;user-select:none}#admin-panel button{padding:8px;border:0;border-radius:8px;background:#2d3550;color:#fff}#admin-panel button.on{background:#00b86b}#admin-roast{font-size:12px;color:#ffd166}#fly-ctrl{position:fixed;z-index:9999;right:14px;top:45%;display:none;flex-direction:column;gap:10px}#fly-ctrl button{width:56px;height:56px;border-radius:50%;border:0;background:rgba(255,255,255,.25);color:#fff;font-size:24px}';
+  css.textContent = '#admin-wrap{position:fixed;top:54px;right:10px;z-index:9999;display:flex;flex-direction:column;align-items:flex-end;gap:6px;font-family:sans-serif}#admin-btn{padding:8px 12px;border:0;border-radius:10px;background:#ff3366;color:#fff;font-weight:700;cursor:grab;touch-action:none}#admin-panel{width:220px;padding:12px;border-radius:12px;background:rgba(15,15,25,.92);color:#fff;display:none;flex-direction:column;gap:8px;font-size:13px}#admin-title{cursor:grab;padding:4px 0;touch-action:none;user-select:none}#admin-panel button{padding:8px;border:0;border-radius:8px;background:#2d3550;color:#fff}#admin-panel button.on{background:#00b86b}#admin-roast{font-size:12px;color:#ffd166}#fly-ctrl{position:fixed;z-index:9999;right:14px;top:45%;display:none;flex-direction:column;gap:10px}#fly-ctrl button{width:56px;height:56px;border-radius:50%;border:0;background:rgba(255,255,255,.25);color:#fff;font-size:24px}';
   document.head.appendChild(css);
   const wrap = document.createElement('div'); wrap.id = 'admin-wrap';
   const btn = document.createElement('button'); btn.id = 'admin-btn'; btn.textContent = '🛠️ Admin';
@@ -809,7 +844,7 @@ function setupAdminPanel() {
   panel.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => {
     const d = { start: [0, 0.25, 0], hub: [0, 13.75, -68], top: [0, FIN_Y, -77], maze: [-2, FIN_Y, -85], finish: [WIN.x, FIN_Y, WIN.z] }[b.dataset.tp];
     character.position.set(...d); physics.velocityY = 0; moveVel.set(0, 0);
-    if (gameState === 'GAMEOVER') { reviveLocal(); gameState = 'PLAYING'; document.getElementById('overlay').style.display = 'none'; }
+    if (gameState === 'GAMEOVER') { resetRunTimer(); reviveLocal(); gameState = 'PLAYING'; document.getElementById('overlay').style.display = 'none'; }
   });
   document.getElementById('ad-coin').onclick = () => {
     playerData.coins = (playerData.coins || 0) + 1000; updatePlayerFirebase();
@@ -1668,6 +1703,22 @@ let mpUid = null, mpReady = false, mpOffset = 0;
 let roomCode = null, roomMeta = null, roomPlayers = {}, roomUnsub = null, roomStartAt = null, roomStarted = false;
 let lobbyLeaderboardGroup = null, lobbyLeaderboardTexture = null, lobbyLeaderboardCanvas = null, lobbyLeaderboardCtx = null, lobbyLeaderboardLastKey = '';
 const lobbyLeaderboardAvatars = new Map();
+let deathFrozenMs = null, roomRunReset = 0;
+// Waktu berjalan sejak mulai/respawn terakhir
+function rawElapsedMs() {
+  return roomStartAt ? Math.max(0, serverNow() - Math.max(roomStartAt, roomRunReset)) : Math.max(0, performance.now() - soloStart);
+}
+// Saat mati (GAMEOVER) timer dibekukan, tidak lanjut jalan
+function runElapsedMs() {
+  if (finishMs != null) return finishMs;
+  if (gameState === 'GAMEOVER') { if (deathFrozenMs == null) deathFrozenMs = rawElapsedMs(); return deathFrozenMs; }
+  return rawElapsedMs();
+}
+// Timer ikut di-reset ke 00:00.0 setiap karakter di-reset/respawn
+function resetRunTimer() {
+  deathFrozenMs = null;
+  if (roomStartAt) roomRunReset = serverNow(); else soloStart = performance.now();
+}
 let myRef = null, myJoinedAt = 0, mpLastSend = 0, mpEquipTimer = null, soloStart = 0, finishMs = null, lastLobbyCount = -1, rpCollapsed = false;
 let soloLeaderboardEntries = [], soloLeaderboardLoading = false, soloLeaderboardLastFetch = 0;
 let personalRunScore = 0;
@@ -1767,7 +1818,7 @@ function onGameBegin() {
   if (lobbyWorldGroup) lobbyWorldGroup.visible = false;
   if (scene) { scene.background = new THREE.Color(0x1a1a24); scene.fog = new THREE.Fog(0x1a1a24, 20, 150); }
   const rp = document.getElementById('room-panel'); if (rp) rp.style.display = 'none';
-  finishMs = null;
+  finishMs = null; deathFrozenMs = null; roomRunReset = 0;
   personalRunScore = 0;
   activatedCheckpoints = new WeakSet();
   // Reset warna/status checkpoint hanya saat putaran baru dimulai. Respawn tidak meresetnya.
@@ -1812,7 +1863,7 @@ async function savePersonalBest(score, timeMs) {
 
 function onFinish() {
   if (finishMs != null) return;
-  finishMs = roomStartAt ? serverNow() - roomStartAt : performance.now() - soloStart;
+  finishMs = rawElapsedMs();
   personalRunScore = scoreFromTime(finishMs);
   if (myRef) update(myRef, { finishMs: Math.round(finishMs), score: personalRunScore }).catch(() => {});
   savePersonalBest(personalRunScore, finishMs).catch(e => console.warn('Simpan rekor gagal:', e));
@@ -2482,7 +2533,7 @@ function animate() {
     const running = gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN';
     timerEl.style.display = running && (soloStart > 0 || roomStartAt) ? 'block' : 'none';
     if (running && (soloStart > 0 || roomStartAt)) {
-      const elapsedMs = finishMs != null ? finishMs : (roomStartAt ? Math.max(0, serverNow() - roomStartAt) : Math.max(0, performance.now() - soloStart));
+      const elapsedMs = runElapsedMs();
       const totalTenths = Math.floor(elapsedMs / 100);
       const mins = Math.floor(totalTenths / 600);
       const secs = Math.floor((totalTenths % 600) / 10);
