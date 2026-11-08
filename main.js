@@ -629,7 +629,8 @@ let laserBeam = null; // Objek Laser NPC
 let rig, leftElbow, rightElbow, leftKnee, rightKnee, embers;
 let sq = { x: 0, v: 0 }, moveVel = new THREE.Vector2(0, 0), wasGrounded = true, laserState = 'off';
 const LASER_Z = -44, LASER_Y = 9.3;
-let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
+let FIN_Y = 1e9, checkpoint = { p: null, set: false, order: 0, x: 0, y: 0.25, z: 0 };
+let checkpointCounter = 0, checkpointProgress = 0;
 let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
 let batGrp, capeB, ironHelm, ironBody, thorHelm, thorBody, capeT;
@@ -954,7 +955,14 @@ function init3DGame() {
   createPlatform(-2, 12, -61.5, 3.2, 2.5, 'fake', 0.05); createPlatform(2, 12, -61.5, 3.2, 2.5, 'static');
   createPlatform(0, 13.5, -68, 8, 8, 'static');
   const checkMat = new THREE.MeshStandardMaterial({ color: 0x22aa55, emissive: 0x22aa55, emissiveIntensity: 0.4 });
-  const markCheckpoint = () => { const c = platforms[platforms.length - 1]; c.checkpoint = true; c.mesh.material = checkMat; };
+  const markCheckpoint = () => {
+    const c = platforms[platforms.length - 1];
+    c.checkpoint = true;
+    c.checkpointOrder = ++checkpointCounter;
+    c.checkpointOriginalMaterial = c.mesh.material;
+    c.checkpointUsed = false;
+    c.mesh.material = checkMat;
+  };
   markCheckpoint(); // Hub = checkpoint
 
   // ===== TOWER SPIRAL ala obby Roblox: muter naik ke atas =====
@@ -1003,7 +1011,7 @@ function init3DGame() {
   createPlatform(TC.x, FY, TC.z, 8, 8, 'static'); // PUNCAK / FINISH
   const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, FY - 12.25, 16), new THREE.MeshStandardMaterial({ color: 0x2a2a3a }));
   pillar.position.set(TC.x, (12 + FY - 0.25) / 2, TC.z); scene.add(pillar);
-  { const tp = platforms.find(pl => Math.abs(pl.mesh.position.x - TC.x) < 0.01 && Math.abs(pl.mesh.position.z - TC.z) < 0.01 && Math.abs(pl.mesh.position.y - FY) < 0.01); if (tp) { tp.checkpoint = true; tp.mesh.material = checkMat; } }
+  { const tp = platforms.find(pl => Math.abs(pl.mesh.position.x - TC.x) < 0.01 && Math.abs(pl.mesh.position.z - TC.z) < 0.01 && Math.abs(pl.mesh.position.y - FY) < 0.01); if (tp) { tp.checkpoint = true; tp.checkpointOrder = ++checkpointCounter; tp.checkpointOriginalMaterial = tp.mesh.material; tp.checkpointUsed = false; tp.mesh.material = checkMat; } }
 
   // ===== LABIRIN DI ATAS TOWER (salah lorong = ditembak NPC) =====
   const MN = 12, CS = 4, mcx = 0, MH = MN * CS / 2, mcz = -89 - MH, wallH = 7, floorTop = FY + 0.25, EC = Math.floor(MN / 2) - 1;
@@ -1055,7 +1063,10 @@ function init3DGame() {
   [Math.floor(pathArr.length / 3), Math.floor(pathArr.length * 2 / 3)].forEach(ix => {
     const [pr, pc] = pathArr[ix];
     createPlatform(cxOf(pc), FY + 0.01, czOf(pr), 2.4, 2.4, 'static', 0, 'round');
-    const pd = platforms.pop(); platforms.unshift(pd); pd.checkpoint = true; pd.mesh.material = checkMat;
+    const pd = platforms.pop(); platforms.unshift(pd);
+    pd.checkpoint = true; pd.checkpointOrder = ++checkpointCounter;
+    pd.checkpointOriginalMaterial = pd.mesh.material; pd.checkpointUsed = false;
+    pd.mesh.material = checkMat;
   });
 
   // NPC penembak berdiri di ujung buntu tiap cabang lorong salah
@@ -1473,6 +1484,25 @@ function insidePlat(p, x, z, pad) {
   const m = p.mesh.position;
   if (p.r) return Math.hypot(x - m.x, z - m.z) < p.r + pad;
   return x + pad > m.x - p.width / 2 && x - pad < m.x + p.width / 2 && z + pad > m.z - p.depth / 2 && z - pad < m.z + p.depth / 2;
+}
+
+function activateCheckpoint(platform, groundY) {
+  if (!platform || !platform.checkpoint || platform.checkpointUsed) return;
+
+  // Setiap checkpoint hanya bisa disentuh satu kali: setelah diinjak, warna hijau hilang.
+  platform.checkpointUsed = true;
+  if (platform.checkpointOriginalMaterial) {
+    platform.mesh.material = platform.checkpointOriginalMaterial;
+  }
+
+  const order = platform.checkpointOrder || 0;
+  // Progres hanya boleh maju, tidak pernah mundur ke checkpoint yang lebih rendah.
+  if (order > checkpointProgress) {
+    checkpointProgress = order;
+    const m = platform.mesh.position;
+    checkpoint = { p: platform, set: true, order, x: m.x, y: groundY, z: m.z };
+    showToast('✅ Checkpoint tersimpan!');
+  }
 }
 
 function checkGroundCollision(x, z, y) {
@@ -2007,11 +2037,7 @@ function animate() {
     character.position.y = groundData.y;
     physics.velocityY = 0; physics.isGrounded = true; physics.jumpCount = 0;
     if (groundData.platform.type === 'moving_x') character.position.x += groundData.platform.dx;
-    if (groundData.platform.checkpoint && checkpoint.p !== groundData.platform) {
-      const m = groundData.platform.mesh.position;
-      checkpoint = { p: groundData.platform, set: true, x: m.x, y: groundData.y, z: m.z };
-      showToast('✅ Checkpoint tersimpan!');
-    }
+    activateCheckpoint(groundData.platform, groundData.y);
   } else {
     physics.isGrounded = false;
   }
@@ -2025,6 +2051,7 @@ function animate() {
     const landingData = checkGroundCollision(character.position.x, character.position.z, character.position.y + 0.5);
     if (landingData && character.position.y <= landingData.y) {
       character.position.y = landingData.y; physics.velocityY = 0; physics.isGrounded = true; physics.jumpCount = 0;
+      activateCheckpoint(landingData.platform, landingData.y);
     }
   }
 
