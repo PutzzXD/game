@@ -843,7 +843,15 @@ function init3DGame() {
     const base = shape === 'round' ? roundMat : (shape === 'hex' ? hexMat : platformMat);
     let mat = base;
     if (type.includes('moving')) mat = movingMat;
-    if (type === 'fake') { mat = base.clone(); mat.transparent = true; }
+    if (type === 'fake') {
+      // Kotak palsu memakai tampilan material yang sama seperti kotak asli.
+      // Tidak ada transparansi atau efek berkedip sebelum pemain mendekat.
+      mat = base.clone();
+      mat.transparent = false;
+      mat.opacity = 1;
+      mat.emissive.setHex(0x000000);
+      mat.emissiveIntensity = 0;
+    }
 
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
@@ -981,7 +989,13 @@ function init3DGame() {
       createPlatform(cx, ty, cz, w, w, 'moving_y', 0, sh); platforms[platforms.length - 1].range = hard ? 1.4 : 0.9;
     } else {
       createPlatform(cx, ty, cz, w, w, 'static', 0, sh);
-      if (hard && i % 3 === 1) { const d = platforms[platforms.length - 1]; d.decoy = true; d.mesh.material = d.mesh.material.clone(); d.mesh.material.transparent = true; }
+      if (hard && i % 3 === 1) {
+        const d = platforms[platforms.length - 1];
+        d.decoy = true;
+        d.mesh.material = d.mesh.material.clone();
+        d.mesh.material.transparent = false;
+        d.mesh.material.opacity = 1;
+      }
     }
   }
   createPlatform(TC.x + Math.cos(ta) * 6.3, ty + 0.55, TC.z + Math.sin(ta) * 6.3, 3, 3, 'static'); // penghubung
@@ -1944,15 +1958,14 @@ function animate() {
     if (p.type === 'moving_x') { const nx = p.startX + Math.sin(t * p.speed + p.phase) * p.range; p.dx = nx - p.mesh.position.x; p.mesh.position.x = nx; }
     else if (p.type === 'moving_y') p.mesh.position.y = p.startY + Math.sin(t * p.speed + p.phase) * p.range;
     else if (p.type === 'fake') {
-      const m = p.mesh.material;
+      // Setelah terpicu, kotak menghilang tepat 2 detik lalu muncul kembali.
       p.revealTimer = Math.max(0, p.revealTimer - delta);
-      const glitch = p.revealTimer > 0 || ((t * 0.7 + p.phase) % 4) < 0.18; // semua kotak palsu sesekali berkedip
-      m.opacity = glitch ? 0.2 + Math.random() * 0.25 : 1 - 0.45 * p.tell * (0.6 + 0.4 * Math.sin(t * 5 + p.phase));
-      m.emissive.setHex(p.revealTimer > 0 ? 0xff0044 : (glitch ? 0x66ccff : 0x000000));
-      m.emissiveIntensity = 0.7;
+      p.mesh.visible = p.revealTimer <= 0;
     }
-    else if (p.decoy) { // kotak ASLI yang ikut berkedip, pengecoh
-      p.mesh.material.opacity = ((t * 0.6 + p.phase * 1.7) % 5) < 0.14 ? 0.3 + Math.random() * 0.25 : 1;
+    else if (p.decoy) {
+      // Kotak asli pengecoh juga tetap stabil, tanpa efek berkedip.
+      p.mesh.visible = true;
+      p.mesh.material.opacity = 1;
     }
   });
 
@@ -2019,12 +2032,24 @@ function animate() {
   if (physics.isGrounded && !wasGrounded && preVy < -4) { const imp = Math.min(1, -preVy / 22); sq.v = -imp * 8; spawnDust(4 + Math.round(imp * 6)); }
   wasGrounded = physics.isGrounded;
 
-  // Kotak palsu: tembus lalu glitch merah
+  // Kotak palsu: menghilang saat pemain sedang turun dan hampir mendarat.
+  // Pemicu berada sedikit di atas permukaan agar kotak hilang sebelum diinjak.
   platforms.forEach(p => {
-    if (p.type !== 'fake' || p.revealTimer > 0) return;
-    const m = p.mesh.position, ty = m.y + 0.25;
-    if (Math.abs(character.position.x - m.x) < p.width / 2 && Math.abs(character.position.z - m.z) < p.depth / 2 && character.position.y < ty + 0.2 && character.position.y > ty - 1.2) {
-      p.revealTimer = 1.5; roast('fake', ' Kotak palsu! bego');
+    if (p.type !== 'fake' || p.revealTimer > 0 || !p.mesh.visible) return;
+
+    const m = p.mesh.position;
+    const topY = m.y + (p.hh || 0.25);
+    const insideX = Math.abs(character.position.x - m.x) < p.width / 2 - 0.08;
+    const insideZ = Math.abs(character.position.z - m.z) < p.depth / 2 - 0.08;
+    const approachingLanding =
+      physics.velocityY <= 0 &&
+      character.position.y >= topY - 0.1 &&
+      character.position.y <= topY + 1.35;
+
+    if (insideX && insideZ && approachingLanding) {
+      p.revealTimer = 2.0;
+      p.mesh.visible = false;
+      roast('fake', ' Kotak palsu!');
     }
   });
 
