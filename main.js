@@ -207,7 +207,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-start-game').style.display = 'none';
     document.getElementById('btn-shop').style.display = 'none';
     document.getElementById('btn-vault').style.display = 'none';
-    document.getElementById('in-game-controls').style.display = 'block'; { const zc = document.getElementById('zoom-ctrl'); if (zc) zc.style.display = 'flex'; }
+    document.getElementById('in-game-controls').style.display = 'block'; setLobbyOnlyHud(false);
     chatBox.style.display = 'none'; 
     chatToggle.textContent = '💬 Chat Global';
     profileModal.style.display = 'none';
@@ -342,6 +342,24 @@ function showLoadingScreen(done) {
   tick();
 }
 
+// Elemen profil, saldo, dan tombol zoom hanya tampil di lobby.
+function setLobbyOnlyHud(show) {
+  const display = show ? '' : 'none';
+  const profile = document.getElementById('btn-profile');
+  if (profile) profile.style.display = display;
+  const coins = document.getElementById('coin-amount');
+  if (coins) {
+    let coinWrap = coins.closest('#coin-box, .coin-box, .hud-coins, .coin-display, [data-hud="coins"]') || coins.parentElement;
+    if (coinWrap) coinWrap.style.display = display;
+  }
+  const zoom = document.getElementById('zoom-ctrl');
+  if (zoom) zoom.remove();
+  const friendLaunch = document.getElementById('ps-launcher');
+  const inviteLaunch = document.getElementById('ps-invite-launcher');
+  if (friendLaunch) friendLaunch.style.display = show ? 'flex' : 'none';
+  if (inviteLaunch) inviteLaunch.style.display = show ? 'flex' : 'none';
+}
+
 // ============ 4. FUNGSI LOBI & SHOP ============
 function startLobby() {
   document.getElementById('auth-container').style.display = 'none';
@@ -363,7 +381,7 @@ function startLobby() {
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('btn-shop').style.display = 'flex';
   document.getElementById('btn-vault').style.display = 'flex';
-  document.getElementById('in-game-controls').style.display = 'none'; { const zc = document.getElementById('zoom-ctrl'); if (zc) zc.style.display = 'none'; }
+  document.getElementById('in-game-controls').style.display = 'none'; setLobbyOnlyHud(true);
   document.getElementById('chat-container').style.display = 'flex';
 
   fetchGlobalChat();
@@ -377,6 +395,7 @@ function startLobby() {
   camera.position.set(0, 3.8, 9.5);
   controls.target.set(0, 1.45, 0);
   buildRoomUI();
+  setLobbyOnlyHud(true);
 }
 
 function renderShopTab(category) {
@@ -1418,19 +1437,8 @@ function init3DGame() {
   controls.enableDamping = true; controls.dampingFactor = 0.12;
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }; // 1 jari = putar kamera, 2 jari = cubit zoom
 
-  // Tombol zoom +/- (zoom tanpa cubit saat satu jempol sedang memegang analog)
-  const zcss = document.createElement('style');
-  zcss.textContent = '#zoom-ctrl{position:fixed;left:14px;top:42%;z-index:40;display:none;flex-direction:column;gap:10px}#zoom-ctrl button{width:48px;height:48px;border-radius:50%;border:0;background:rgba(255,255,255,.28);color:#fff;font-size:24px;font-weight:700;touch-action:none;user-select:none}';
-  document.head.appendChild(zcss);
-  const zc = document.createElement('div'); zc.id = 'zoom-ctrl';
-  zc.innerHTML = '<button id="zoom-in">＋</button><button id="zoom-out">－</button>';
-  document.body.appendChild(zc);
-  const holdZoom = (id, dir) => {
-    const el = document.getElementById(id);
-    el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); zoomDir = dir; });
-    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => { zoomDir = 0; }));
-  };
-  holdZoom('zoom-in', -1); holdZoom('zoom-out', 1);
+  // Kamera dapat diputar dengan geser satu jari dan di-zoom dengan cubit dua jari.
+  // Tidak ada tombol zoom +/- agar layar permainan lebih bersih.
 
   controls.domElement.addEventListener('pointerdown', function(e) {
     if (!isGameStarted) return;
@@ -1674,6 +1682,7 @@ function mpSyncEquipped() {
 
 // dipanggil tombol start (solo) ATAU saat host memulai room
 function onGameBegin() {
+  setLobbyOnlyHud(false);
   if (parkourWorldGroup) parkourWorldGroup.visible = true;
   if (lobbyWorldGroup) lobbyWorldGroup.visible = false;
   if (scene) { scene.background = new THREE.Color(0x1a1a24); scene.fog = new THREE.Fog(0x1a1a24, 20, 150); }
@@ -2142,7 +2151,12 @@ async function removeFriend(targetKey) {
   await renderFriendsList();
 }
 async function sendGameInvite(targetKey, targetName) {
-  if (!roomCode) { showToast('Buat atau gabung room dulu sebelum mengundang'); return; }
+  if (!roomCode) {
+    showToast('Menyiapkan room untuk undangan…');
+    await createRoom();
+    // Mulai otomatis agar penerima undangan langsung masuk ke permainan yang sama.
+    await update(ref(multiplayerDb, `rooms/${roomCode}/meta`), { startAt: serverNow() + 6500 });
+  }
   const invite = { from: myPlayerKey(), fromName: playerData.username, to: targetKey, roomCode, sentAt: Date.now(), status: 'pending' };
   await socialPatch(`gameInvites/${targetKey}`, { [myPlayerKey()]: invite });
   showToast(`Undangan dikirim ke ${targetName}`);
@@ -2250,12 +2264,14 @@ async function respondGameInvite(accept) {
 function buildPlayerSearchUI() {
   if (document.getElementById('player-search')) { renderFriendsList(); return; }
   const css = document.createElement('style');
-  css.textContent = `#player-search{position:fixed;top:54px;left:12px;z-index:58;width:min(310px,calc(100vw - 24px));max-height:75vh;overflow:auto;padding:10px;background:rgba(9,16,31,.95);border:1px solid rgba(66,217,255,.55);border-radius:13px;color:#fff;font:13px sans-serif;box-shadow:0 8px 28px #0006;backdrop-filter:blur(8px);display:none}#ps-head{display:flex;align-items:center;justify-content:space-between;font-weight:900;color:#42d9ff;margin-bottom:7px}#ps-close{border:0;background:#263a59;color:#fff;border-radius:7px;width:27px;height:27px;font-size:17px}#ps-launcher{position:fixed;top:12px;left:12px;z-index:59;width:34px;height:34px;border:1px solid rgba(66,217,255,.75);border-radius:50%;background:rgba(9,16,31,.92);color:#42d9ff;font-size:18px;font-weight:900;box-shadow:0 3px 12px #0008;display:flex;align-items:center;justify-content:center}#ps-launcher:active{transform:scale(.94)}#ps-controls{display:flex;gap:6px}#ps-query{min-width:0;flex:1;padding:9px;border-radius:8px;border:1px solid #52627d;background:#101b30;color:#fff;outline:none}#ps-submit,.ps-action{border:0;border-radius:8px;padding:7px 10px;background:#167bd4;color:#fff;font-weight:800;font-size:11px}.ps-action:disabled{background:#176b51;color:#b8ffe3}.ps-add{width:27px;height:27px;min-width:27px!important;padding:0!important;border-radius:50%!important;font-size:17px!important;line-height:27px}.ps-result{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:rgba(255,255,255,.07)}.ps-info{display:flex;flex-direction:column;gap:3px;min-width:0}.ps-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ps-info small{color:#9fb4d5}#player-search-results,#ps-friends{display:flex;flex-direction:column;gap:5px;margin-top:7px;max-height:170px;overflow:auto}.ps-empty{padding:9px;color:#aab9d0;text-align:center}.ps-section{display:flex;align-items:center;justify-content:space-between;color:#42d9ff;font-weight:900;margin-top:12px;margin-bottom:5px}.ps-friend-actions{display:flex;gap:4px}.ps-invite{font-size:18px;min-width:32px;padding:3px}.ps-remove{border:0;border-radius:7px;background:#632d3c;color:#fff;font-size:18px;min-width:28px}.ps-notif{background:#e23c55;color:#fff;border-radius:50%;padding:2px 6px;font-size:10px}#social-invite-overlay{position:fixed;inset:0;z-index:10020;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.68);backdrop-filter:blur(5px);padding:18px}#social-invite-card{width:min(360px,100%);padding:24px;border:1px solid #42d9ff;border-radius:20px;background:linear-gradient(145deg,#142747,#080f20);box-shadow:0 0 35px #168bd766;color:#fff;text-align:center;font-family:sans-serif}#social-invite-card h2{margin:0 0 12px;color:#42d9ff}#social-invite-name{font-size:16px;font-weight:800}#social-invite-room{margin:15px 0;color:#a9c9ff;font-weight:900;letter-spacing:3px}.social-invite-actions{display:flex;gap:9px}.social-invite-actions button{flex:1;border:0;border-radius:10px;padding:12px;color:white;font-weight:900}.si-accept{background:#078b61}.si-decline{background:#713447}`;
+  css.textContent = `#player-search{position:fixed;top:58px;right:58px;left:auto;z-index:58;width:min(310px,calc(100vw - 24px));max-height:75vh;overflow:auto;padding:10px;background:rgba(9,16,31,.95);border:1px solid rgba(66,217,255,.55);border-radius:13px;color:#fff;font:13px sans-serif;box-shadow:0 8px 28px #0006;backdrop-filter:blur(8px);display:none}#ps-head{display:flex;align-items:center;justify-content:space-between;font-weight:900;color:#42d9ff;margin-bottom:7px}#ps-close{border:0;background:#263a59;color:#fff;border-radius:7px;width:27px;height:27px;font-size:17px}#ps-launcher{position:fixed;top:16px;right:16px;left:auto;z-index:59;width:34px;height:34px;border:1px solid rgba(66,217,255,.75);border-radius:50%;background:rgba(9,16,31,.92);color:#42d9ff;font-size:18px;font-weight:900;box-shadow:0 3px 12px #0008;display:flex;align-items:center;justify-content:center}#ps-launcher:active{transform:scale(.94)}#ps-invite-launcher{position:fixed;top:58px;right:16px;z-index:59;width:34px;height:34px;border:1px solid rgba(255,190,80,.8);border-radius:50%;background:rgba(28,20,10,.92);color:#ffd166;font-size:16px;box-shadow:0 3px 12px #0008;display:flex;align-items:center;justify-content:center}#ps-controls{display:flex;gap:6px}#ps-query{min-width:0;flex:1;padding:9px;border-radius:8px;border:1px solid #52627d;background:#101b30;color:#fff;outline:none}#ps-submit,.ps-action{border:0;border-radius:8px;padding:7px 10px;background:#167bd4;color:#fff;font-weight:800;font-size:11px}.ps-action:disabled{background:#176b51;color:#b8ffe3}.ps-add{width:27px;height:27px;min-width:27px!important;padding:0!important;border-radius:50%!important;font-size:17px!important;line-height:27px}.ps-result{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:rgba(255,255,255,.07)}.ps-info{display:flex;flex-direction:column;gap:3px;min-width:0}.ps-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ps-info small{color:#9fb4d5}#player-search-results,#ps-friends{display:flex;flex-direction:column;gap:5px;margin-top:7px;max-height:170px;overflow:auto}.ps-empty{padding:9px;color:#aab9d0;text-align:center}.ps-section{display:flex;align-items:center;justify-content:space-between;color:#42d9ff;font-weight:900;margin-top:12px;margin-bottom:5px}.ps-friend-actions{display:flex;gap:4px}.ps-invite{font-size:18px;min-width:32px;padding:3px}.ps-remove{border:0;border-radius:7px;background:#632d3c;color:#fff;font-size:18px;min-width:28px}.ps-notif{background:#e23c55;color:#fff;border-radius:50%;padding:2px 6px;font-size:10px}#social-invite-overlay{position:fixed;inset:0;z-index:10020;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.68);backdrop-filter:blur(5px);padding:18px}#social-invite-card{width:min(360px,100%);padding:24px;border:1px solid #42d9ff;border-radius:20px;background:linear-gradient(145deg,#142747,#080f20);box-shadow:0 0 35px #168bd766;color:#fff;text-align:center;font-family:sans-serif}#social-invite-card h2{margin:0 0 12px;color:#42d9ff}#social-invite-name{font-size:16px;font-weight:800}#social-invite-room{margin:15px 0;color:#a9c9ff;font-weight:900;letter-spacing:3px}.social-invite-actions{display:flex;gap:9px}.social-invite-actions button{flex:1;border:0;border-radius:10px;padding:12px;color:white;font-weight:900}.si-accept{background:#078b61}.si-decline{background:#713447}`;
   document.head.appendChild(css);
   const launcher = document.createElement('button'); launcher.id = 'ps-launcher'; launcher.type = 'button'; launcher.title = 'Teman & cari pemain'; launcher.textContent = '👤+';
   const box = document.createElement('section'); box.id = 'player-search';
   box.innerHTML = `<div id="ps-head"><span>👥 TEMAN & CARI PLAYER <span id="ps-notif-count" class="ps-notif" style="display:none">0</span></span><button id="ps-close" title="Tutup">×</button></div><div id="ps-controls"><input id="ps-query" maxlength="30" placeholder="Username / ID 6 digit" autocomplete="off"><button id="ps-submit">CARI</button></div><div id="player-search-results"><div class="ps-empty">Cari pemain dari seluruh server.</div></div><div class="ps-section">TEMAN SAYA</div><div id="ps-friends">Memuat teman…</div>`;
-  document.body.append(launcher, box);
+  const inviteLauncher = document.createElement('button'); inviteLauncher.id = 'ps-invite-launcher'; inviteLauncher.type = 'button'; inviteLauncher.title = 'Undang teman bermain'; inviteLauncher.textContent = '✉';
+  document.body.append(launcher, inviteLauncher, box);
+  inviteLauncher.onclick = () => { box.style.display = 'block'; renderFriendsList(); document.getElementById('ps-friends')?.scrollIntoView({ block: 'nearest' }); };
   launcher.onclick = () => { const open = box.style.display !== 'block'; box.style.display = open ? 'block' : 'none'; if (open) renderFriendsList(); };
   document.getElementById('ps-close').onclick = () => { box.style.display = 'none'; };
   const overlay = document.createElement('div'); overlay.id = 'social-invite-overlay';
@@ -2300,54 +2316,16 @@ function updateRoomUI() {
   document.getElementById('rp-wait').style.display = isHost ? 'none' : 'flex';
 }
 function buildRoomUI() {
+  // UI room/mabar disembunyikan. Room dibuat otomatis saat pemain mengundang teman.
   buildPlayerSearchUI();
-  if (document.getElementById('room-panel')) { updateRoomUI(); return; }
+  if (document.getElementById('countdown')) return;
   const css = document.createElement('style');
-  css.textContent = `#room-panel{position:fixed;top:50%;right:12px;left:auto;transform:translateY(-50%);z-index:60;width:min(31vw,250px);max-height:calc(100vh - 110px);overflow-y:auto;background:rgba(15,18,32,.92);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 10px;font-family:sans-serif;font-size:13px;display:none;flex-direction:column;gap:6px}
-#room-panel.rp-collapsed{width:auto;max-width:31vw;padding:5px 8px;cursor:pointer}
-#room-panel.rp-collapsed #rp-body{display:none}
-#rp-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-#rp-title{white-space:nowrap}
-#rp-min{width:34px;padding:4px 0!important;font-size:16px!important}
-#rp-qstart{background:#00b86b!important;padding:4px 10px!important}
-#room-panel button{padding:8px;border:0;border-radius:9px;background:#2d3550;color:#fff;font-weight:700;font-size:13px}
-#room-panel #rp-start{background:#00b86b}#room-panel #rp-create{background:#3b6cf6}
-#rp-body{display:flex;flex-direction:column;gap:6px}
-#rp-menu,#rp-room{flex-direction:column;gap:6px}.rp-row{display:flex;gap:6px}.rp-row>*{flex:1}
-#rp-code{min-width:0;padding:8px;border-radius:9px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:15px;letter-spacing:3px;text-transform:uppercase;text-align:center}
-.rp-codebox{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border-radius:9px;padding:4px 8px}
-.rp-codebox span{font-size:10px;opacity:.7}.rp-codebox b{flex:1;font-size:21px;letter-spacing:4px;text-align:center}.rp-codebox button{flex:none}
-#rp-list{max-height:84px;overflow-y:auto;display:flex;flex-direction:column;gap:3px}
-.rp-player{padding:4px 8px;background:rgba(255,255,255,.06);border-radius:7px}
-#rp-wait{display:flex;align-items:center;justify-content:center;opacity:.85;text-align:center}
-#rp-msg{font-size:12px;color:#ffd166;text-align:center}#rp-msg:empty{display:none}
-#countdown{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;font:900 140px sans-serif;color:#fff;text-shadow:0 0 30px #3b6cf6;pointer-events:none}
+  css.textContent = `#countdown{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;font:900 140px sans-serif;color:#fff;text-shadow:0 0 30px #3b6cf6;pointer-events:none}
 #race-timer{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:69;padding:7px 15px;border:1px solid rgba(66,217,255,.7);border-radius:12px;background:rgba(7,15,30,.82);color:#fff;font:900 20px monospace;letter-spacing:1px;box-shadow:0 0 16px #168bd755;display:none;pointer-events:none}`;
   document.head.appendChild(css);
-  const panel = document.createElement('div'); panel.id = 'room-panel';
-  panel.innerHTML = `<div id="rp-head"><b id="rp-title">🎮 Mabar</b><button id="rp-qstart" style="display:none">▶ MULAI</button><button id="rp-min" title="Kecilkan / buka">—</button></div>
-<div id="rp-body">
-<div id="rp-menu"><div class="rp-row"><button id="rp-solo">🧍 Main Sendiri</button><button id="rp-create">➕ Buat Room</button></div>
-</div>
-<div id="rp-room" style="display:none"><div class="rp-codebox"><span>KODE</span><b id="rp-codetext">-----</b><button id="rp-copy">📋</button></div>
-<div id="rp-list"></div>
-<div class="rp-row"><button id="rp-start">▶ MULAI</button><div id="rp-wait">⏳ Menunggu host…</div><button id="rp-leave">🚪 Keluar</button></div></div>
-<div id="rp-msg"></div>
-</div>`;
   const cd = document.createElement('div'); cd.id = 'countdown';
   const raceTimer = document.createElement('div'); raceTimer.id = 'race-timer'; raceTimer.textContent = '00:00.0';
-  document.body.append(panel, cd, raceTimer);
-
-  const busy = async (label, fn) => { setRoomMsg(label); try { await fn(); setRoomMsg(''); } catch (e) { console.error(e); setRoomMsg('⚠️ ' + mpErr(e)); } };
-  document.getElementById('rp-solo').onclick = () => document.getElementById('btn-start-game').click();
-  document.getElementById('rp-create').onclick = () => busy('Membuat room…', createRoom);
-  document.getElementById('rp-copy').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(roomCode).then(() => showToast('📋 Kode disalin: ' + roomCode)).catch(() => showToast('Kode: ' + roomCode)); };
-  document.getElementById('rp-start').onclick = () => busy('Memulai…', hostStart);
-  document.getElementById('rp-leave').onclick = () => busy('Keluar…', () => leaveRoom());
-  document.getElementById('rp-qstart').onclick = (e) => { e.stopPropagation(); busy('Memulai…', hostStart); };
-  document.getElementById('rp-min').onclick = (e) => { e.stopPropagation(); rpCollapsed = !rpCollapsed; updateRoomUI(); };
-  document.getElementById('rp-head').onclick = () => { if (rpCollapsed) { rpCollapsed = false; updateRoomUI(); } };
-  updateRoomUI();
+  document.body.append(cd, raceTimer);
 }
 
 window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() => {}); });
