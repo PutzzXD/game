@@ -19,6 +19,50 @@ const firebaseApp = initializeApp(firebaseConfig);
 const multiplayerAuth = getAuth(firebaseApp);
 const multiplayerDb = getDatabase(firebaseApp);
 
+
+// ============ EFEK SUARA (WEB AUDIO API) ============
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function ensureAudioContext() {
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+function playJumpSound() {
+  try {
+    ensureAudioContext();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(420, audioCtx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.15);
+  } catch (e) {}
+}
+
+function playStepSound() {
+  try {
+    ensureAudioContext();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(110, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.07);
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.07);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.07);
+  } catch (e) {}
+}
+
 // ============ 1. KONFIGURASI FIREBASE ============
 const FIREBASE_URL = "https://game3d-66134-default-rtdb.asia-southeast1.firebasedatabase.app/";
 const DEV_USERNAME = "putzzdev";
@@ -1594,10 +1638,10 @@ function init3DGame() {
   document.getElementById('btn-jump').addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (physics.isGrounded) {
-      physics.jumpCount = 1; physics.velocityY = physics.jumpForce; physics.isGrounded = false; sq.v = 6; spawnDust(5);
+      physics.jumpCount = 1; physics.velocityY = physics.jumpForce; physics.isGrounded = false; playJumpSound(); sq.v = 6; spawnDust(5);
       createJumpEffect();
     } else if (physics.jumpCount < physics.maxJumps) {
-      physics.jumpCount++; physics.velocityY = physics.jumpForce; sq.v = 6;
+      physics.jumpCount++; physics.velocityY = physics.jumpForce; playJumpSound(); sq.v = 6;
       createJumpEffect();
     }
   });
