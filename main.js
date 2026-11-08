@@ -63,6 +63,31 @@ function playStepSound() {
   } catch (e) {}
 }
 
+// ============ BACKGROUND MUSIC ============
+// Musik dicoba saat halaman dibuka. Browser yang memblokir autoplay akan
+// memulainya otomatis pada sentuhan/klik pertama dari pemain.
+const backgroundMusic = new Audio('./putzzdev.mp3');
+backgroundMusic.loop = true;
+backgroundMusic.preload = 'auto';
+backgroundMusic.volume = 0.35;
+
+let backgroundMusicStarted = false;
+function startBackgroundMusic() {
+  if (backgroundMusicStarted) return;
+  const playAttempt = backgroundMusic.play();
+  if (playAttempt && typeof playAttempt.then === 'function') {
+    playAttempt.then(() => {
+      backgroundMusicStarted = true;
+    }).catch(() => {
+      // Autoplay mungkin diblokir sampai ada interaksi pemain.
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', startBackgroundMusic, { once: true });
+document.addEventListener('pointerdown', startBackgroundMusic, { capture: true });
+document.addEventListener('keydown', startBackgroundMusic, { capture: true });
+
 // ============ 1. KONFIGURASI FIREBASE ============
 const FIREBASE_URL = "https://game3d-66134-default-rtdb.asia-southeast1.firebasedatabase.app/";
 const DEV_USERNAME = "putzzdev";
