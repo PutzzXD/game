@@ -301,7 +301,40 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // AUTO LOGIN: pemain yang punya sesi valid langsung ke lobby dengan splash screen.
+  // AUTO LOGIN + SPLASH AWAL (durasi 10 detik)
+  const SPLASH_DURATION = 10000; // 10 detik
+  const splash = document.getElementById('startup-loading');
+  const splashBar = document.getElementById('startup-bar');
+  const splashStatus = document.getElementById('startup-status');
+  const splashStartedAt = performance.now();
+  let splashDone = false;
+
+  // Progress bar berjalan sesuai waktu, penuh tepat di 10 detik.
+  const splashTimer = splash ? setInterval(() => {
+    const f = Math.min(1, (performance.now() - splashStartedAt) / SPLASH_DURATION);
+    if (splashBar) splashBar.style.width = Math.max(8, f * 100).toFixed(0) + '%';
+    if (splashStatus && !splashDone) {
+      splashStatus.textContent = f < 0.35 ? 'Menyiapkan permainan...'
+        : f < 0.7 ? 'Memeriksa akun dan menyiapkan lobby...'
+        : 'Hampir selesai...';
+    }
+  }, 100) : null;
+
+  // Jalankan callback setelah splash minimal tampil 10 detik, lalu sembunyikan splash.
+  function finishSplash(afterWait) {
+    const wait = Math.max(0, SPLASH_DURATION - (performance.now() - splashStartedAt));
+    setTimeout(() => {
+      splashDone = true;
+      clearInterval(splashTimer);
+      if (splashBar) splashBar.style.width = '100%';
+      if (afterWait) afterWait();
+      if (splash) {
+        splash.classList.add('is-hidden');
+        setTimeout(() => splash.remove(), 500);
+      }
+    }, wait);
+  }
+
   const savedSession = localStorage.getItem('parkour_user');
   if (savedSession) {
     let session = null;
@@ -309,17 +342,6 @@ window.addEventListener('DOMContentLoaded', () => {
     catch (e) { localStorage.removeItem('parkour_user'); }
 
     if (session && session.username) {
-      const splash = document.getElementById('startup-loading');
-      const splashBar = document.getElementById('startup-bar');
-      const splashStatus = document.getElementById('startup-status');
-      const startedAt = performance.now();
-      let splashProgress = 8;
-      const splashTimer = setInterval(() => {
-        splashProgress = Math.min(92, splashProgress + 4 + Math.random() * 8);
-        if (splashBar) splashBar.style.width = splashProgress + '%';
-        if (splashStatus) splashStatus.textContent = 'Memeriksa akun dan menyiapkan lobby...';
-      }, 180);
-
       fetch(`${FIREBASE_URL}players/${String(session.username).toLowerCase()}.json`)
         .then(res => {
           if (!res.ok) throw new Error('Gagal memeriksa sesi akun');
@@ -328,37 +350,23 @@ window.addEventListener('DOMContentLoaded', () => {
         .then(async data => {
           if (!data) {
             localStorage.removeItem('parkour_user');
-            document.getElementById('auth-container').style.display = 'flex';
-            splash.classList.add('is-hidden');
-            setTimeout(() => splash.remove(), 500);
+            finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
             return;
           }
           const verifiedData = await ensurePlayerId(String(session.username).toLowerCase(), data);
           playerData = { ...playerData, ...verifiedData, inventory: verifiedData.inventory || playerData.inventory, equipped: verifiedData.equipped || playerData.equipped };
           if (splashStatus) splashStatus.textContent = 'Lobby siap! Memasuki permainan...';
-          if (splashBar) splashBar.style.width = '100%';
-          const wait = Math.max(0, 1100 - (performance.now() - startedAt));
-          setTimeout(() => {
-            startLobby();
-            splash.classList.add('is-hidden');
-            setTimeout(() => splash.remove(), 500);
-          }, wait);
+          finishSplash(() => { startLobby(); });
         })
         .catch(err => {
           console.warn('Auto-login gagal:', err);
-          document.getElementById('auth-container').style.display = 'flex';
-          splash.classList.add('is-hidden');
-          setTimeout(() => splash.remove(), 500);
-        })
-        .finally(() => clearInterval(splashTimer));
+          finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
+        });
     } else {
-      const splash = document.getElementById('startup-loading');
-      if (splash) splash.remove();
+      finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
     }
   } else {
-    const splash = document.getElementById('startup-loading');
-    if (splash) splash.remove();
-    document.getElementById('auth-container').style.display = 'flex';
+    finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
   }
 });
 
