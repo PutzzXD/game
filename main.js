@@ -629,8 +629,7 @@ let laserBeam = null; // Objek Laser NPC
 let rig, leftElbow, rightElbow, leftKnee, rightKnee, embers;
 let sq = { x: 0, v: 0 }, moveVel = new THREE.Vector2(0, 0), wasGrounded = true, laserState = 'off';
 const LASER_Z = -44, LASER_Y = 9.3;
-let FIN_Y = 1e9, checkpoint = { p: null, set: false, order: 0, x: 0, y: 0.25, z: 0 };
-let checkpointCounter = 0, checkpointProgress = 0;
+let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
 let hazards = [], hitCD = 0, capePivot, spiderLogoGrp, acc = {};
 const knock = new THREE.Vector2();
 let batGrp, capeB, ironHelm, ironBody, thorHelm, thorBody, capeT;
@@ -955,14 +954,7 @@ function init3DGame() {
   createPlatform(-2, 12, -61.5, 3.2, 2.5, 'fake', 0.05); createPlatform(2, 12, -61.5, 3.2, 2.5, 'static');
   createPlatform(0, 13.5, -68, 8, 8, 'static');
   const checkMat = new THREE.MeshStandardMaterial({ color: 0x22aa55, emissive: 0x22aa55, emissiveIntensity: 0.4 });
-  const markCheckpoint = () => {
-    const c = platforms[platforms.length - 1];
-    c.checkpoint = true;
-    c.checkpointOrder = ++checkpointCounter;
-    c.checkpointOriginalMaterial = c.mesh.material;
-    c.checkpointUsed = false;
-    c.mesh.material = checkMat;
-  };
+  const markCheckpoint = () => { const c = platforms[platforms.length - 1]; c.checkpoint = true; c.mesh.material = checkMat; };
   markCheckpoint(); // Hub = checkpoint
 
   // ===== TOWER SPIRAL ala obby Roblox: muter naik ke atas =====
@@ -1011,7 +1003,7 @@ function init3DGame() {
   createPlatform(TC.x, FY, TC.z, 8, 8, 'static'); // PUNCAK / FINISH
   const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, FY - 12.25, 16), new THREE.MeshStandardMaterial({ color: 0x2a2a3a }));
   pillar.position.set(TC.x, (12 + FY - 0.25) / 2, TC.z); scene.add(pillar);
-  { const tp = platforms.find(pl => Math.abs(pl.mesh.position.x - TC.x) < 0.01 && Math.abs(pl.mesh.position.z - TC.z) < 0.01 && Math.abs(pl.mesh.position.y - FY) < 0.01); if (tp) { tp.checkpoint = true; tp.checkpointOrder = ++checkpointCounter; tp.checkpointOriginalMaterial = tp.mesh.material; tp.checkpointUsed = false; tp.mesh.material = checkMat; } }
+  { const tp = platforms.find(pl => Math.abs(pl.mesh.position.x - TC.x) < 0.01 && Math.abs(pl.mesh.position.z - TC.z) < 0.01 && Math.abs(pl.mesh.position.y - FY) < 0.01); if (tp) { tp.checkpoint = true; tp.mesh.material = checkMat; } }
 
   // ===== LABIRIN DI ATAS TOWER (salah lorong = ditembak NPC) =====
   const MN = 12, CS = 4, mcx = 0, MH = MN * CS / 2, mcz = -89 - MH, wallH = 7, floorTop = FY + 0.25, EC = Math.floor(MN / 2) - 1;
@@ -1063,10 +1055,7 @@ function init3DGame() {
   [Math.floor(pathArr.length / 3), Math.floor(pathArr.length * 2 / 3)].forEach(ix => {
     const [pr, pc] = pathArr[ix];
     createPlatform(cxOf(pc), FY + 0.01, czOf(pr), 2.4, 2.4, 'static', 0, 'round');
-    const pd = platforms.pop(); platforms.unshift(pd);
-    pd.checkpoint = true; pd.checkpointOrder = ++checkpointCounter;
-    pd.checkpointOriginalMaterial = pd.mesh.material; pd.checkpointUsed = false;
-    pd.mesh.material = checkMat;
+    const pd = platforms.pop(); platforms.unshift(pd); pd.checkpoint = true; pd.mesh.material = checkMat;
   });
 
   // NPC penembak berdiri di ujung buntu tiap cabang lorong salah
@@ -1476,6 +1465,8 @@ function init3DGame() {
   document.getElementById('overlay').style.display = 'none';
 
   updateCharacterNameSprite(playerData.username, playerData.isDev);
+  buildLobbyLeaderboard();
+  updateLobbyLeaderboard();
   setupAdminPanel();
   animate();
 }
@@ -1484,25 +1475,6 @@ function insidePlat(p, x, z, pad) {
   const m = p.mesh.position;
   if (p.r) return Math.hypot(x - m.x, z - m.z) < p.r + pad;
   return x + pad > m.x - p.width / 2 && x - pad < m.x + p.width / 2 && z + pad > m.z - p.depth / 2 && z - pad < m.z + p.depth / 2;
-}
-
-function activateCheckpoint(platform, groundY) {
-  if (!platform || !platform.checkpoint || platform.checkpointUsed) return;
-
-  // Setiap checkpoint hanya bisa disentuh satu kali: setelah diinjak, warna hijau hilang.
-  platform.checkpointUsed = true;
-  if (platform.checkpointOriginalMaterial) {
-    platform.mesh.material = platform.checkpointOriginalMaterial;
-  }
-
-  const order = platform.checkpointOrder || 0;
-  // Progres hanya boleh maju, tidak pernah mundur ke checkpoint yang lebih rendah.
-  if (order > checkpointProgress) {
-    checkpointProgress = order;
-    const m = platform.mesh.position;
-    checkpoint = { p: platform, set: true, order, x: m.x, y: groundY, z: m.z };
-    showToast('✅ Checkpoint tersimpan!');
-  }
 }
 
 function checkGroundCollision(x, z, y) {
@@ -1579,6 +1551,8 @@ const LOBBY_SLOTS = [[-1.7, 0], [1.7, 0], [-3.4, 0], [3.4, 0], [0, 2], [-1.7, 2]
 const SPAWN = [[0, 0], [-1.5, 0], [1.5, 0], [-3, 0], [3, 0], [-1.5, 1.5], [1.5, 1.5], [0, 1.5]];
 let mpUid = null, mpReady = false, mpOffset = 0;
 let roomCode = null, roomMeta = null, roomPlayers = {}, roomUnsub = null, roomStartAt = null, roomStarted = false;
+let lobbyLeaderboardGroup = null, lobbyLeaderboardTexture = null, lobbyLeaderboardCanvas = null, lobbyLeaderboardCtx = null, lobbyLeaderboardLastKey = '';
+const lobbyLeaderboardAvatars = new Map();
 let myRef = null, myJoinedAt = 0, mpLastSend = 0, mpEquipTimer = null, soloStart = 0, finishMs = null, lastLobbyCount = -1, lastTimerText = '', rpCollapsed = false;
 const remotePlayers = new Map(), announcedFinish = new Set(), tmpV = new THREE.Vector3();
 const serverNow = () => Date.now() + mpOffset;
@@ -1843,9 +1817,200 @@ function animateRemotePlayers(delta) {
   }
 }
 
+
+// ----- Papan leaderboard 3D di samping area START (sinkron per-room) -----
+function buildLobbyLeaderboard() {
+  if (lobbyLeaderboardGroup || !lobbyWorldGroup || !character) return;
+
+  lobbyLeaderboardGroup = new THREE.Group();
+  lobbyLeaderboardGroup.name = 'LOBBY_ONLINE_LEADERBOARD';
+  // Sisi kanan lobby, menghadap ke tengah area START.
+  lobbyLeaderboardGroup.position.set(7.25, 0, -0.35);
+  lobbyLeaderboardGroup.rotation.y = -Math.PI / 2;
+  lobbyWorldGroup.add(lobbyLeaderboardGroup);
+
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x10182b, metalness: 0.62, roughness: 0.32 });
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.22, 5.55, 5.55), frameMat);
+  frame.position.set(0, 2.78, -0.06);
+  frame.castShadow = true;
+  frame.receiveShadow = true;
+  lobbyLeaderboardGroup.add(frame);
+
+  lobbyLeaderboardCanvas = document.createElement('canvas');
+  lobbyLeaderboardCanvas.width = 1024;
+  lobbyLeaderboardCanvas.height = 1024;
+  lobbyLeaderboardCtx = lobbyLeaderboardCanvas.getContext('2d');
+  lobbyLeaderboardTexture = new THREE.CanvasTexture(lobbyLeaderboardCanvas);
+  lobbyLeaderboardTexture.colorSpace = THREE.SRGBColorSpace;
+  const panel = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.35, 5.35),
+    new THREE.MeshBasicMaterial({ map: lobbyLeaderboardTexture, transparent: false, side: THREE.DoubleSide })
+  );
+  panel.position.set(0, 2.78, 0.075);
+  lobbyLeaderboardGroup.add(panel);
+
+  // Lampu tepi agar papan mudah terlihat di lobby.
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0x42d9ff });
+  for (const [x, y, z, w, h, d] of [
+    [0, 5.48, 0.12, 5.4, 0.045, 0.05],
+    [0, 0.08, 0.12, 5.4, 0.045, 0.05],
+    [-2.68, 2.78, 0.12, 0.045, 5.4, 0.05],
+    [2.68, 2.78, 0.12, 0.045, 5.4, 0.05]
+  ]) {
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), edgeMat);
+    edge.position.set(x, y, z);
+    lobbyLeaderboardGroup.add(edge);
+  }
+}
+
+function createLeaderboardAvatar(data) {
+  const eq = data.equipped || {};
+  const model = character.clone(true);
+  const map = new Map();
+  const walk = (a, b) => {
+    map.set(a, b);
+    a.children.forEach((ch, i) => { if (b.children[i]) walk(ch, b.children[i]); });
+  };
+  walk(character, model);
+
+  const ns = map.get(nameSprite);
+  if (ns) model.remove(ns);
+
+  const materialMap = new Map(), mats = [];
+  model.traverse((obj) => {
+    if (!obj.material) return;
+    if (!materialMap.has(obj.material)) {
+      const cloned = obj.material.clone();
+      materialMap.set(obj.material, cloned);
+      mats.push(cloned);
+    }
+    obj.material = materialMap.get(obj.material);
+  });
+
+  model.position.set(0, 0, 0);
+  model.rotation.set(0, 0, 0);
+  model.scale.set(1, 1, 1);
+
+  const P = (obj) => map.get(obj);
+  const parts = {
+    rig: P(rig), head: P(headGroup),
+    armL: P(leftArmPivot), armR: P(rightArmPivot),
+    legL: P(leftLegPivot), legR: P(rightLegPivot),
+    elL: P(leftElbow), elR: P(rightElbow),
+    knL: P(leftKnee), knR: P(rightKnee),
+    capes: [P(capePivot), P(capeB), P(capeT)].filter(Boolean)
+  };
+  [parts.rig, parts.head, parts.armL, parts.armR, parts.legL, parts.legR,
+    parts.elL, parts.elR, parts.knL, parts.knR, ...parts.capes]
+    .forEach(obj => obj && obj.rotation.set(0, 0, 0));
+
+  const holder = new THREE.Group();
+  holder.add(model);
+  holder.scale.setScalar(0.16);
+  holder.userData = { model, map, mats, parts, eqKey: JSON.stringify(eq) };
+  applyRemoteCostume(holder.userData, eq);
+  return holder;
+}
+
+function disposeLeaderboardAvatar(id) {
+  const avatar = lobbyLeaderboardAvatars.get(id);
+  if (!avatar) return;
+  if (lobbyLeaderboardGroup) lobbyLeaderboardGroup.remove(avatar);
+  (avatar.userData.mats || []).forEach(mat => mat.dispose());
+  lobbyLeaderboardAvatars.delete(id);
+}
+
+function updateLobbyLeaderboard() {
+  if (!lobbyLeaderboardGroup || !lobbyLeaderboardCtx || !lobbyLeaderboardTexture) return;
+
+  const ids = Object.keys(roomPlayers || {}).sort((a, b) => {
+    const pa = roomPlayers[a] || {}, pb = roomPlayers[b] || {};
+    const af = Number.isFinite(Number(pa.finishMs)) && pa.finishMs != null;
+    const bf = Number.isFinite(Number(pb.finishMs)) && pb.finishMs != null;
+    if (af && bf) return Number(pa.finishMs) - Number(pb.finishMs);
+    if (af !== bf) return af ? -1 : 1;
+    return (pa.joinedAt || 0) - (pb.joinedAt || 0);
+  }).slice(0, MAX_PLAYERS);
+
+  const entries = ids.map((id, index) => {
+    const p = roomPlayers[id] || {};
+    const finished = p.finishMs != null && Number.isFinite(Number(p.finishMs));
+    return {
+      id, index, name: String(p.username || 'Pemain').slice(0, 18),
+      finished, time: finished ? fmtTime(Number(p.finishMs)) : 'BELUM FINISH',
+      host: !!(roomMeta && roomMeta.host === id),
+      isMe: id === mpUid,
+      eqKey: JSON.stringify(p.equipped || {})
+    };
+  });
+  const key = JSON.stringify({ roomCode, entries: entries.map(e => [e.id, e.name, e.finished, e.time, e.host, e.isMe, e.eqKey]) });
+  if (key === lobbyLeaderboardLastKey) return;
+  lobbyLeaderboardLastKey = key;
+
+  // Gambar ulang panel papan.
+  const c = lobbyLeaderboardCanvas, x = lobbyLeaderboardCtx;
+  x.clearRect(0, 0, c.width, c.height);
+  const grad = x.createLinearGradient(0, 0, 0, 1024);
+  grad.addColorStop(0, '#142747'); grad.addColorStop(1, '#080f20');
+  x.fillStyle = grad; x.fillRect(0, 0, 1024, 1024);
+  x.strokeStyle = '#42d9ff'; x.lineWidth = 12; x.strokeRect(12, 12, 1000, 1000);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = '900 76px sans-serif'; x.fillStyle = '#ffffff';
+  x.fillText('LEADERBOARD', 512, 82);
+  x.font = 'bold 30px sans-serif'; x.fillStyle = '#42d9ff';
+  x.fillText(roomCode ? `ROOM ${roomCode}  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : 'PEMAIN ONLINE', 512, 142);
+  x.strokeStyle = 'rgba(66,217,255,.55)'; x.lineWidth = 3;
+  x.beginPath(); x.moveTo(55, 188); x.lineTo(969, 188); x.stroke();
+
+  if (!roomCode || !entries.length) {
+    x.fillStyle = '#dce8ff'; x.font = 'bold 38px sans-serif';
+    x.fillText('BUAT / GABUNG ROOM', 512, 470);
+    x.font = '28px sans-serif'; x.fillStyle = '#8fa9d4';
+    x.fillText('untuk melihat karakter pemain lain', 512, 525);
+  } else {
+    entries.forEach((e, i) => {
+      const top = 205 + i * 99;
+      x.fillStyle = e.isMe ? 'rgba(66,217,255,.20)' : (i % 2 ? 'rgba(255,255,255,.045)' : 'rgba(255,255,255,.085)');
+      x.beginPath(); x.roundRect(42, top, 940, 88, 18); x.fill();
+      x.fillStyle = i === 0 && e.finished ? '#ffd166' : '#42d9ff';
+      x.font = '900 42px sans-serif'; x.textAlign = 'left';
+      x.fillText(String(i + 1).padStart(2, '0'), 72, top + 44);
+      x.fillStyle = '#ffffff'; x.font = 'bold 36px sans-serif';
+      const name = (e.host ? '👑 ' : '') + e.name + (e.isMe ? ' (KAMU)' : '');
+      x.fillText(name, 178, top + 44, 500);
+      x.textAlign = 'right'; x.font = 'bold 27px sans-serif';
+      x.fillStyle = e.finished ? '#7dffb0' : '#a9b8d2';
+      x.fillText(e.time, 950, top + 44);
+    });
+  }
+  lobbyLeaderboardTexture.needsUpdate = true;
+
+  // Miniatur karakter 3D asli (termasuk wajah dan kostum) ditampilkan di depan tiap baris.
+  const alive = new Set(entries.map(e => e.id));
+  for (const id of [...lobbyLeaderboardAvatars.keys()]) if (!alive.has(id)) disposeLeaderboardAvatar(id);
+  entries.forEach((e, i) => {
+    const p = roomPlayers[e.id] || {};
+    let avatar = lobbyLeaderboardAvatars.get(e.id);
+    if (avatar && avatar.userData.eqKey !== e.eqKey) {
+      disposeLeaderboardAvatar(e.id);
+      avatar = null;
+    }
+    if (!avatar) {
+      avatar = createLeaderboardAvatar(p);
+      lobbyLeaderboardAvatars.set(e.id, avatar);
+      lobbyLeaderboardGroup.add(avatar);
+    }
+    // Board group diputar menghadap tengah lobby; posisi ini berada sedikit di depan permukaan papan.
+    avatar.position.set(-1.95, 4.62 - i * 0.495, 0.22);
+    avatar.rotation.y = 0;
+    avatar.visible = true;
+  });
+}
+
 // ----- UI room -----
 function setRoomMsg(m) { const el = document.getElementById('rp-msg'); if (el) el.textContent = m || ''; }
 function updateRoomUI() {
+  updateLobbyLeaderboard();
   const panel = document.getElementById('room-panel'); if (!panel) return;
   const inLobby = gameState === 'LOBBY';
   panel.style.display = inLobby ? 'flex' : 'none';
@@ -2037,7 +2202,11 @@ function animate() {
     character.position.y = groundData.y;
     physics.velocityY = 0; physics.isGrounded = true; physics.jumpCount = 0;
     if (groundData.platform.type === 'moving_x') character.position.x += groundData.platform.dx;
-    activateCheckpoint(groundData.platform, groundData.y);
+    if (groundData.platform.checkpoint && checkpoint.p !== groundData.platform) {
+      const m = groundData.platform.mesh.position;
+      checkpoint = { p: groundData.platform, set: true, x: m.x, y: groundData.y, z: m.z };
+      showToast('✅ Checkpoint tersimpan!');
+    }
   } else {
     physics.isGrounded = false;
   }
@@ -2051,7 +2220,6 @@ function animate() {
     const landingData = checkGroundCollision(character.position.x, character.position.z, character.position.y + 0.5);
     if (landingData && character.position.y <= landingData.y) {
       character.position.y = landingData.y; physics.velocityY = 0; physics.isGrounded = true; physics.jumpCount = 0;
-      activateCheckpoint(landingData.platform, landingData.y);
     }
   }
 
