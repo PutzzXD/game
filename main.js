@@ -75,8 +75,9 @@ backgroundMusic.preload = 'auto';
 backgroundMusic.volume = 0.35;
 
 let backgroundMusicStarted = false;
+let userPausedMusic = false;
 function startBackgroundMusic() {
-  if (!backgroundMusic.paused) return;
+  if (userPausedMusic || !backgroundMusic.paused) return;
   const playAttempt = backgroundMusic.play();
   if (playAttempt && typeof playAttempt.then === 'function') {
     playAttempt.then(() => {
@@ -93,9 +94,23 @@ window.getSelectedVaultMusic = function() {
 window.isVaultMusicPlaying = function() {
   return !backgroundMusic.paused;
 };
+window.toggleVaultMusic = function() {
+  if (backgroundMusic.paused) {
+    userPausedMusic = false;
+    const p = backgroundMusic.play();
+    if (p && typeof p.then === 'function') p.then(() => { backgroundMusicStarted = true; }).catch(() => {});
+  } else {
+    userPausedMusic = true;
+    backgroundMusic.pause();
+  }
+  if (document.getElementById('music-modal')?.style.display === 'block') renderStandaloneMusic();
+};
+window.getVaultMusicVolume = function() { return backgroundMusic.volume; };
+window.setVaultMusicVolume = function(v) { backgroundMusic.volume = Math.max(0, Math.min(1, Number(v) || 0)); };
 window.selectVaultMusic = function(trackId) {
   if (!Object.prototype.hasOwnProperty.call(vaultMusicTracks, trackId)) return;
-  const shouldPlay = !backgroundMusic.paused || !backgroundMusicStarted;
+  const shouldPlay = true;
+  userPausedMusic = false;
   selectedVaultMusic = trackId;
   backgroundMusic.pause();
   backgroundMusic.currentTime = 0;
@@ -297,8 +312,10 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-vault').addEventListener('click', () => { vaultModal.style.display = 'flex'; renderVaultTab('baju'); });
   document.getElementById('close-vault').addEventListener('click', () => { vaultModal.style.display = 'none'; });
   const musicModal = document.getElementById('music-modal');
-  document.getElementById('btn-music').addEventListener('click', () => { renderStandaloneMusic(); musicModal.style.display = 'block'; });
-  document.getElementById('close-music').addEventListener('click', () => { musicModal.style.display = 'none'; });
+  const btnMusic = document.getElementById('btn-music');
+  if (btnMusic && musicModal) btnMusic.addEventListener('click', () => { renderStandaloneMusic(); musicModal.style.display = 'block'; });
+  const closeMusic = document.getElementById('close-music');
+  if (closeMusic && musicModal) closeMusic.addEventListener('click', () => { musicModal.style.display = 'none'; });
   document.querySelectorAll('.vault-tab-btn').forEach(btn => btn.addEventListener('click', (e) => {
     document.querySelectorAll('.vault-tab-btn').forEach(b => b.classList.remove('active'));
     e.currentTarget.classList.add('active'); renderVaultTab(e.currentTarget.dataset.cat);
@@ -644,7 +661,15 @@ function renderStandaloneMusic() {
   ];
   const selected = window.getSelectedVaultMusic ? window.getSelectedVaultMusic() : 'amatekam';
   const playing = window.isVaultMusicPlaying && window.isVaultMusicPlaying();
-  container.innerHTML = tracks.map(track => `
+  const vol = window.getVaultMusicVolume ? Math.round(window.getVaultMusicVolume() * 100) : 35;
+  const controls = `
+    <div style="background:#1b2640;border:1px solid #42516b;border-radius:12px;padding:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button type="button" class="shop-buy-btn" style="width:auto;min-width:110px" onclick="toggleVaultMusic()">${playing ? '⏸ JEDA' : '▶ LANJUT'}</button>
+      <label style="flex:1;min-width:120px;font-size:12px;color:#aab7cc">🔊 Volume
+        <input type="range" min="0" max="100" value="${vol}" style="width:100%" oninput="setVaultMusicVolume(this.value/100)">
+      </label>
+    </div>`;
+  container.innerHTML = controls + tracks.map(track => `
     <div style="background:#222b40;border:1px solid #42516b;border-radius:12px;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div><div style="font-weight:bold;font-size:16px">🎵 ${track.name}</div><div style="font-size:11px;color:#aab7cc;margin-top:4px">${track.file}</div></div>
       <button type="button" class="shop-buy-btn" style="width:auto;min-width:118px" onclick="selectVaultMusic('${track.id}');renderStandaloneMusic()">${selected === track.id && playing ? 'SEDANG DIPUTAR' : 'PUTAR LAGU'}</button>
