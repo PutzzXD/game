@@ -3016,6 +3016,7 @@ function applyMap(id) {
 function resetSnowWorld() {
   if (!snowWorld) return;
   snowWorld.cracks.forEach(p => { p.crackState = 0; p.crackT = 0; p.isFallen = false; p.mesh.visible = true; p.mesh.position.x = p.startX; });
+  (snowWorld.vanish || []).forEach(p => { p.vanishState = 0; p.vanishT = 0; p.isFallen = false; p.mesh.visible = true; p.mesh.material.emissiveIntensity = 0.35; });
   snowSys.alarmed = false;
 }
 
@@ -3082,6 +3083,59 @@ function updateSnowWorld(delta) {
       if (p.crackT > 0.75) { p.crackState = 2; p.crackT = 0; p.isFallen = true; p.mesh.visible = false; p.mesh.position.x = p.startX; }
     } else { p.crackT += delta; if (p.crackT > 3) { p.isFallen = false; p.mesh.visible = true; p.crackState = 0; } }
   }
+  // Platform es yang menghilang: aktif saat diinjak, memberi jeda singkat, lalu pulih.
+  for (const p of w.vanish || []) {
+    if (p.vanishState === 0 && curGroundPlat === p && physics.isGrounded) { p.vanishState = 1; p.vanishT = 0; }
+    else if (p.vanishState === 1) {
+      p.vanishT += delta;
+      p.mesh.material.emissiveIntensity = 0.35 + Math.sin(p.vanishT * 24) * 0.3;
+      if (p.vanishT > 0.65) { p.vanishState = 2; p.vanishT = 0; p.isFallen = true; p.mesh.visible = false; }
+    } else if (p.vanishState === 2) {
+      p.vanishT += delta;
+      if (p.vanishT > 2.1) { p.vanishState = 3; p.vanishT = 0; p.mesh.visible = true; p.mesh.material.emissiveIntensity = 0.35; }
+    } else if (p.vanishState === 3) {
+      p.vanishT += delta;
+      if (p.vanishT > 0.25) { p.vanishState = 0; p.vanishT = 0; p.isFallen = false; }
+    }
+  }
+  // Lorong es berputar: balok bercahaya berputar dan mendorong pemain jika terlalu dekat.
+  for (const r of w.rotators || []) {
+    r.mesh.rotation.y += r.speed * delta;
+    if (character && physics && !godMode && !flyMode) {
+      const dx = character.position.x - r.mesh.position.x, dz = character.position.z - r.mesh.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < r.radius && Math.abs(character.position.y - r.mesh.position.y) < 1.5 && hitCD <= 0) {
+        knock.set((dx / (dist || 1)) * 15, (dz / (dist || 1)) * 15);
+        physics.velocityY = Math.max(physics.velocityY, 7); physics.isGrounded = false; hitCD = 0.65;
+      }
+    }
+  }
+  // Bola salju bergerak bolak-balik di arena. Tabrakan memberi dorongan, bukan mengunci pemain.
+  for (const b of w.snowballs || []) {
+    b.mesh.position[b.axis] = b.center + Math.sin(performance.now() * 0.001 * b.speed + b.phase) * b.range;
+    b.mesh.rotation.x += delta * 2.8; b.mesh.rotation.z += delta * 1.7;
+    if (character && !godMode && !flyMode) {
+      const dx = character.position.x - b.mesh.position.x, dz = character.position.z - b.mesh.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d < b.radius + 0.55 && Math.abs((character.position.y + 0.8) - b.mesh.position.y) < 1.8 && hitCD <= 0) {
+        knock.set((dx / (d || 1)) * 19, (dz / (d || 1)) * 19);
+        physics.velocityY = Math.max(physics.velocityY, 9); physics.isGrounded = false; hitCD = 0.9;
+        showToast('☃️ Tertabrak bola salju!');
+      }
+    }
+  }
+  // Badai salju: zona angin mendorong pemain ke samping; pagar di tepi membantu mengoreksi jalur.
+  if (character && !godMode && !flyMode) for (const z of w.windZones || []) {
+    if (Math.abs(character.position.x - z.x) < z.hx && Math.abs(character.position.z - z.z) < z.hz && character.position.y < z.maxY) {
+      knock.x += z.dx * delta; knock.y += z.dz * delta;
+    }
+  }
+  // Jembatan gantung bergoyang secara visual; pijakan tetap punya collider yang stabil dan bisa dilewati.
+  for (const plank of w.swingPlanks || []) {
+    plank.mesh.rotation.z = Math.sin(performance.now() * 0.001 * plank.speed + plank.phase) * 0.09;
+  }
+  // Kristal gua berdenyut agar jalur dan bahaya di dalam gua mudah terbaca.
+  for (const c of w.glowCrystals || []) c.material.emissiveIntensity = 0.45 + (Math.sin(performance.now() * 0.002 + c.userData.phase) + 1) * 0.28;
   if (w.snowfall && character) { // salju turun mengikuti pemain
     const sp = w.snowfall, pos = sp.geometry.attributes.position;
     sp.position.set(character.position.x, character.position.y - 6, character.position.z);
@@ -3095,6 +3149,7 @@ function buildSnowWorld() {
   const grp = new THREE.Group(); grp.name = 'SNOW_WORLD'; grp.visible = false; scene.add(grp);
   snowWorldGroup = grp;
   const P = [], C = [], cracks = [], npcs = [], route = [], cpList = [];
+  const vanish = [], rotators = [], snowballs = [], windZones = [], swingPlanks = [], glowCrystals = [];
 
   grp.add(new THREE.HemisphereLight(0xe4f4ff, 0x6d88aa, 1.15));
   const sunS = new THREE.DirectionalLight(0xffffff, 1.25); sunS.position.set(-25, 70, 35); grp.add(sunS);
@@ -3129,6 +3184,7 @@ function buildSnowWorld() {
       flag.position.set(x + w / 2 - 0.7 + 0.65, y + 0.25 + 2.6, z + d / 2 - 0.7); grp.add(flag);
     }
     if (type === 'crack') cracks.push(p);
+    if (type === 'snow_vanish') { p.vanishState = 0; p.vanishT = 0; vanish.push(p); }
     if (o.route) route.push(p);
     return pushColl(p);
   }
@@ -3149,7 +3205,22 @@ function buildSnowWorld() {
     return coverEntry(m, rad * 2, rad * 2, (y1 - y0) / 2, rad);
   }
   function crystal(x, y, z, s) {
-    const m = new THREE.Mesh(new THREE.OctahedronGeometry(1, 0), cubeMat); m.scale.set(s * 0.5, s, s * 0.5); m.position.set(x, y + s, z); grp.add(m);
+    const m = new THREE.Mesh(new THREE.OctahedronGeometry(1, 0), cubeMat); m.scale.set(s * 0.5, s, s * 0.5); m.position.set(x, y + s, z); grp.add(m); glowCrystals.push(m);
+  }
+  function rotatingBar(x, y, z, length, speed, color = 0x65d9ff) {
+    const pivot = new THREE.Group(); pivot.position.set(x, y, z); grp.add(pivot);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(length, 0.28, 0.48), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.55, metalness: 0.35, roughness: 0.22 }));
+    bar.position.y = 0.25; pivot.add(bar);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.55, 16), cubeMat); hub.rotation.x = Math.PI / 2; hub.position.y = 0.25; pivot.add(hub);
+    rotators.push({ mesh: pivot, speed, radius: length * 0.48 });
+  }
+  function rollingSnowball(x, y, z, axis, range, speed, phase = 0) {
+    const radius = 1.35;
+    const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(radius, 2), new THREE.MeshStandardMaterial({ color: 0xf7fcff, roughness: 0.92 }));
+    mesh.position.set(x, y + radius * 0.72, z); grp.add(mesh);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(radius * 0.72, 0.09, 8, 24), new THREE.MeshStandardMaterial({ color: 0x8edcff, emissive: 0x2c8eb8, emissiveIntensity: 0.4 }));
+    band.rotation.x = Math.PI / 2; mesh.add(band);
+    snowballs.push({ mesh, axis, center: axis === 'x' ? x : z, range, speed, phase, radius });
   }
   const top = (p) => p.mesh.position.y + p.hh;
 
@@ -3175,9 +3246,9 @@ function buildSnowWorld() {
   wall(38.75, 2.75, -35.5, 6.5, 4, 1);
   wall(44.2, 2.75, -30.5, 1, 4, 5);
   plat(38, 4, -43, 7, 7, { route: 1 });
-  plat(31.5, 5.5, -48, 7, 7, { route: 1 });
+  plat(31.5, 5.5, -48, 7, 7, { type: 'snow_vanish', route: 1 });
   plat(25, 7, -43, 7, 7, { route: 1 });
-  plat(18.5, 8.5, -48, 7, 7, { route: 1 });
+  plat(18.5, 8.5, -48, 7, 7, { type: 'snow_vanish', route: 1 });
   plat(12, 10, -43, 7, 7, { route: 1 });
   rock(33.8, 5.75, -48.3, 1.4, 3.4);
   rock(14.4, 10.25, -44.6, 1.3, 3.4);
@@ -3199,6 +3270,58 @@ function buildSnowWorld() {
     const a = Math.PI / 2 + i * SDA, o = { shape: 'round', route: 1 };
     if (i % 4 === 0) o.type = 'crack'; else if (i % 5 === 2) { o.type = 'moving_y'; o.range = 0.5; o.speed = 1.3; }
     plat(SC.x + SR * Math.cos(a), 13 + i, SC.z + SR * Math.sin(a), 3.8, 3.8, o);
+  }
+
+  // ================= FITUR TAMBAHAN: rintangan unik Map Salju =================
+  // Bola salju raksasa melintasi lapangan awal; ada dinding batu sebagai tempat menghindar.
+  rollingSnowball(0, 0.25, -15.5, 'x', 6.2, 1.05, 0.4);
+  rollingSnowball(39.5, 2.75, -39.5, 'z', 2.8, 0.8, 2.1);
+
+  // Lorong es berputar pada area jembatan batu. Jarak dan ketinggian dibuat terbaca.
+  rotatingBar(16.5, 2.0, -22, 5.8, 1.25);
+  rotatingBar(26.5, 3.0, -28.5, 5.4, -1.05, 0x9ceaff);
+
+  // Tangga es bergerak tambahan untuk variasi timing sebelum checkpoint kedua.
+  plat(8.5, 12.5, -49.5, 3.2, 3.2, { kind: 'cube', h: 1.0, type: 'moving_y', range: 0.65, speed: 1.25, route: 1 });
+  plat(1.5, 13.5, -54.5, 3.2, 3.2, { kind: 'cube', h: 1.0, type: 'moving_y', range: 0.8, speed: 1.05, route: 1 });
+
+  // Jembatan gantung: papan pijakan berayun ringan, tetapi collider utama tetap aman.
+  for (let i = 0; i < 5; i++) {
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.18, 2.2), new THREE.MeshStandardMaterial({ color: 0x8bc9e8, roughness: 0.32, metalness: 0.18 }));
+    plank.position.set(-6 - i * 2.1, 12.05 + (i % 2) * 0.08, -45); grp.add(plank);
+    swingPlanks.push({ mesh: plank, speed: 1.4 + i * 0.08, phase: i * 0.8 });
+  }
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x567f9b, roughness: 0.8 });
+  for (const side of [-1, 1]) {
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 10.5, 8), ropeMat);
+    rope.position.set(-10.2, 13.1, -45 + side * 1.65); rope.rotation.z = Math.PI / 2; grp.add(rope);
+  }
+
+  // Badai salju di jembatan sempit. Arah dorongan konsisten; pagar es memberi batas visual.
+  windZones.push({ x: -17, z: -56.5, hx: 2.2, hz: 6.4, dx: 8.5, dz: 0, maxY: 18 });
+  wall(-19.15, 12.75, -56.5, 0.35, 1.6, 13.5);
+  wall(-14.85, 12.75, -56.5, 0.35, 1.6, 13.5);
+  const gustMat = new THREE.MeshBasicMaterial({ color: 0xc9f2ff, transparent: true, opacity: 0.28 });
+  for (let i = 0; i < 7; i++) {
+    const gust = new THREE.Mesh(new THREE.TorusGeometry(1.0 + i * 0.12, 0.035, 6, 20), gustMat);
+    gust.position.set(-17 + (i % 2) * 0.35, 14 + i * 0.12, -52 - i * 1.35); gust.rotation.x = Math.PI / 2; grp.add(gust);
+  }
+
+  // Gua es gelap dengan gerbang kristal dan stalaktit dekoratif di sekitar checkpoint 3.
+  const caveMat = new THREE.MeshStandardMaterial({ color: 0x173a59, roughness: 0.28, metalness: 0.18, emissive: 0x0a2845, emissiveIntensity: 0.65 });
+  const caveArch = new THREE.Mesh(new THREE.TorusGeometry(5.1, 0.65, 8, 24, Math.PI), caveMat);
+  caveArch.position.set(-17, 15.7, -69.2); caveArch.rotation.z = Math.PI; grp.add(caveArch);
+  for (let i = 0; i < 7; i++) {
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.38 + (i % 3) * 0.12, 1.8 + (i % 2) * 0.8, 6), cubeMat);
+    spike.position.set(-21.5 + i * 1.5, 17.2, -72.5 - (i % 2) * 0.6); spike.rotation.x = Math.PI; grp.add(spike);
+  }
+  crystal(-21.5, 13.25, -68.5, 2.0); crystal(-12.5, 13.25, -68.5, 1.7);
+
+  // Lompatan kristal es di sisi jalur spiral: platform kecil berurutan dengan jarak terukur.
+  for (let i = 0; i < 4; i++) {
+    const px = -7.5 - i * 1.9, pz = -76.5 - i * 2.0, py = 14 + i * 1.15;
+    const pad = plat(px, py, pz, 2.35, 2.35, { kind: 'cube', h: 0.75, route: 1 });
+    crystal(px, py + 0.25, pz, 0.95);
   }
 
   // ================= ZONA 6: Puncak (CHECKPOINT 4) + medan terakhir =================
@@ -3305,7 +3428,7 @@ function buildSnowWorld() {
   const tpOf = (p) => [p.mesh.position.x, top(p) + 0.05, p.mesh.position.z];
   const cp = cpList;
   return { platforms: P, hazards: [], guards: guardsArr, laserBeam: null, FIN_Y: top(PF2), WIN: WINP, MAZE_H: 0, MAZE_Z: 0,
-    cover: C, cracks, snowfall, route, npcs, cps: cp,
+    cover: C, cracks, snowfall, route, npcs, cps: cp, vanish, rotators, snowballs, windZones, swingPlanks, glowCrystals,
     tp: { start: [0, 0.25, 0], hub: tpOf(cp[1]), top: tpOf(cp[2]), maze: tpOf(cp[3]), finish: [WINP.x, top(PF2), WINP.z] } };
 }
 // ===== SNOW-MODULE-END =====
