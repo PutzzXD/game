@@ -1,8 +1,8 @@
 // Map ice/salju PARKOUR 3D. Dipisahkan dari main.js.
 export function buildSnowWorld(THREE, scene, api) {
   const { runElapsedMs, insidePlat, showToast } = api;
-  const SNOW_TIMER_SEC = 60;
-  const SNOW_FIRE_WINDOW_SEC = 5;
+  const SNOW_TIMER_SEC = 30;
+  const SNOW_FIRE_WINDOW_SEC = 10;
   const SNOW_CYCLE_SEC = SNOW_TIMER_SEC + SNOW_FIRE_WINDOW_SEC;
   // NPC lebih responsif: cepat mengunci sasaran, lalu memberi jeda singkat antar-tembakan.
   const SNOW_AIM_TIME = 0.45, SNOW_LOCK_TIME = 0.12, SNOW_COOL_TIME = 0.95;
@@ -371,7 +371,7 @@ export function buildSnowWorld(THREE, scene, api) {
     let txt, mode;
     if (gameState === 'WIN') { txt = '❄️ Map Salju selesai!'; mode = 'win'; }
     else if (left > 0) { const sec = Math.ceil(left); txt = '❄️ NPC menembak dalam ' + String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0'); mode = left <= 10 ? 'warn' : 'ok'; }
-    else { txt = 'NPC DETECT SELAMA 5 DETIK'; mode = 'fire'; }
+    else { txt = 'NPC DETECT SELAMA 10 DETIK'; mode = 'fire'; }
     if (snowSys.hudText !== txt) { el.textContent = txt; snowSys.hudText = txt; }
     if (snowSys.hudMode !== mode) {
       snowSys.hudMode = mode;
