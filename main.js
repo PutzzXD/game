@@ -19,6 +19,18 @@ const firebaseApp = initializeApp(firebaseConfig);
 const multiplayerAuth = getAuth(firebaseApp);
 const multiplayerDb = getDatabase(firebaseApp);
 
+// ===== Helper aman: tidak crash kalau elemen tidak ada di HTML =====
+function setElDisplay(id, value) { const el = document.getElementById(id); if (el) el.style.display = value; }
+function hideStartupSplash() {
+  const s = document.getElementById('startup-loading');
+  if (!s) return;
+  s.classList.add('is-hidden');
+  s.style.pointerEvents = 'none';
+  setTimeout(() => { try { s.remove(); } catch (e) { s.style.display = 'none'; } }, 500);
+}
+// Pengaman terakhir: apa pun yang terjadi, splash awal pasti hilang maksimal 15 detik.
+setTimeout(hideStartupSplash, 15000);
+
 
 // ============ EFEK SUARA (WEB AUDIO API) ============
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -341,7 +353,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-start-game').style.display = 'none';
     document.getElementById('btn-shop').style.display = 'none';
     document.getElementById('btn-vault').style.display = 'none';
-    document.getElementById('btn-music').style.display = 'none';
+    setElDisplay('btn-music', 'none');
     document.getElementById('in-game-controls').style.display = 'block'; setLobbyOnlyHud(false);
     chatBox.style.display = 'none'; 
     chatToggle.textContent = '💬 Chat Global';
@@ -350,7 +362,7 @@ window.addEventListener('DOMContentLoaded', () => {
     showLoadingScreen(() => {
       isGameStarted = true;
       onGameBegin();
-      document.getElementById('btn-exit-lobby').style.display = 'flex';
+      setElDisplay('btn-exit-lobby', 'flex');
       camera.position.set(0, 4, 8);
       controls.target.set(0, 1.5, 0);
     });
@@ -456,11 +468,9 @@ window.addEventListener('DOMContentLoaded', () => {
       splashDone = true;
       clearInterval(splashTimer);
       if (splashBar) splashBar.style.width = '100%';
-      if (afterWait) afterWait();
-      if (splash) {
-        splash.classList.add('is-hidden');
-        setTimeout(() => splash.remove(), 500);
-      }
+      try { if (afterWait) afterWait(); }
+      catch (err) { console.error('Gagal membuka lobby/login setelah splash:', err); setElDisplay('auth-container', 'flex'); }
+      finally { hideStartupSplash(); }
     }, wait);
   }
 
@@ -471,8 +481,11 @@ window.addEventListener('DOMContentLoaded', () => {
     catch (e) { localStorage.removeItem('parkour_user'); }
 
     if (session && session.username) {
-      fetch(`${FIREBASE_URL}players/${String(session.username).toLowerCase()}.json`)
+      const sessAbort = new AbortController();
+      const sessTimeout = setTimeout(() => sessAbort.abort(), 8000);
+      fetch(`${FIREBASE_URL}players/${String(session.username).toLowerCase()}.json`, { signal: sessAbort.signal })
         .then(res => {
+          clearTimeout(sessTimeout);
           if (!res.ok) throw new Error('Gagal memeriksa sesi akun');
           return res.json();
         })
@@ -515,11 +528,11 @@ async function returnToLobby() {
   checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
   ['overlay', 'countdown', 'race-timer'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   document.getElementById('in-game-controls').style.display = 'none';
-  document.getElementById('btn-exit-lobby').style.display = 'none';
+  setElDisplay('btn-exit-lobby', 'none');
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('btn-shop').style.display = 'flex';
   document.getElementById('btn-vault').style.display = 'flex';
-  document.getElementById('btn-music').style.display = 'flex';
+  setElDisplay('btn-music', 'flex');
   document.getElementById('chat-container').style.display = 'flex';
   setLobbyOnlyHud(true);
   if (parkourWorldGroup) parkourWorldGroup.visible = false;
@@ -559,7 +572,11 @@ function showLoadingScreen(done) {
     txt.textContent = steps[Math.min(steps.length - 1, Math.floor(f * steps.length))] + ' ' + (e * 100).toFixed(0) + '%';
     if (f < 1) { requestAnimationFrame(tick); return; }
     if (finished) return; finished = true;
-    setTimeout(() => { done(); el.style.opacity = '0'; setTimeout(() => { el.style.display = 'none'; loadingActive = false; }, 380); }, 150);
+    setTimeout(() => {
+      try { done(); }
+      catch (err) { console.error('Gagal memulai game:', err); }
+      finally { el.style.opacity = '0'; setTimeout(() => { el.style.display = 'none'; loadingActive = false; }, 380); }
+    }, 150);
   };
   tick();
 }
@@ -604,7 +621,7 @@ function startLobby() {
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('btn-shop').style.display = 'flex';
   document.getElementById('btn-vault').style.display = 'flex';
-  document.getElementById('btn-music').style.display = 'flex';
+  setElDisplay('btn-music', 'flex');
   document.getElementById('in-game-controls').style.display = 'none'; setLobbyOnlyHud(true);
   document.getElementById('chat-container').style.display = 'flex';
 
