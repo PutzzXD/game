@@ -204,14 +204,15 @@ const SHOP_ITEMS = {
     { id: 'baju_merah', name: 'Baju Merah', price: 150, color: 0xff0000 },
     { id: 'baju_hijau', name: 'Baju Hijau', price: 150, color: 0x00ff00 },
     { id: 'baju_emas', name: 'Baju Emas', price: 300, color: 0xffd700 },
-    { id: 'baju_spiderman', name: 'Kostum Spiderman', price: 500, color: 0xd91e2b, web: true },
-    { id: 'baju_batman', name: 'Kostum Batman', price: 550, color: 0x2b2f3a, bat: true, suit: 'bat' },
-    { id: 'baju_ironman', name: 'Kostum Ironman', price: 2000, color: 0xb01020, iron: true },
-    { id: 'baju_thor', name: 'Kostum Thor', price: 1500, color: 0x3b4252, thor: true, suit: 'mail' },
-    { id: 'baju_hulk', name: 'Kostum Hulk', price: 1800, color: 0x57b84a, hulk: true },
-    { id: 'baju_ultraman', name: 'Kostum Ultraman', price: 2200, color: 0xd9e0e8, ultra: true, suit: 'mail' },
-    { id: 'baju_godzilla', name: 'Kostum Godzilla', price: 2500, color: 0x315b42, godzilla: true },
-    { id: 'baju_ramenraider', name: 'Kostum Ramen Raider', price: 2000, color: 0xd98a32, ramen: true }
+    { id: 'baju_spiderman', name: 'Kostum Spiderman', price: 1500, color: 0xd91e2b, web: true },
+    { id: 'baju_batman', name: 'Kostum Batman', price: 1600, color: 0x2b2f3a, bat: true, suit: 'bat' },
+    { id: 'baju_ironman', name: 'Kostum Ironman', price: 4000, color: 0xb01020, iron: true },
+    { id: 'baju_thor', name: 'Kostum Thor', price: 3000, color: 0x3b4252, thor: true, suit: 'mail' },
+    { id: 'baju_hulk', name: 'Kostum Hulk', price: 3500, color: 0x57b84a, hulk: true },
+    { id: 'baju_ultraman', name: 'Kostum Ultraman', price: 4500, color: 0xd9e0e8, ultra: true, suit: 'mail' },
+    { id: 'baju_godzilla', name: 'Kostum Godzilla', price: 5000, color: 0x315b42, godzilla: true },
+    { id: 'baju_ramenraider', name: 'Kostum Ramen Raider', price: 4000, color: 0xd98a32, ramen: true },
+    { id: 'baju_pacman', name: 'Kostum Pacman', price: 10000, color: 0xffd800, pac: true }
   ],
   celana: [
     { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
@@ -764,7 +765,7 @@ async function updatePlayerFirebase() {
   const firebaseUrl = `${FIREBASE_URL}players/${userKey}.json`;
   await fetch(firebaseUrl, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ coins: playerData.coins, inventory: playerData.inventory, equipped: playerData.equipped })
+    body: JSON.stringify({ coins: playerData.coins, inventory: playerData.inventory, equipped: playerData.equipped, savedCheckpoint: playerData.savedCheckpoint || null })
   });
 }
 
@@ -840,13 +841,14 @@ function applyItemMat(m, it) {
 function pickCostume(eq) {
   const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
   const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor, hulk = !!baju.hulk;
-  const celana = iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
-  const sepatu = iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
+  const pac = !!baju.pac;
+  const celana = pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
+  const sepatu = pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
   return { baju, celana, sepatu, iron, thor, hulk };
 }
-const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [] };
+const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [] };
 function setCostumeVis(baju, get) {
-  const on = { spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen };
+  const on = { spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac };
   for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
 }
 
@@ -890,6 +892,7 @@ function itemIcon(cat, it) {
     if (it.bat && cat === 'baju') inner += '<rect x="19" y="47" width="26" height="4" fill="#f5c400"/><ellipse cx="32" cy="30" rx="8" ry="5" fill="#f5c400" stroke="#111"/><path d="M32 26L33 25L33.5 26.5Q38 26 40 28Q38 28.5 37 31Q35 30 34 31L32 33L30 31Q29 30 27 31Q26 28.5 24 28Q26 26 30.5 26.5L31 25Z" fill="#111"/>';
     if (it.ultra && cat === 'baju') inner += '<path d="M20 8L32 18L44 8L39 56H25Z" fill="#d52c3a"/><circle cx="32" cy="34" r="5" fill="#5cecff" stroke="#fff" stroke-width="2"/>';
     if (it.godzilla && cat === 'baju') inner += '<path d="M32 8L24 20L29 19L22 31L29 28L25 44L39 44L35 28L42 31L35 19L40 20Z" fill="#a8d96a" stroke="#183d2b" stroke-width="1.5"/>';
+    if (it.pac && cat === 'baju') inner += '<circle cx="32" cy="32" r="11" fill="#111"/><path d="M32 32L42 27.5A11 11 0 1 0 42 36.5Z" fill="#ffd800"/><circle cx="34" cy="26.5" r="1.5" fill="#111"/><circle cx="46" cy="32" r="1.6" fill="#ffd800"/>';
     if (it.ramen && cat === 'baju') inner += '<path d="M17 25Q32 34 47 25L43 48Q32 55 21 48Z" fill="#f2c56c" stroke="#7d3c1c" stroke-width="2"/><path d="M19 24Q32 14 45 24" fill="none" stroke="#fff0bd" stroke-width="3"/><path d="M25 20L37 11M29 21L41 12" stroke="#8b5528" stroke-width="2"/>';
     if (it.web && cat === 'baju') inner += '<g stroke="#111" stroke-width="1.6" fill="#111" stroke-linecap="round"><ellipse cx="32" cy="35" rx="2.6" ry="5"/><circle cx="32" cy="28.5" r="1.8"/><path fill="none" d="M32 33L24 28M32 35L23 35M32 37L24 42M32 38L25 46M32 33L40 28M32 35L41 35M32 37L40 42M32 38L39 46"/></g>';
   } else if (cat === 'aksesoris') inner = ACC_ICONS[it.id] || '';
@@ -1441,7 +1444,12 @@ function init3DGame() {
         const inside = pp.y > FY - 1 && pp.y < FY + 4 && set.has(key(row, col));
         if (state === 'idle') {
           g.rotation.y = Math.sin(t * 0.8 + gx) * 0.5;
-          if (inside) { state = 'aim'; timer = 0; showToast('🔫 Salah lorong!'); }
+          if (inside) { // salah jalan: NPC langsung menembak, tanpa jeda bidik
+            g.rotation.y = Math.atan2(pp.x - gx, pp.z - gz);
+            state = 'fire'; timer = 0; setBeam(pp, 0.12); beam.material.color.setHex(0x66f6ff); beam.visible = true;
+            showToast('🔫 Salah lorong!');
+            return canKill;
+          }
           return false;
         }
         let df = Math.atan2(pp.x - gx, pp.z - gz) - g.rotation.y; df = Math.atan2(Math.sin(df), Math.cos(df));
@@ -1812,6 +1820,17 @@ function init3DGame() {
   const scarf = mk(new THREE.BoxGeometry(0.62, 0.13, 0.12), ramenCream, 0, 2.02, 0.02, ramenScarf); scarf.rotation.z = 0.04;
   const scarfTail = mk(new THREE.BoxGeometry(0.13, 0.42, 0.07), ramenCream, 0.32, 1.79, -0.02, ramenScarf); scarfTail.rotation.z = -0.18;
 
+  // ===== KOSTUM PACMAN: helm bola kuning dengan mulut terbuka, mata, emblem dada, dan titik makanan =====
+  const pacYellow = accMat(0xffd800, { roughness: 0.4, emissive: 0x332a00, emissiveIntensity: 0.4, side: THREE.DoubleSide });
+  const pacBlack = accMat(0x0b0b12, { roughness: 0.5 });
+  const pacHead = grp(headGroup, costumeParts.pac);
+  mk(new THREE.SphereGeometry(0.37, 32, 24, Math.PI / 2 + 0.55, Math.PI * 2 - 1.1), pacYellow, 0, 0.02, 0, pacHead);
+  mk(new THREE.SphereGeometry(0.045, 12, 10), pacBlack, 0.213, 0.213, 0.234, pacHead);
+  mk(new THREE.SphereGeometry(0.045, 12, 10), pacBlack, -0.213, 0.213, 0.234, pacHead);
+  const pacChest = grp(rig, costumeParts.pac);
+  const pacDisc = mk(new THREE.CylinderGeometry(0.15, 0.15, 0.035, 32), pacBlack, 0, 1.62, 0.3, pacChest); pacDisc.rotation.x = Math.PI / 2;
+  const pacMouth = mk(new THREE.CylinderGeometry(0.115, 0.115, 0.04, 32, 1, false, Math.PI / 2 + 0.5, Math.PI * 2 - 1.0), pacYellow, 0, 1.62, 0.322, pacChest); pacMouth.rotation.x = Math.PI / 2;
+
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -2103,7 +2122,24 @@ function onGameBegin() {
     character.position.set(sp[0], 0.25, sp[1]); checkpoint.x = sp[0]; checkpoint.z = sp[1];
     gameState = serverNow() < roomStartAt ? 'COUNTDOWN' : 'PLAYING';
     update(myRef, { status: 'PLAYING', deadAt: null }).catch(() => {});
-  } else { soloStart = performance.now(); gameState = 'PLAYING'; character.position.set(0, 0.25, 0); checkpoint.x = 0; checkpoint.z = 0; }
+  } else {
+    soloStart = performance.now(); gameState = 'PLAYING'; character.position.set(0, 0.25, 0); checkpoint.x = 0; checkpoint.z = 0;
+    restoreSavedCheckpoint();
+  }
+}
+// Pulihkan checkpoint terakhir (mode solo): karakter muncul di checkpoint tersimpan, bukan di awal.
+function restoreSavedCheckpoint() {
+  const sc = playerData.savedCheckpoint;
+  if (!sc || roomCode) return;
+  const pl = platforms.find(p => p.checkpoint && Math.abs(p.mesh.position.x - sc.px) < 0.06 && Math.abs(p.mesh.position.y - sc.py) < 0.06 && Math.abs(p.mesh.position.z - sc.pz) < 0.06);
+  if (!pl) return;
+  pl.checkpointActivated = true; activatedCheckpoints.add(pl);
+  if (usedCheckpointMat) pl.mesh.material = usedCheckpointMat;
+  checkpoint = { p: pl, set: true, x: pl.mesh.position.x, y: sc.y, z: pl.mesh.position.z };
+  character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z);
+  physics.velocityY = 0; moveVel.set(0, 0); knock.set(0, 0);
+  if (camera && controls) { controls.target.set(checkpoint.x, checkpoint.y + 1.5, checkpoint.z); camera.position.set(checkpoint.x, checkpoint.y + 4, checkpoint.z + 8); }
+  showToast('📍 Lanjut dari checkpoint terakhir');
 }
 
 function scoreFromTime(ms) {
@@ -2989,7 +3025,7 @@ function animate() {
   hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 2.5));
   if (hitCD <= 0 && !godMode && !flyMode) for (const h of hazards) {
     const n = h.test(character.position);
-    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; roast('hit', ' Kena rintangan!'); break; }
+    if (n) { knock.set(n.x * 26, n.z * 26); physics.velocityY = 13; physics.isGrounded = false; hitCD = 1.2; sq.v = -5; break; }
   }
   const forward = new THREE.Vector3(); camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
   const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
@@ -3029,6 +3065,10 @@ function animate() {
       checkpoint = { p: groundData.platform, set: true, x: m.x, y: groundData.y, z: m.z };
       if (usedCheckpointMat) groundData.platform.mesh.material = usedCheckpointMat;
       showToast('✅ Checkpoint tersimpan!');
+      if (!roomCode) { // mode solo: posisi checkpoint disimpan ke akun, jadi tetap di sini walau keluar game
+        playerData.savedCheckpoint = { px: +m.x.toFixed(3), py: +m.y.toFixed(3), pz: +m.z.toFixed(3), y: +groundData.y.toFixed(3) };
+        updatePlayerFirebase().catch(() => {});
+      }
     }
   } else {
     physics.isGrounded = false;
@@ -3087,11 +3127,12 @@ function animate() {
   // KONDISI MENANG DI PUNCAK
   if (character.position.y > FIN_Y - 0.5 && Math.abs(character.position.x - WIN.x) < 4.5 && Math.abs(character.position.z - WIN.z) < 4.5) {
     gameState = 'WIN'; 
-    playerData.coins = (playerData.coins || 0) + 700;
+    playerData.coins = (playerData.coins || 0) + 1000;
+    playerData.savedCheckpoint = null; // selesai: progres checkpoint direset
     updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins;
     onFinish();
-    showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +700 🪙' + finishSummary(), '#00ff00');
+    showOverlay('YOU WIN!', 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +1000 🪙' + finishSummary(), '#00ff00');
   }
 
   // ===== Animasi karakter: damping + squash & stretch + condong badan =====
