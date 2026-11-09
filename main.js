@@ -146,7 +146,10 @@ const SHOP_ITEMS = {
     { id: 'baju_batman', name: 'Kostum Batman', price: 550, color: 0x2b2f3a, bat: true, suit: 'bat' },
     { id: 'baju_ironman', name: 'Kostum Ironman', price: 2000, color: 0xb01020, iron: true },
     { id: 'baju_thor', name: 'Kostum Thor', price: 1500, color: 0x3b4252, thor: true, suit: 'mail' },
-    { id: 'baju_hulk', name: 'Kostum Hulk', price: 1800, color: 0x57b84a, hulk: true }
+    { id: 'baju_hulk', name: 'Kostum Hulk', price: 1800, color: 0x57b84a, hulk: true },
+    { id: 'baju_ultraman', name: 'Kostum Ultraman', price: 2200, color: 0xd9e0e8, ultra: true, suit: 'mail' },
+    { id: 'baju_godzilla', name: 'Kostum Godzilla', price: 2500, color: 0x315b42, godzilla: true },
+    { id: 'baju_ramenraider', name: 'Kostum Ramen Raider', price: 2000, color: 0xd98a32, ramen: true }
   ],
   celana: [
     { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
@@ -719,9 +722,9 @@ function pickCostume(eq) {
   const sepatu = iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
   return { baju, celana, sepatu, iron, thor, hulk };
 }
-const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [] };
+const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [] };
 function setCostumeVis(baju, get) {
-  const on = { spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk };
+  const on = { spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen };
   for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
 }
 
@@ -763,6 +766,9 @@ function itemIcon(cat, it) {
     if (it.hulk && cat === 'baju') inner += '<path d="M24 24Q32 34 40 24" stroke="#2c6b27" stroke-width="2" fill="none"/><circle cx="25" cy="28" r="5" fill="#6fd35f"/><circle cx="39" cy="28" r="5" fill="#6fd35f"/><path d="M32 32V46M26 38H38M27 44H37" stroke="#2c6b27" stroke-width="1.5"/><rect x="19" y="47" width="26" height="5" fill="#6b3fa0"/>';
     if (it.thor && cat === 'baju') inner += '<path d="M20 8L8 16L13 27L19 24Z" fill="#c9d1d9"/><path d="M44 8L56 16L51 27L45 24Z" fill="#c9d1d9"/><circle cx="25" cy="29" r="5.5" fill="#dfe6ec" stroke="#7b8794" stroke-width="1.5"/><circle cx="39" cy="29" r="5.5" fill="#dfe6ec" stroke="#7b8794" stroke-width="1.5"/><rect x="19" y="46" width="26" height="4" fill="#4a2f1b"/><rect x="28" y="38" width="8" height="5" rx="1" fill="#6b7480"/><path d="M33 33L29 38H32L30 43L36 36H33Z" fill="#4aa8ff"/>';
     if (it.bat && cat === 'baju') inner += '<rect x="19" y="47" width="26" height="4" fill="#f5c400"/><ellipse cx="32" cy="30" rx="8" ry="5" fill="#f5c400" stroke="#111"/><path d="M32 26L33 25L33.5 26.5Q38 26 40 28Q38 28.5 37 31Q35 30 34 31L32 33L30 31Q29 30 27 31Q26 28.5 24 28Q26 26 30.5 26.5L31 25Z" fill="#111"/>';
+    if (it.ultra && cat === 'baju') inner += '<path d="M20 8L32 18L44 8L39 56H25Z" fill="#d52c3a"/><circle cx="32" cy="34" r="5" fill="#5cecff" stroke="#fff" stroke-width="2"/>';
+    if (it.godzilla && cat === 'baju') inner += '<path d="M32 8L24 20L29 19L22 31L29 28L25 44L39 44L35 28L42 31L35 19L40 20Z" fill="#a8d96a" stroke="#183d2b" stroke-width="1.5"/>';
+    if (it.ramen && cat === 'baju') inner += '<path d="M17 25Q32 34 47 25L43 48Q32 55 21 48Z" fill="#f2c56c" stroke="#7d3c1c" stroke-width="2"/><path d="M19 24Q32 14 45 24" fill="none" stroke="#fff0bd" stroke-width="3"/><path d="M25 20L37 11M29 21L41 12" stroke="#8b5528" stroke-width="2"/>';
     if (it.web && cat === 'baju') inner += '<g stroke="#111" stroke-width="1.6" fill="#111" stroke-linecap="round"><ellipse cx="32" cy="35" rx="2.6" ry="5"/><circle cx="32" cy="28.5" r="1.8"/><path fill="none" d="M32 33L24 28M32 35L23 35M32 37L24 42M32 38L25 46M32 33L40 28M32 35L41 35M32 37L40 42M32 38L39 46"/></g>';
   } else if (cat === 'aksesoris') inner = ACC_ICONS[it.id] || '';
   else inner = `<text x="32" y="44" font-size="34" text-anchor="middle">${it.id.includes('api') ? '🔥' : (it.id.includes('_es') ? '❄️' : '✨')}</text>`;
@@ -1607,6 +1613,82 @@ function init3DGame() {
   mk(new THREE.CylinderGeometry(0.44, 0.44, 0.14, 40), hulkPurple, 0, 1.0, 0, hulkBody);
   const hulkHead = grp(headGroup, costumeParts.hulk);
   for (const sd of [-1, 1]) { const brow = mk(new THREE.BoxGeometry(0.16, 0.05, 0.08), hulkDark, sd * 0.09, 0.13, 0.275, hulkHead); brow.rotation.z = sd * 0.3; }
+
+  // ===== KOSTUM ULTRAMAN: helm perak, mata bercahaya, color timer, garis merah =====
+  const ultraSilver = accMat(0xcbd5df, { metalness: 0.82, roughness: 0.24, envMap: envTex, envMapIntensity: 1.15 });
+  const ultraRed = accMat(0xb92335, { metalness: 0.38, roughness: 0.34 });
+  const ultraGlow = new THREE.MeshStandardMaterial({ color: 0x8ff6ff, emissive: 0x28cfff, emissiveIntensity: 2.2, metalness: 0.2, roughness: 0.22 });
+  const ultraHead = grp(headGroup, costumeParts.ultra);
+  mk(new THREE.SphereGeometry(0.355, 36, 28), ultraSilver, 0, 0.015, -0.015, ultraHead);
+  for (const sd of [-1, 1]) {
+    const eye = mk(new THREE.SphereGeometry(0.09, 20, 14), ultraGlow, sd * 0.135, 0.055, 0.318, ultraHead); eye.scale.set(1.15, 0.62, 0.34);
+    const brow = mk(new THREE.BoxGeometry(0.055, 0.25, 0.055), ultraSilver, sd * 0.19, 0.29, 0.02, ultraHead); brow.rotation.z = -sd * 0.24;
+  }
+  const ultraCrest = mk(new THREE.ConeGeometry(0.055, 0.23, 8), ultraSilver, 0, 0.36, 0.02, ultraHead); ultraCrest.rotation.z = Math.PI;
+  const ultraChest = grp(rig, costumeParts.ultra);
+  mk(new THREE.SphereGeometry(0.09, 24, 16), ultraGlow, 0, 1.62, 0.31, ultraChest).scale.set(0.8, 1.2, 0.35);
+  mk(new THREE.TorusGeometry(0.115, 0.018, 10, 32), ultraRed, 0, 1.62, 0.31, ultraChest);
+  for (const sd of [-1, 1]) {
+    const stripe = mk(new THREE.BoxGeometry(0.11, 0.65, 0.035), ultraRed, sd * 0.22, 1.48, 0.285, ultraChest); stripe.rotation.z = -sd * 0.22;
+    const shoulder = mk(new THREE.SphereGeometry(0.145, 20, 14), ultraSilver, sd * 0.4, 1.93, 0, ultraChest); shoulder.scale.set(1.1, 0.65, 1);
+    const bracer = grp(sd < 0 ? leftElbow : rightElbow, costumeParts.ultra);
+    mk(new THREE.CylinderGeometry(0.105, 0.095, 0.26, 24), ultraSilver, 0, -0.23, 0, bracer);
+    mk(new THREE.TorusGeometry(0.098, 0.014, 8, 24), ultraRed, 0, -0.12, 0, bracer).rotation.x = Math.PI / 2;
+  }
+
+  // ===== KOSTUM GODZILLA: sisik, sirip punggung, ekor dan cakar =====
+  const godSkin = accMat(0x315b42, { roughness: 0.82 });
+  const godScale = accMat(0x527d55, { roughness: 0.72 });
+  const godSpine = accMat(0xb8d9c4, { metalness: 0.18, roughness: 0.42, emissive: 0x173d31, emissiveIntensity: 0.35 });
+  const godHead = grp(headGroup, costumeParts.godzilla);
+  const snout = mk(new THREE.SphereGeometry(0.19, 20, 14), godSkin, 0, -0.08, 0.26, godHead); snout.scale.set(1.05, 0.62, 1.15);
+  for (const sd of [-1, 1]) {
+    const brow = mk(new THREE.BoxGeometry(0.17, 0.07, 0.1), godScale, sd * 0.105, 0.13, 0.26, godHead); brow.rotation.z = sd * 0.18;
+    mk(new THREE.SphereGeometry(0.025, 10, 8), blackSuit, sd * 0.07, -0.045, 0.425, godHead);
+    const horn = mk(new THREE.ConeGeometry(0.045, 0.18, 7), godSpine, sd * 0.2, 0.26, -0.04, godHead); horn.rotation.z = -sd * 0.55;
+  }
+  const godBack = grp(rig, costumeParts.godzilla);
+  for (let i = 0; i < 7; i++) {
+    const plate = mk(new THREE.ConeGeometry(0.22 - i * 0.012, 0.34 - i * 0.018, 5), godSpine, 0, 1.15 + i * 0.13, -0.29, godBack);
+    plate.rotation.x = -0.22; plate.rotation.z = Math.PI;
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 1.0, -0.25); godBack.add(tail);
+  const tailA = mk(new THREE.ConeGeometry(0.22, 0.72, 10), godSkin, 0, 0, -0.42, tail); tailA.rotation.x = -Math.PI / 2;
+  const tailB = mk(new THREE.ConeGeometry(0.12, 0.48, 9), godSkin, 0, 0, -0.88, tail); tailB.rotation.x = -Math.PI / 2;
+  const tailTip = mk(new THREE.ConeGeometry(0.055, 0.28, 7), godSpine, 0, 0, -1.18, tail); tailTip.rotation.x = -Math.PI / 2;
+  for (const sd of [-1, 1]) {
+    const claw = grp(sd < 0 ? leftElbow : rightElbow, costumeParts.godzilla);
+    for (let i = -1; i <= 1; i++) { const nail = mk(new THREE.ConeGeometry(0.025, 0.13, 7), godSpine, i * 0.055, -0.46, 0.025, claw); nail.rotation.x = Math.PI; }
+  }
+
+  // ===== KOSTUM RAMEN RAIDER: helm mangkuk ramen, mie, sumpit dan emblem =====
+  const ramenBowl = accMat(0xd94a32, { roughness: 0.42, metalness: 0.12 });
+  const ramenCream = accMat(0xffe3a3, { roughness: 0.68 });
+  const ramenNoodle = accMat(0xe9b84f, { roughness: 0.8 });
+  const ramenDark = accMat(0x66351f, { roughness: 0.7 });
+  const ramenHead = grp(headGroup, costumeParts.ramen);
+  mk(new THREE.CylinderGeometry(0.27, 0.22, 0.22, 32), ramenBowl, 0, 0.18, 0, ramenHead);
+  mk(new THREE.TorusGeometry(0.255, 0.025, 8, 32), ramenCream, 0, 0.295, 0, ramenHead);
+  const broth = mk(new THREE.CircleGeometry(0.235, 32), ramenCream, 0, 0.302, 0, ramenHead); broth.rotation.x = -Math.PI / 2;
+  for (let i = 0; i < 5; i++) {
+    const noodle = mk(new THREE.TorusGeometry(0.065 + (i % 2) * 0.012, 0.012, 6, 18), ramenNoodle, Math.cos(i * 1.25) * 0.105, 0.325, Math.sin(i * 1.25) * 0.105, ramenHead); noodle.rotation.x = Math.PI / 2;
+  }
+  const chopstick1 = mk(new THREE.CylinderGeometry(0.012, 0.018, 0.52, 8), ramenDark, -0.12, 0.48, -0.02, ramenHead);
+  const chopstick2 = mk(new THREE.CylinderGeometry(0.012, 0.018, 0.52, 8), ramenDark, -0.02, 0.48, -0.02, ramenHead);
+  chopstick1.rotation.z = -0.42; chopstick2.rotation.z = -0.24;
+  const ramenChest = grp(rig, costumeParts.ramen);
+  const emblem = mk(new THREE.CylinderGeometry(0.13, 0.13, 0.035, 32), ramenCream, 0, 1.62, 0.3, ramenChest); emblem.rotation.x = Math.PI / 2;
+  mk(new THREE.TorusGeometry(0.075, 0.012, 8, 24), ramenBowl, 0, 1.62, 0.325, ramenChest);
+  mk(new THREE.TorusGeometry(0.045, 0.012, 8, 20), ramenNoodle, 0, 1.62, 0.34, ramenChest);
+  for (const sd of [-1, 1]) {
+    const shoulder = mk(new THREE.SphereGeometry(0.15, 18, 12), ramenBowl, sd * 0.4, 1.9, 0, ramenChest); shoulder.scale.set(1.2, 0.7, 1);
+    const wrist = grp(sd < 0 ? leftElbow : rightElbow, costumeParts.ramen);
+    mk(new THREE.CylinderGeometry(0.1, 0.09, 0.24, 20), ramenCream, 0, -0.23, 0, wrist);
+    mk(new THREE.TorusGeometry(0.095, 0.012, 8, 20), ramenBowl, 0, -0.12, 0, wrist).rotation.x = Math.PI / 2;
+  }
+  const ramenScarf = grp(rig, costumeParts.ramen);
+  const scarf = mk(new THREE.BoxGeometry(0.62, 0.13, 0.12), ramenCream, 0, 2.02, 0.02, ramenScarf); scarf.rotation.z = 0.04;
+  const scarfTail = mk(new THREE.BoxGeometry(0.13, 0.42, 0.07), ramenCream, 0.32, 1.79, -0.02, ramenScarf); scarfTail.rotation.z = -0.18;
 
   updateCharacterVisuals();
 
