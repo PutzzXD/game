@@ -63,17 +63,20 @@ function playStepSound() {
   } catch (e) {}
 }
 
-// ============ BACKGROUND MUSIC ============
-// Musik dicoba saat halaman dibuka. Browser yang memblokir autoplay akan
-// memulainya otomatis pada sentuhan/klik pertama dari pemain.
-const backgroundMusic = new Audio('./putzzdev.mp3');
+// ============ BACKGROUND MUSIC + VAULT MUSIC SELECTOR ============
+const vaultMusicTracks = {
+  amatekam: './putzzdev.mp3',
+  luklukluk: './putzzdev2.mp3'
+};
+let selectedVaultMusic = 'amatekam';
+const backgroundMusic = new Audio(vaultMusicTracks[selectedVaultMusic]);
 backgroundMusic.loop = true;
 backgroundMusic.preload = 'auto';
 backgroundMusic.volume = 0.35;
 
 let backgroundMusicStarted = false;
 function startBackgroundMusic() {
-  if (backgroundMusicStarted) return;
+  if (!backgroundMusic.paused) return;
   const playAttempt = backgroundMusic.play();
   if (playAttempt && typeof playAttempt.then === 'function') {
     playAttempt.then(() => {
@@ -83,6 +86,38 @@ function startBackgroundMusic() {
     });
   }
 }
+
+window.getSelectedVaultMusic = function() {
+  return selectedVaultMusic;
+};
+window.isVaultMusicPlaying = function() {
+  return !backgroundMusic.paused;
+};
+window.selectVaultMusic = function(trackId) {
+  if (!Object.prototype.hasOwnProperty.call(vaultMusicTracks, trackId)) return;
+  const shouldPlay = !backgroundMusic.paused || !backgroundMusicStarted;
+  selectedVaultMusic = trackId;
+  backgroundMusic.pause();
+  backgroundMusic.currentTime = 0;
+  backgroundMusic.src = vaultMusicTracks[trackId];
+  backgroundMusic.load();
+  backgroundMusicStarted = false;
+  if (shouldPlay) {
+    const playAttempt = backgroundMusic.play();
+    if (playAttempt && typeof playAttempt.then === 'function') {
+      playAttempt.then(() => {
+        backgroundMusicStarted = true;
+      }).catch(() => {
+        // Browser dapat memblokir autoplay; interaksi berikutnya akan mencoba lagi.
+      });
+    }
+  }
+  const activeTab = document.querySelector('.vault-tab-btn.active');
+  if (activeTab && activeTab.dataset.cat === 'music') renderVaultTab('music');
+  if (typeof showToast === 'function') {
+    showToast('🎵 Memutar ' + (trackId === 'amatekam' ? 'Amatekam' : 'Luk Luk Luk'));
+  }
+};
 
 document.addEventListener('DOMContentLoaded', startBackgroundMusic, { once: true });
 document.addEventListener('pointerdown', startBackgroundMusic, { capture: true });
@@ -598,6 +633,32 @@ function renderVaultTab(category) {
   const container = document.getElementById('vault-items-container');
   if (!container) return;
   container.innerHTML = '';
+
+  if (category === 'music') {
+    const tracks = [
+      { id: 'amatekam', name: 'Amatekam', file: 'putzzdev.mp3' },
+      { id: 'luklukluk', name: 'Luk Luk Luk', file: 'putzzdev2.mp3' }
+    ];
+    const currentTrack = window.getSelectedVaultMusic ? window.getSelectedVaultMusic() : 'amatekam';
+    tracks.forEach(track => {
+      const isPlaying = currentTrack === track.id && window.isVaultMusicPlaying && window.isVaultMusicPlaying();
+      const div = document.createElement('div');
+      div.className = 'shop-item';
+      div.innerHTML = `
+        <div class="color-preview" style="background:linear-gradient(135deg,#182b49,#274b70);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:38px">🎵</div>
+        <div class="item-name">${track.name}</div>
+        <div class="item-price" style="color:#a9c9e8">${track.file}</div>
+        <button class="shop-buy-btn" type="button" onclick="selectVaultMusic('${track.id}')">${isPlaying ? '▶ SEDANG DIPUTAR' : '▶ PUTAR LAGU'}</button>`;
+      container.appendChild(div);
+    });
+    const note = document.createElement('div');
+    note.className = 'inventory-empty';
+    note.style.marginTop = '8px';
+    note.textContent = 'Pilih lagu untuk mengganti musik game. Musik akan diputar berulang.';
+    container.appendChild(note);
+    return;
+  }
+
   let visibleCount = 0;
   (SHOP_ITEMS[category] || []).forEach(item => {
     if (!playerData.inventory.includes(item.id)) return;
