@@ -241,6 +241,9 @@ const SHOP_ITEMS = {
     { id: 'aks_topi', name: 'Topi Merah', price: 200 },
     { id: 'aks_mahkota', name: 'Mahkota Emas', price: 500 },
     { id: 'aks_jubah', name: 'Jubah Merah', price: 350 }
+  ],
+  gamepass: [
+    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 1000, gamepass: true, desc: 'Dorong teman saat balapan (tombol 🫸 / tombol E)' }
   ]
 };
 
@@ -268,12 +271,14 @@ async function fetchGlobalChat() {
 }
 
 // ============ 2. FUNGSI NOTIFIKASI CUSTOM (TOAST) ============
-function showToast(message) {
+let toastTimer = null;
+function showToast(message, duration = 2000) {
   const toast = document.getElementById('custom-toast');
   if (!toast) return;
   toast.textContent = message;
   toast.classList.add('show');
-  setTimeout(() => { toast.classList.remove('show'); }, 2000); 
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.classList.remove('show'); }, duration); 
 }
 
 // ============ 3. SETUP DOM & EVENT LISTENER ============
@@ -317,6 +322,11 @@ window.addEventListener('DOMContentLoaded', () => {
       const tb = firstTab.cloneNode(true); tb.dataset.cat = 'aksesoris'; tb.textContent = '🎩 Aksesoris'; tb.classList.remove('active');
       tb.addEventListener('click', (e) => { document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('active')); e.currentTarget.classList.add('active'); renderShopTab('aksesoris'); });
       firstTab.parentNode.appendChild(tb);
+    }
+    if (firstTab && !document.querySelector('.shop-tab-btn[data-cat="gamepass"]')) {
+      const gb = firstTab.cloneNode(true); gb.dataset.cat = 'gamepass'; gb.textContent = '🎫 Gamepass'; gb.classList.remove('active');
+      gb.addEventListener('click', (e) => { document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('active')); e.currentTarget.classList.add('active'); renderShopTab('gamepass'); });
+      firstTab.parentNode.appendChild(gb);
     }
     renderShopTab('baju'); 
   });
@@ -644,6 +654,15 @@ function renderShopTab(category) {
   container.innerHTML = '';
   
   let visibleCount = 0;
+  if (category === 'gamepass') {
+    SHOP_ITEMS.gamepass.forEach(item => {
+      const owned = playerData.inventory.includes(item.id);
+      const div = document.createElement('div'); div.className = 'shop-item';
+      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">🫸</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div><button class="shop-buy-btn" disabled>AKTIF</button>' : `<div class="item-price">🪙 ${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
+      container.appendChild(div);
+    });
+    return;
+  }
   SHOP_ITEMS[category].forEach(item => {
     const isOwned = playerData.inventory.includes(item.id);
     if (isOwned) return; // item yang sudah dibeli pindah ke Vault
@@ -717,6 +736,7 @@ function renderVaultTab(category) {
 }
 
 window.buyItem = async function(category, itemId, price) {
+  if (playerData.inventory.includes(itemId)) { showToast('Sudah dimiliki'); return; }
   if (playerData.coins < price) { showToast("❌ Koin kamu tidak cukup!"); return; }
   playerData.coins -= price;
   playerData.inventory.push(itemId);
@@ -2495,6 +2515,7 @@ let playerSearchBusy = false;
 let socialPollTimer = null;
 let socialPollBusy = false;
 let activeInviteKey = '';
+let lastInviteToastStamp = '', lastRequestSig = null;
 const myPlayerKey = () => String(playerData.username || '').trim().toLowerCase();
 const socialUrl = path => `${FIREBASE_URL}${path}.json`;
 
@@ -2639,7 +2660,9 @@ async function renderFriendsList() {
       if (!profile) continue;
       const row = document.createElement('div'); row.className = 'ps-result';
       const info = document.createElement('div'); info.className = 'ps-info';
+      row.dataset.friendKey = key;
       const name = document.createElement('b'); name.textContent = String(profile.username || saved.username || key);
+      const dot = document.createElement('span'); dot.className = 'ps-dot'; dot.dataset.key = key; name.prepend(dot);
       const meta = document.createElement('small'); meta.textContent = `ID: ${String(profile.playerId || '------')}`;
       info.append(name, meta);
       const invite = document.createElement('button'); invite.className = 'ps-action ps-invite'; invite.textContent = '+'; invite.title = 'Undang ke room';
@@ -2649,6 +2672,8 @@ async function renderFriendsList() {
       const actions = document.createElement('div'); actions.className = 'ps-friend-actions'; actions.append(invite, removeBtn);
       row.append(info, actions); list.append(row);
     }
+    friendKeysCache = new Set(entries.map(([k]) => k));
+    applyFriendPresence();
   } catch (e) { list.textContent = 'Gagal memuat daftar teman.'; }
 }
 
@@ -2671,9 +2696,14 @@ async function pollSocialNotifications() {
       socialGet(`friendRequests/${myPlayerKey()}`).catch(() => ({}))
     ]);
     const pendingInvite = Object.entries(invites || {}).find(([, v]) => v?.status === 'pending');
-    if (pendingInvite) showGameInvite(pendingInvite[0], pendingInvite[1]);
+    if (pendingInvite) {
+      const stamp = pendingInvite[0] + ':' + (pendingInvite[1].sentAt || '');
+      if (stamp !== lastInviteToastStamp) { lastInviteToastStamp = stamp; showToast(`📨 ${pendingInvite[1].fromName || pendingInvite[0]} mengundangmu main!`, 1000); }
+      showGameInvite(pendingInvite[0], pendingInvite[1]);
+    }
     const pendingRequests = Object.entries(requests || {}).filter(([, v]) => v?.status === 'pending');
-    await renderIncomingFriendRequests();
+    const reqSig = pendingRequests.map(([k]) => k).sort().join(',');
+    if (reqSig !== lastRequestSig) { lastRequestSig = reqSig; await renderIncomingFriendRequests(); }
     const badge = document.getElementById('ps-notif-count');
     if (badge) { badge.textContent = String(pendingRequests.length); badge.style.display = pendingRequests.length ? 'inline-flex' : 'none'; }
   } catch (e) { console.warn('Polling notifikasi:', e); }
@@ -2723,7 +2753,99 @@ function buildPlayerSearchUI() {
   renderFriendsList();
   pollSocialNotifications();
   if (socialPollTimer) clearInterval(socialPollTimer);
-  socialPollTimer = setInterval(pollSocialNotifications, 3000);
+  socialPollTimer = setInterval(pollSocialNotifications, 1000); // cek server tiap 1 detik
+  startPresenceSystem();
+}
+
+// ----- STATUS ONLINE TEMAN (dicek ke server tiap 1 detik) -----
+let friendKeysCache = new Set(), presenceTimer = null, presenceBeat = 0, presenceBusy = false;
+const presenceSeen = new Map(); // key -> { v: nilai lastSeen terakhir, at: waktu lokal saat berubah }
+const PRESENCE_TIMEOUT = 7000;
+function isFriendOnline(key) { const p = presenceSeen.get(key); return !!p && p.v > 0 && (performance.now() - p.at) < PRESENCE_TIMEOUT; }
+function applyFriendPresence() {
+  document.querySelectorAll('.ps-dot').forEach(dot => {
+    const on = isFriendOnline(dot.dataset.key);
+    dot.classList.toggle('on', on); dot.title = on ? 'Online' : 'Offline';
+    const small = dot.closest('.ps-info')?.querySelector('small');
+    if (small) small.dataset.online = on ? '1' : '0';
+  });
+}
+async function presenceTick() {
+  if (presenceBusy || !myPlayerKey() || gameState === 'LOGIN') return;
+  presenceBusy = true;
+  try {
+    presenceBeat++;
+    if (presenceBeat % 2 === 0) socialPatch(`presence/${myPlayerKey()}`, { lastSeen: Date.now(), username: playerData.username }).catch(() => {});
+    const box = document.getElementById('player-friends');
+    if (box && box.style.display === 'block') {
+      const all = await socialGet('presence').catch(() => null);
+      if (all) for (const key of friendKeysCache) {
+        const v = Number(all[key]?.lastSeen) || 0, prev = presenceSeen.get(key);
+        if (!prev || prev.v !== v) presenceSeen.set(key, { v, at: performance.now() });
+      }
+      applyFriendPresence();
+    }
+  } finally { presenceBusy = false; }
+}
+function startPresenceSystem() {
+  if (!document.getElementById('presence-css')) {
+    const st = document.createElement('style'); st.id = 'presence-css';
+    st.textContent = `.ps-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#6b7280;margin-right:6px;box-shadow:0 0 0 1px #0006}.ps-dot.on{background:#22e27a;box-shadow:0 0 7px #22e27a}#btn-push{position:fixed;right:22px;bottom:150px;z-index:60;width:62px;height:62px;border-radius:50%;border:2px solid #ffd166;background:rgba(28,20,10,.85);color:#ffd166;font-size:28px;display:none;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}#btn-push:active{transform:scale(.92)}#btn-push.cd{opacity:.4}`;
+    document.head.appendChild(st);
+  }
+  if (presenceTimer) clearInterval(presenceTimer);
+  presenceTimer = setInterval(presenceTick, 1000);
+  presenceTick();
+  window.addEventListener('pagehide', () => { try { fetch(socialUrl(`presence/${myPlayerKey()}`), { method: 'PATCH', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lastSeen: 0 }) }); } catch (e) {} });
+  buildPushButton();
+}
+
+// ----- GAMEPASS DORONG TEMAN -----
+// Dorongan dikirim lewat node pemain sendiri (rooms/<kode>/players/<uid>/push), lalu korban
+// yang membaca dan menerapkan hentakan di sisinya (memakai vektor 'knock' yang sudah ada).
+const PUSH_RANGE = 3.2, PUSH_COOLDOWN = 1500, PUSH_FORCE = 30;
+let pushSeq = 0, lastPushAt = 0;
+const handledPush = new Map(); // uid pendorong -> seq terakhir
+const hasPushPass = () => playerData.inventory.includes('gp_dorong');
+function tryPushNearestFriend() {
+  if (!hasPushPass()) { showToast('🔒 Beli Gamepass Dorong di Shop dulu'); return; }
+  if (!roomCode || !myRef || gameState !== 'PLAYING') return;
+  const now = performance.now();
+  if (now - lastPushAt < PUSH_COOLDOWN) return;
+  let best = null, bestD = PUSH_RANGE;
+  for (const [id, av] of remotePlayers) {
+    const d = roomPlayers[id]; if (!d || d.deadAt || !av.visible) continue;
+    if (!friendKeysCache.has(String(d.username || '').trim().toLowerCase())) continue;
+    const dist = Math.hypot(av.position.x - character.position.x, av.position.z - character.position.z);
+    if (dist < bestD && Math.abs(av.position.y - character.position.y) < 2.5) { best = id; bestD = dist; }
+  }
+  if (!best) { showToast('Tidak ada teman di dekatmu', 1000); return; }
+  lastPushAt = now; pushSeq++;
+  const btn = document.getElementById('btn-push'); if (btn) { btn.classList.add('cd'); setTimeout(() => btn.classList.remove('cd'), PUSH_COOLDOWN); }
+  update(myRef, { push: { target: best, seq: pushSeq, t: Date.now() } }).catch(() => {});
+  showToast('🫸 Dorong ' + String(roomPlayers[best]?.username || 'teman') + '!', 1000);
+}
+function applyIncomingPushes() {
+  if (!roomCode || !character || gameState !== 'PLAYING' || godMode || flyMode) return;
+  for (const [id, d] of Object.entries(roomPlayers)) {
+    if (id === mpUid || !d || !d.push || d.push.target !== mpUid) continue;
+    if (handledPush.get(id) === d.push.seq) continue;
+    handledPush.set(id, d.push.seq);
+    if (Math.abs(Date.now() - (d.push.t || 0)) > 5000) continue; // dorongan basi diabaikan
+    if (d.x == null) continue;
+    let dx = character.position.x - Number(d.x), dz = character.position.z - Number(d.z);
+    const len = Math.hypot(dx, dz) || 1; dx /= len; dz /= len;
+    knock.set(dx * PUSH_FORCE, dz * PUSH_FORCE); physics.velocityY = 7; physics.isGrounded = false; sq.v = -4;
+    showToast('🫸 ' + String(d.username || 'Teman') + ' mendorongmu!', 1000);
+  }
+}
+function buildPushButton() {
+  if (document.getElementById('btn-push')) return;
+  const b = document.createElement('button'); b.id = 'btn-push'; b.type = 'button'; b.textContent = '🫸'; b.title = 'Dorong teman (E)';
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); tryPushNearestFriend(); });
+  document.body.appendChild(b);
+  window.addEventListener('keydown', (e) => { if (e.code === 'KeyE' && !e.repeat && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) tryPushNearestFriend(); });
+  setInterval(() => { b.style.display = (hasPushPass() && roomCode && gameState === 'PLAYING') ? 'flex' : 'none'; applyIncomingPushes(); }, 120);
 }
 
 // ----- UI room -----
