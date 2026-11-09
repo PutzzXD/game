@@ -113,7 +113,7 @@ window.selectVaultMusic = function(trackId) {
     }
   }
   const activeTab = document.querySelector('.vault-tab-btn.active');
-  if (activeTab && activeTab.dataset.cat === 'music') renderVaultTab('music');
+  if (document.getElementById('music-modal')?.style.display === 'block') renderStandaloneMusic();
   if (typeof showToast === 'function') {
     showToast('🎵 Memutar ' + (trackId === 'amatekam' ? 'Amatekam' : 'Luk Luk Luk'));
   }
@@ -296,6 +296,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('close-shop').addEventListener('click', () => { shopModal.style.display = 'none'; });
   document.getElementById('btn-vault').addEventListener('click', () => { vaultModal.style.display = 'flex'; renderVaultTab('baju'); });
   document.getElementById('close-vault').addEventListener('click', () => { vaultModal.style.display = 'none'; });
+  const musicModal = document.getElementById('music-modal');
+  document.getElementById('btn-music').addEventListener('click', () => { renderStandaloneMusic(); musicModal.style.display = 'block'; });
+  document.getElementById('close-music').addEventListener('click', () => { musicModal.style.display = 'none'; });
   document.querySelectorAll('.vault-tab-btn').forEach(btn => btn.addEventListener('click', (e) => {
     document.querySelectorAll('.vault-tab-btn').forEach(b => b.classList.remove('active'));
     e.currentTarget.classList.add('active'); renderVaultTab(e.currentTarget.dataset.cat);
@@ -321,6 +324,7 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-start-game').style.display = 'none';
     document.getElementById('btn-shop').style.display = 'none';
     document.getElementById('btn-vault').style.display = 'none';
+    document.getElementById('btn-music').style.display = 'none';
     document.getElementById('in-game-controls').style.display = 'block'; setLobbyOnlyHud(false);
     chatBox.style.display = 'none'; 
     chatToggle.textContent = '💬 Chat Global';
@@ -498,6 +502,7 @@ async function returnToLobby() {
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('btn-shop').style.display = 'flex';
   document.getElementById('btn-vault').style.display = 'flex';
+  document.getElementById('btn-music').style.display = 'flex';
   document.getElementById('chat-container').style.display = 'flex';
   setLobbyOnlyHud(true);
   if (parkourWorldGroup) parkourWorldGroup.visible = false;
@@ -582,6 +587,7 @@ function startLobby() {
   document.getElementById('btn-start-game').style.display = 'flex';
   document.getElementById('btn-shop').style.display = 'flex';
   document.getElementById('btn-vault').style.display = 'flex';
+  document.getElementById('btn-music').style.display = 'flex';
   document.getElementById('in-game-controls').style.display = 'none'; setLobbyOnlyHud(true);
   document.getElementById('chat-container').style.display = 'flex';
 
@@ -629,35 +635,28 @@ function renderShopTab(category) {
   if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Semua item kategori ini sudah kamu miliki. Cek Vault!</div>';
 }
 
+function renderStandaloneMusic() {
+  const container = document.getElementById('music-track-list');
+  if (!container) return;
+  const tracks = [
+    { id: 'amatekam', name: 'Amatekam', file: 'putzzdev.mp3' },
+    { id: 'luklukluk', name: 'Luk Luk Luk', file: 'putzzdev2.mp3' }
+  ];
+  const selected = window.getSelectedVaultMusic ? window.getSelectedVaultMusic() : 'amatekam';
+  const playing = window.isVaultMusicPlaying && window.isVaultMusicPlaying();
+  container.innerHTML = tracks.map(track => `
+    <div style="background:#222b40;border:1px solid #42516b;border-radius:12px;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div><div style="font-weight:bold;font-size:16px">🎵 ${track.name}</div><div style="font-size:11px;color:#aab7cc;margin-top:4px">${track.file}</div></div>
+      <button type="button" class="shop-buy-btn" style="width:auto;min-width:118px" onclick="selectVaultMusic('${track.id}');renderStandaloneMusic()">${selected === track.id && playing ? 'SEDANG DIPUTAR' : 'PUTAR LAGU'}</button>
+    </div>`).join('');
+}
+
 function renderVaultTab(category) {
   const container = document.getElementById('vault-items-container');
   if (!container) return;
   container.innerHTML = '';
 
-  if (category === 'music') {
-    const tracks = [
-      { id: 'amatekam', name: 'Amatekam', file: 'putzzdev.mp3' },
-      { id: 'luklukluk', name: 'Luk Luk Luk', file: 'putzzdev2.mp3' }
-    ];
-    const currentTrack = window.getSelectedVaultMusic ? window.getSelectedVaultMusic() : 'amatekam';
-    tracks.forEach(track => {
-      const isPlaying = currentTrack === track.id && window.isVaultMusicPlaying && window.isVaultMusicPlaying();
-      const div = document.createElement('div');
-      div.className = 'shop-item';
-      div.innerHTML = `
-        <div class="color-preview" style="background:linear-gradient(135deg,#182b49,#274b70);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:38px">🎵</div>
-        <div class="item-name">${track.name}</div>
-        <div class="item-price" style="color:#a9c9e8">${track.file}</div>
-        <button class="shop-buy-btn" type="button" onclick="selectVaultMusic('${track.id}')">${isPlaying ? '▶ SEDANG DIPUTAR' : '▶ PUTAR LAGU'}</button>`;
-      container.appendChild(div);
-    });
-    const note = document.createElement('div');
-    note.className = 'inventory-empty';
-    note.style.marginTop = '8px';
-    note.textContent = 'Pilih lagu untuk mengganti musik game. Musik akan diputar berulang.';
-    container.appendChild(note);
-    return;
-  }
+
 
   let visibleCount = 0;
   (SHOP_ITEMS[category] || []).forEach(item => {
