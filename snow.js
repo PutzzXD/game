@@ -1,6 +1,15 @@
 // Map ice/salju PARKOUR 3D. Dipisahkan dari main.js.
 export function buildSnowWorld(THREE, scene, api) {
-  const { snowTimeLeft, snowRayBlocked, SNOW_AIM_TIME, SNOW_LOCK_TIME, SNOW_COOL_TIME, showToast } = api;
+  const { runElapsedMs, insidePlat, showToast } = api;
+  const SNOW_TIMER_SEC = 60;
+  const SNOW_FIRE_WINDOW_SEC = 5;
+  const SNOW_CYCLE_SEC = SNOW_TIMER_SEC + SNOW_FIRE_WINDOW_SEC;
+  // NPC lebih responsif: cepat mengunci sasaran, lalu memberi jeda singkat antar-tembakan.
+  const SNOW_AIM_TIME = 0.45, SNOW_LOCK_TIME = 0.12, SNOW_COOL_TIME = 0.95;
+  const snowTimeLeft = () => {
+    const phase = (runElapsedMs() / 1000) % SNOW_CYCLE_SEC;
+    return phase < SNOW_TIMER_SEC ? SNOW_TIMER_SEC - phase : 0;
+  };
   const grp = new THREE.Group(); grp.name = 'SNOW_WORLD'; grp.visible = false; scene.add(grp);
   const P = [], C = [], cracks = [], npcs = [], route = [], cpList = [];
   const vanish = [], rotators = [], snowballs = [], windZones = [], swingPlanks = [], glowCrystals = [];
@@ -77,6 +86,26 @@ export function buildSnowWorld(THREE, scene, api) {
     snowballs.push({ mesh, axis, center: axis === 'x' ? x : z, range, speed, phase, radius });
   }
   const top = (p) => p.mesh.position.y + p.hh;
+  function snowRayBlocked(ax, ay, az, bx, by, bz) {
+    const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz);
+    const n = Math.max(2, Math.ceil(len / 0.25));
+    for (let i = 1; i < n; i++) {
+      const f = i / n, x = ax + dx * f, y = ay + dy * f, z = az + dz * f;
+      for (const c of C) {
+        const m = c.mesh.position;
+        if (y < m.y - c.hh || y > m.y + c.hh) continue;
+        if (insidePlat(c, x, z, 0)) return { x, y, z };
+      }
+    }
+    return null;
+  }
+  function distPointSeg(px, py, pz, ax, ay, az, bx, by, bz) {
+    const abx = bx - ax, aby = by - ay, abz = bz - az;
+    const l2 = abx * abx + aby * aby + abz * abz || 1e-6;
+    let t = ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (ax + abx * t), py - (ay + aby * t), pz - (az + abz * t));
+  }
 
   // ================= ZONA 1: Camp awal + Lapangan Es (licin, zig-zag dinding) =================
   plat(0, 0, 0, 10, 10, { kind: 'snow', route: 1 });
@@ -216,51 +245,87 @@ export function buildSnowWorld(THREE, scene, api) {
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8), new THREE.MeshBasicMaterial({ color: 0xff3322, transparent: true, opacity: 0.9 })); beam.visible = false; grp.add(beam);
     const spark = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff })); spark.visible = false; grp.add(spark);
     const drawBeam = (a, ex, ey, ez, rad) => { B.set(ex, ey, ez); D.subVectors(B, a); const len = D.length() || 0.01; beam.position.copy(a).addScaledVector(D, 0.5); beam.scale.set(rad, len, rad); beam.quaternion.setFromUnitVectors(UP, D.normalize()); };
-    let state = 'wait', timer = 0, coolDur = 0, lx = 0, ly = 0, lz = 0, llen = 0;
+    let state = 'wait', timer = 0, coolDur = 0;
+    // Uji garis pandang ke beberapa titik tubuh. Objek cover yang memotong
+    // garis tembak tetap melindungi pemain; bagian tubuh yang terlihat bisa kena.
+    function visibleTarget(pp, origin) {
+      const targets = [
+        { x: pp.x, y: pp.y + 1.0, z: pp.z }, // dada
+        { x: pp.x, y: pp.y + 1.45, z: pp.z }, // bahu
+        { x: pp.x, y: pp.y + 1.8, z: pp.z }  // kepala
+      ];
+      for (const target of targets) {
+        if (!snowRayBlocked(origin.x, origin.y, origin.z, target.x, target.y, target.z)) return target;
+      }
+      return null;
+    }
     const npc = {
       mesh: g, x: gx, y: gy + 2.0, z: gz, range, zone,
       inZone(pp) { return !zone || (pp.x >= zone[0] && pp.x <= zone[1] && pp.z >= zone[2] && pp.z <= zone[3] && pp.y >= zone[4] && pp.y <= zone[5]); },
-      reset() { state = 'wait'; timer = 0; beam.visible = false; spark.visible = false; muzzle.scale.set(1, 1, 1); },
+      reset() { state = 'wait'; timer = 0; coolDur = 0; beam.visible = false; spark.visible = false; muzzle.scale.set(1, 1, 1); },
       update(delta, pp, t, canKill) {
         if (snowTimeLeft() > 0) { // masih hitung mundur: NPC hanya berjaga
           if (state !== 'wait') this.reset();
           g.rotation.y = yaw + Math.sin(t * 0.7 + idx * 1.7) * 0.5; return false;
         }
-        if (state === 'wait') { state = 'cool'; timer = 0; coolDur = 0.8 + idx * 0.9; }
+        if (state === 'wait') { state = 'cool'; timer = 0; coolDur = 0.15 + idx * 0.12; }
         muzzle.getWorldPosition(A);
-        const cx = pp.x, cy = pp.y + 1.0, cz = pp.z, hy = pp.y + 1.7;
-        const dist = Math.hypot(cx - A.x, cy - A.y, cz - A.z);
+        const cx = pp.x, cz = pp.z;
+        const dist = Math.hypot(cx - A.x, (pp.y + 1.0) - A.y, cz - A.z);
         timer += delta;
-        let df = Math.atan2(cx - g.position.x, cz - g.position.z) - g.rotation.y; df = Math.atan2(Math.sin(df), Math.cos(df));
-        if (state !== 'fire') g.rotation.y += df * (1 - Math.exp(-delta * 8));
+        let df = Math.atan2(cx - g.position.x, cz - g.position.z) - g.rotation.y;
+        df = Math.atan2(Math.sin(df), Math.cos(df));
+        if (state !== 'fire') g.rotation.y += df * (1 - Math.exp(-delta * 12));
+
         if (state === 'cool') {
-          if (timer >= coolDur) { if (dist <= range && this.inZone(pp)) { state = 'aim'; timer = 0; } else timer = coolDur; }
-          return false;
-        }
-        if (state === 'aim' || state === 'lock') {
-          if (state === 'aim' && (dist > range + 8 || !this.inZone(pp))) { state = 'cool'; timer = 0; coolDur = 0.5; beam.visible = false; return false; }
-          // pilih sasaran: dada, atau kepala jika dada tertutup tapi kepala terlihat
-          let ty = cy; if (snowRayBlocked(A.x, A.y, A.z, cx, cy, cz) && !snowRayBlocked(A.x, A.y, A.z, cx, hy, cz)) ty = hy;
-          if (state === 'aim') { lx = cx - A.x; ly = ty - A.y; lz = cz - A.z; llen = Math.hypot(lx, ly, lz) || 1; }
-          const ux = lx / llen, uy = ly / llen, uz = lz / llen;
-          const ex = A.x + ux * (llen + 3), ey = A.y + uy * (llen + 3), ez = A.z + uz * (llen + 3);
-          const hit = snowRayBlocked(A.x, A.y, A.z, ex, ey, ez);
-          if (hit) drawBeam(A, hit.x, hit.y, hit.z, state === 'aim' ? 0.03 : 0.06); else drawBeam(A, ex, ey, ez, state === 'aim' ? 0.03 : 0.06);
-          beam.material.color.setHex(state === 'aim' ? 0xff3322 : 0xff9900);
-          beam.visible = state === 'lock' || Math.sin(timer * 30) > -0.3;
-          if (state === 'aim' && timer >= SNOW_AIM_TIME) { state = 'lock'; timer = 0; }
-          else if (state === 'lock' && timer >= SNOW_LOCK_TIME) {
-            // TEMBAK: arah sudah terkunci, jadi pemain bisa menghindar dengan bergerak/berlindung
-            state = 'fire'; timer = 0;
-            const end = hit || { x: ex, y: ey, z: ez };
-            drawBeam(A, end.x, end.y, end.z, 0.14); beam.material.color.setHex(0x66f6ff); beam.visible = true;
-            spark.position.set(end.x, end.y, end.z); spark.visible = true; muzzle.scale.set(3, 3, 3);
-            const hitPlayer = distPointSeg(cx, cy, cz, A.x, A.y, A.z, end.x, end.y, end.z) < 1.0 || distPointSeg(cx, hy, cz, A.x, A.y, A.z, end.x, end.y, end.z) < 0.9;
-            return !!(hitPlayer && canKill);
+          beam.visible = false;
+          if (timer >= coolDur) {
+            if (dist <= range && this.inZone(pp)) { state = 'aim'; timer = 0; }
+            else timer = coolDur;
           }
           return false;
         }
-        if (state === 'fire' && timer > 0.3) { beam.visible = false; spark.visible = false; muzzle.scale.set(1, 1, 1); state = 'cool'; timer = 0; coolDur = SNOW_COOL_TIME; }
+
+        if (state === 'aim' || state === 'lock') {
+          if (dist > range || !this.inZone(pp)) {
+            state = 'cool'; timer = 0; coolDur = 0.25; beam.visible = false; return false;
+          }
+          // Selalu perbarui sasaran selama membidik/mengunci agar pemain yang
+          // terlihat tidak lolos hanya karena bergerak sedikit.
+          const target = visibleTarget(pp, A);
+          if (!target) {
+            state = 'cool'; timer = 0; coolDur = 0.25; beam.visible = false;
+            spark.visible = false; return false;
+          }
+          B.set(target.x, target.y, target.z);
+          D.subVectors(B, A);
+          const len = D.length() || 0.01;
+          const ex = target.x, ey = target.y, ez = target.z;
+          drawBeam(A, ex, ey, ez, state === 'aim' ? 0.035 : 0.065);
+          beam.material.color.setHex(state === 'aim' ? 0xff3322 : 0xff9900);
+          beam.visible = state === 'lock' || Math.sin(timer * 34) > -0.3;
+
+          if (state === 'aim' && timer >= SNOW_AIM_TIME) { state = 'lock'; timer = 0; }
+          else if (state === 'lock' && timer >= SNOW_LOCK_TIME) {
+            // Cek ulang tepat saat menembak: cover yang kini menutupi pemain
+            // menghentikan tembakan, tetapi pemain yang masih terlihat kena.
+            const finalTarget = visibleTarget(pp, A);
+            state = 'fire'; timer = 0;
+            if (finalTarget) {
+              drawBeam(A, finalTarget.x, finalTarget.y, finalTarget.z, 0.14);
+              beam.material.color.setHex(0x66f6ff); beam.visible = true;
+              spark.position.set(finalTarget.x, finalTarget.y, finalTarget.z); spark.visible = true;
+              muzzle.scale.set(3, 3, 3);
+              return !!canKill;
+            }
+            beam.visible = false; spark.visible = false;
+          }
+          return false;
+        }
+        if (state === 'fire' && timer > 0.22) {
+          beam.visible = false; spark.visible = false; muzzle.scale.set(1, 1, 1);
+          state = 'cool'; timer = 0; coolDur = SNOW_COOL_TIME;
+        }
         return false;
       }
     };
@@ -283,7 +348,100 @@ export function buildSnowWorld(THREE, scene, api) {
   // Posisi aman (di belakang cover) untuk pengujian & titik teleport admin
   const tpOf = (p) => [p.mesh.position.x, top(p) + 0.05, p.mesh.position.z];
   const cp = cpList;
-  return { world: { platforms: P, hazards: [], guards: guardsArr, laserBeam: null, FIN_Y: top(PF3), WIN: WINP, MAZE_H: 0, MAZE_Z: 0,
+  const world = { platforms: P, hazards: [], guards: guardsArr, laserBeam: null, FIN_Y: top(PF3), WIN: WINP, MAZE_H: 0, MAZE_Z: 0,
     cover: C, cracks, snowfall, route, npcs, cps: cp, vanish, rotators, snowballs, windZones, swingPlanks, glowCrystals,
-    tp: { start: [0, 0.25, 0], hub: tpOf(cp[1]), top: tpOf(cp[2]), maze: tpOf(cp[3]), finish: [WINP.x, top(PF3), WINP.z] } }, group: grp };
+    tp: { start: [0, 0.25, 0], hub: tpOf(cp[1]), top: tpOf(cp[2]), maze: tpOf(cp[3]), finish: [WINP.x, top(PF3), WINP.z] } };
+
+  const snowSys = { alarmed: false, hudText: '', hudMode: '' };
+  function reset() {
+    cracks.forEach(p => { p.crackState = 0; p.crackT = 0; p.isFallen = false; p.mesh.visible = true; p.mesh.position.x = p.startX; });
+    vanish.forEach(p => { p.vanishState = 0; p.vanishT = 0; p.isFallen = false; p.mesh.visible = true; p.mesh.material.emissiveIntensity = 0.35; });
+    snowSys.alarmed = false;
+  }
+  function updateHud({ currentMap, gameState }) {
+    let el = document.getElementById('snow-hud');
+    const on = currentMap === 'snow' && ['PLAYING', 'GAMEOVER', 'WIN', 'COUNTDOWN'].includes(gameState);
+    if (!on) { if (el && el.style.display !== 'none') el.style.display = 'none'; return; }
+    if (!el) {
+      el = document.createElement('div'); el.id = 'snow-hud';
+      el.style.cssText = 'position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:30;padding:6px 14px;border-radius:12px;font:700 15px sans-serif;color:#fff;background:rgba(10,30,55,.72);border:2px solid #7fd6ff;pointer-events:none;white-space:nowrap';
+      document.body.appendChild(el);
+    }
+    const left = gameState === 'COUNTDOWN' ? SNOW_TIMER_SEC : snowTimeLeft();
+    let txt, mode;
+    if (gameState === 'WIN') { txt = '❄️ Map Salju selesai!'; mode = 'win'; }
+    else if (left > 0) { const sec = Math.ceil(left); txt = '❄️ NPC menembak dalam ' + String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0'); mode = left <= 10 ? 'warn' : 'ok'; }
+    else { txt = 'NPC DETECT SELAMA 5 DETIK'; mode = 'fire'; }
+    if (snowSys.hudText !== txt) { el.textContent = txt; snowSys.hudText = txt; }
+    if (snowSys.hudMode !== mode) {
+      snowSys.hudMode = mode;
+      el.style.borderColor = mode === 'fire' ? '#ff3a2a' : (mode === 'warn' ? '#ffb02a' : '#7fd6ff');
+      el.style.background = mode === 'fire' ? 'rgba(120,10,10,.8)' : 'rgba(10,30,55,.72)';
+    }
+    el.style.display = 'block';
+    if (gameState === 'PLAYING') {
+      if (left <= 0 && !snowSys.alarmed) { snowSys.alarmed = true; showToast('Waktu habis! cepat berlindung'); }
+      if (left > 0) snowSys.alarmed = false;
+    }
+  }
+  function update(delta, state) {
+    const { curGroundPlat, physics, character, godMode, flyMode, hitCD, knock } = state;
+    for (const p of cracks) {
+      if (p.crackState === 0) { if (curGroundPlat === p && physics.isGrounded) { p.crackState = 1; p.crackT = 0; } }
+      else if (p.crackState === 1) {
+        p.crackT += delta; p.mesh.position.x = p.startX + Math.sin(p.crackT * 70) * 0.06;
+        if (p.crackT > 0.75) { p.crackState = 2; p.crackT = 0; p.isFallen = true; p.mesh.visible = false; p.mesh.position.x = p.startX; }
+      } else { p.crackT += delta; if (p.crackT > 3) { p.isFallen = false; p.mesh.visible = true; p.crackState = 0; } }
+    }
+    for (const p of vanish) {
+      if (p.vanishState === 0 && curGroundPlat === p && physics.isGrounded) { p.vanishState = 1; p.vanishT = 0; }
+      else if (p.vanishState === 1) {
+        p.vanishT += delta; p.mesh.material.emissiveIntensity = 0.35 + Math.sin(p.vanishT * 24) * 0.3;
+        if (p.vanishT > 0.65) { p.vanishState = 2; p.vanishT = 0; p.isFallen = true; p.mesh.visible = false; }
+      } else if (p.vanishState === 2) {
+        p.vanishT += delta;
+        if (p.vanishT > 2.1) { p.vanishState = 3; p.vanishT = 0; p.mesh.visible = true; p.mesh.material.emissiveIntensity = 0.35; }
+      } else if (p.vanishState === 3) {
+        p.vanishT += delta; if (p.vanishT > 0.25) { p.vanishState = 0; p.vanishT = 0; p.isFallen = false; }
+      }
+    }
+    for (const r of rotators) {
+      r.mesh.rotation.y += r.speed * delta;
+      if (character && physics && !godMode && !flyMode) {
+        const dx = character.position.x - r.mesh.position.x, dz = character.position.z - r.mesh.position.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < r.radius && Math.abs(character.position.y - r.mesh.position.y) < 1.5 && hitCD <= 0) {
+          knock.set((dx / (dist || 1)) * 15, (dz / (dist || 1)) * 15);
+          physics.velocityY = Math.max(physics.velocityY, 7); physics.isGrounded = false;
+        }
+      }
+    }
+    for (const b of snowballs) {
+      b.mesh.position[b.axis] = b.center + Math.sin(performance.now() * 0.001 * b.speed + b.phase) * b.range;
+      b.mesh.rotation.x += delta * 2.8; b.mesh.rotation.z += delta * 1.7;
+      if (character && !godMode && !flyMode) {
+        const dx = character.position.x - b.mesh.position.x, dz = character.position.z - b.mesh.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d < b.radius + 0.55 && Math.abs((character.position.y + 0.8) - b.mesh.position.y) < 1.8 && hitCD <= 0) {
+          knock.set((dx / (d || 1)) * 19, (dz / (d || 1)) * 19);
+          physics.velocityY = Math.max(physics.velocityY, 9); physics.isGrounded = false;
+          showToast('☃️ Tertabrak bola salju!');
+        }
+      }
+    }
+    if (character && !godMode && !flyMode) for (const z of windZones) {
+      if (Math.abs(character.position.x - z.x) < z.hx && Math.abs(character.position.z - z.z) < z.hz && character.position.y < z.maxY) {
+        knock.x += z.dx * delta; knock.y += z.dz * delta;
+      }
+    }
+    for (const plank of swingPlanks) plank.mesh.rotation.z = Math.sin(performance.now() * 0.001 * plank.speed + plank.phase) * 0.09;
+    for (const c of glowCrystals) c.material.emissiveIntensity = 0.45 + (Math.sin(performance.now() * 0.002 + c.userData.phase) + 1) * 0.28;
+    if (snowfall && character) {
+      const pos = snowfall.geometry.attributes.position;
+      snowfall.position.set(character.position.x, character.position.y - 6, character.position.z);
+      for (let i = 0; i < pos.count; i++) { let y = pos.getY(i) - (2 + (i % 5) * 0.5) * delta; if (y < 0) y += 30; pos.setY(i, y); }
+      pos.needsUpdate = true;
+    }
+  }
+  return { world, group: grp, controller: { reset, update, updateHud, timeLeft: snowTimeLeft, rayBlocked: snowRayBlocked } };
 }

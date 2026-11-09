@@ -990,7 +990,7 @@ let batGrp, capeB, ironHelm, ironBody, thorHelm, thorBody, capeT;
 let MAZE_H = 12, MAZE_Z = -101;
 let zoomDir = 0, guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 // Sistem multi-map (gacha): map aktif + dunia tiap map. Lihat blok SNOW-MODULE.
-let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, curGroundPlat = null, gachaBusy = false;
+let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, snowController = null, curGroundPlat = null, gachaBusy = false;
 const ROASTS = {
   hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
   fall: ['Beruntung banget jatuh ke lava, hangat kan? 🔥😹', 'Pemain paling beruntung sedunia: jatuh dari tempat yang sama lagi 🍀💀', 'Mantap, rekor jatuh terbaru! Lava bangga sama kamu 🏅🔥'],
@@ -1523,7 +1523,7 @@ function init3DGame() {
   scene.add(parkourWorldGroup);
   parkourWorldGroup.visible = false;
   lavaWorld = { platforms, hazards, guards, laserBeam, FIN_Y, WIN, MAZE_H, MAZE_Z };
-  try { const builtSnow = buildSnowWorld(THREE, scene, { snowTimeLeft, snowRayBlocked, SNOW_AIM_TIME, SNOW_LOCK_TIME, SNOW_COOL_TIME, showToast }); snowWorld = builtSnow.world; snowWorldGroup = builtSnow.group; } catch (e) { console.error('Map Salju gagal dibuat, hanya Lava yang aktif:', e); snowWorld = null; if (snowWorldGroup) { scene.remove(snowWorldGroup); snowWorldGroup = null; } }
+  try { const builtSnow = buildSnowWorld(THREE, scene, { runElapsedMs, insidePlat, showToast }); snowWorld = builtSnow.world; snowWorldGroup = builtSnow.group; snowController = builtSnow.controller; } catch (e) { console.error('Map Salju gagal dibuat, hanya Lava yang aktif:', e); snowWorld = null; snowController = null; if (snowWorldGroup) { scene.remove(snowWorldGroup); snowWorldGroup = null; } }
 
   lobbyWorldGroup = new THREE.Group();
   lobbyWorldGroup.name = 'FREE_FIRE_STYLE_LOBBY';
@@ -2959,8 +2959,6 @@ window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() =>
 // sehingga seluruh sistem lama (kontrol, kamera, respawn, multiplayer) tetap
 // memakai kode yang sama.
 // =====================================================================
-const SNOW_TIMER_SEC = 60;                                   // hitung mundur sebelum NPC menembak
-const SNOW_AIM_TIME = 1.3, SNOW_LOCK_TIME = 0.35, SNOW_COOL_TIME = 2.4;
 const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' } };
 
 // Gacha: hanya memilih map yang benar-benar tersedia.
@@ -3011,145 +3009,9 @@ function applyMap(id) {
   laserState = 'off'; curGroundPlat = null;
   if (parkourWorldGroup) parkourWorldGroup.visible = id === 'lava';
   if (snowWorldGroup) snowWorldGroup.visible = id === 'snow';
-  if (id === 'snow') resetSnowWorld();
+  if (id === 'snow' && snowController) snowController.reset();
   try { guards.forEach(gd => gd.reset()); } catch (e) {}
 }
-function resetSnowWorld() {
-  if (!snowWorld) return;
-  snowWorld.cracks.forEach(p => { p.crackState = 0; p.crackT = 0; p.isFallen = false; p.mesh.visible = true; p.mesh.position.x = p.startX; });
-  (snowWorld.vanish || []).forEach(p => { p.vanishState = 0; p.vanishT = 0; p.isFallen = false; p.mesh.visible = true; p.mesh.material.emissiveIntensity = 0.35; });
-  snowSys.alarmed = false;
-}
-
-const snowSys = { alarmed: false, hudText: '', hudMode: '' };
-// Sisa detik sebelum NPC menembak. Ikut timer run, jadi reset saat respawn seperti timer lama.
-const SNOW_FIRE_WINDOW_SEC = 5;
-const SNOW_CYCLE_SEC = SNOW_TIMER_SEC + SNOW_FIRE_WINDOW_SEC;
-function snowTimeLeft() {
-  const phase = (runElapsedMs() / 1000) % SNOW_CYCLE_SEC;
-  return phase < SNOW_TIMER_SEC ? SNOW_TIMER_SEC - phase : 0;
-}
-
-// ----- Ray tembakan vs objek perlindungan (cover) -----
-function snowRayBlocked(ax, ay, az, bx, by, bz) {
-  if (!snowWorld) return null;
-  const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz);
-  const n = Math.max(2, Math.ceil(len / 0.25));
-  for (let i = 1; i < n; i++) {
-    const f = i / n, x = ax + dx * f, y = ay + dy * f, z = az + dz * f;
-    for (const c of snowWorld.cover) {
-      const m = c.mesh.position;
-      if (y < m.y - c.hh || y > m.y + c.hh) continue;
-      if (insidePlat(c, x, z, 0)) return { x, y, z };
-    }
-  }
-  return null;
-}
-function distPointSeg(px, py, pz, ax, ay, az, bx, by, bz) {
-  const abx = bx - ax, aby = by - ay, abz = bz - az, l2 = abx * abx + aby * aby + abz * abz || 1e-6;
-  let t = ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / l2; t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + abx * t), py - (ay + aby * t), pz - (az + abz * t));
-}
-
-// ----- HUD hitung mundur -----
-function updateSnowHud() {
-  let el = document.getElementById('snow-hud');
-  const on = currentMap === 'snow' && (gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN' || gameState === 'COUNTDOWN');
-  if (!on) { if (el && el.style.display !== 'none') el.style.display = 'none'; return; }
-  if (!el) {
-    el = document.createElement('div'); el.id = 'snow-hud';
-    el.style.cssText = 'position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:30;padding:6px 14px;border-radius:12px;font:700 15px sans-serif;color:#fff;background:rgba(10,30,55,.72);border:2px solid #7fd6ff;pointer-events:none;white-space:nowrap';
-    document.body.appendChild(el);
-  }
-  const left = gameState === 'COUNTDOWN' ? SNOW_TIMER_SEC : snowTimeLeft();
-  let txt, mode;
-  if (gameState === 'WIN') { txt = '❄️ Map Salju selesai!'; mode = 'win'; }
-  else if (left > 0) { const s = Math.ceil(left); txt = '❄️ NPC menembak dalam ' + String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); mode = left <= 10 ? 'warn' : 'ok'; }
-  else { txt = '🔫 NPC MENEMBAK! Jeda 5 detik'; mode = 'fire'; }
-  if (snowSys.hudText !== txt) { el.textContent = txt; snowSys.hudText = txt; }
-  if (snowSys.hudMode !== mode) {
-    snowSys.hudMode = mode;
-    el.style.borderColor = mode === 'fire' ? '#ff3a2a' : (mode === 'warn' ? '#ffb02a' : '#7fd6ff');
-    el.style.background = mode === 'fire' ? 'rgba(120,10,10,.8)' : 'rgba(10,30,55,.72)';
-  }
-  el.style.display = 'block';
-  if (gameState === 'PLAYING') {
-    if (left <= 0 && !snowSys.alarmed) { snowSys.alarmed = true; showToast('🔫 Waktu habis! NPC mulai menembak, berlindung!'); }
-    if (left > 0) snowSys.alarmed = false;
-  }
-}
-
-// ----- Update per frame khusus map Salju (hanya dipanggil saat PLAYING) -----
-function updateSnowWorld(delta) {
-  const w = snowWorld; if (!w) return;
-  for (const p of w.cracks) { // es retak: diinjak -> bergetar -> jatuh -> muncul lagi
-    if (p.crackState === 0) { if (curGroundPlat === p && physics.isGrounded) { p.crackState = 1; p.crackT = 0; } }
-    else if (p.crackState === 1) {
-      p.crackT += delta; p.mesh.position.x = p.startX + Math.sin(p.crackT * 70) * 0.06;
-      if (p.crackT > 0.75) { p.crackState = 2; p.crackT = 0; p.isFallen = true; p.mesh.visible = false; p.mesh.position.x = p.startX; }
-    } else { p.crackT += delta; if (p.crackT > 3) { p.isFallen = false; p.mesh.visible = true; p.crackState = 0; } }
-  }
-  // Platform es yang menghilang: aktif saat diinjak, memberi jeda singkat, lalu pulih.
-  for (const p of w.vanish || []) {
-    if (p.vanishState === 0 && curGroundPlat === p && physics.isGrounded) { p.vanishState = 1; p.vanishT = 0; }
-    else if (p.vanishState === 1) {
-      p.vanishT += delta;
-      p.mesh.material.emissiveIntensity = 0.35 + Math.sin(p.vanishT * 24) * 0.3;
-      if (p.vanishT > 0.65) { p.vanishState = 2; p.vanishT = 0; p.isFallen = true; p.mesh.visible = false; }
-    } else if (p.vanishState === 2) {
-      p.vanishT += delta;
-      if (p.vanishT > 2.1) { p.vanishState = 3; p.vanishT = 0; p.mesh.visible = true; p.mesh.material.emissiveIntensity = 0.35; }
-    } else if (p.vanishState === 3) {
-      p.vanishT += delta;
-      if (p.vanishT > 0.25) { p.vanishState = 0; p.vanishT = 0; p.isFallen = false; }
-    }
-  }
-  // Lorong es berputar: balok bercahaya berputar dan mendorong pemain jika terlalu dekat.
-  for (const r of w.rotators || []) {
-    r.mesh.rotation.y += r.speed * delta;
-    if (character && physics && !godMode && !flyMode) {
-      const dx = character.position.x - r.mesh.position.x, dz = character.position.z - r.mesh.position.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist < r.radius && Math.abs(character.position.y - r.mesh.position.y) < 1.5 && hitCD <= 0) {
-        knock.set((dx / (dist || 1)) * 15, (dz / (dist || 1)) * 15);
-        physics.velocityY = Math.max(physics.velocityY, 7); physics.isGrounded = false; hitCD = 0.65;
-      }
-    }
-  }
-  // Bola salju bergerak bolak-balik di arena. Tabrakan memberi dorongan, bukan mengunci pemain.
-  for (const b of w.snowballs || []) {
-    b.mesh.position[b.axis] = b.center + Math.sin(performance.now() * 0.001 * b.speed + b.phase) * b.range;
-    b.mesh.rotation.x += delta * 2.8; b.mesh.rotation.z += delta * 1.7;
-    if (character && !godMode && !flyMode) {
-      const dx = character.position.x - b.mesh.position.x, dz = character.position.z - b.mesh.position.z;
-      const d = Math.hypot(dx, dz);
-      if (d < b.radius + 0.55 && Math.abs((character.position.y + 0.8) - b.mesh.position.y) < 1.8 && hitCD <= 0) {
-        knock.set((dx / (d || 1)) * 19, (dz / (d || 1)) * 19);
-        physics.velocityY = Math.max(physics.velocityY, 9); physics.isGrounded = false; hitCD = 0.9;
-        showToast('☃️ Tertabrak bola salju!');
-      }
-    }
-  }
-  // Badai salju: zona angin mendorong pemain ke samping; pagar di tepi membantu mengoreksi jalur.
-  if (character && !godMode && !flyMode) for (const z of w.windZones || []) {
-    if (Math.abs(character.position.x - z.x) < z.hx && Math.abs(character.position.z - z.z) < z.hz && character.position.y < z.maxY) {
-      knock.x += z.dx * delta; knock.y += z.dz * delta;
-    }
-  }
-  // Jembatan gantung bergoyang secara visual; pijakan tetap punya collider yang stabil dan bisa dilewati.
-  for (const plank of w.swingPlanks || []) {
-    plank.mesh.rotation.z = Math.sin(performance.now() * 0.001 * plank.speed + plank.phase) * 0.09;
-  }
-  // Kristal gua berdenyut agar jalur dan bahaya di dalam gua mudah terbaca.
-  for (const c of w.glowCrystals || []) c.material.emissiveIntensity = 0.45 + (Math.sin(performance.now() * 0.002 + c.userData.phase) + 1) * 0.28;
-  if (w.snowfall && character) { // salju turun mengikuti pemain
-    const sp = w.snowfall, pos = sp.geometry.attributes.position;
-    sp.position.set(character.position.x, character.position.y - 6, character.position.z);
-    for (let i = 0; i < pos.count; i++) { let y = pos.getY(i) - (2 + (i % 5) * 0.5) * delta; if (y < 0) y += 30; pos.setY(i, y); }
-    pos.needsUpdate = true;
-  }
-}
-
 // ===== ICE MAP BUILDER MOVED TO snow.js =====
 
 const clock = new THREE.Clock();
@@ -3174,7 +3036,7 @@ function animate() {
     }
   }
   tickMultiplayer();
-  updateSnowHud();
+  if (snowController) snowController.updateHud({ currentMap, gameState });
   animateRemotePlayers(delta);
   if (lobbyAccentRing && gameState === 'LOBBY') lobbyAccentRing.rotation.z += delta * 0.12;
   if (scene && camera) renderer.render(scene, camera);
@@ -3242,7 +3104,9 @@ function animate() {
   });
 
   hazards.forEach(h => h.update(t));
-  if (currentMap === 'snow') updateSnowWorld(delta);
+  if (currentMap === 'snow' && snowController) snowController.update(delta, {
+    curGroundPlat, physics, character, godMode, flyMode, hitCD, knock
+  });
   if (!mazeHinted && character.position.y > FIN_Y - 1 && Math.abs(character.position.x) < MAZE_H && character.position.z < -89 && character.position.z > MAZE_Z - MAZE_H) { mazeHinted = true; showToast('🧩 SALAH BEGO,MAMPUS'); }
   for (const gd of guards) { if (gd.update(delta, character.position, t, !godMode && !flyMode)) { gameState = 'GAMEOVER'; showGameOver(currentMap === 'snow' ? 'snowshot' : 'shot'); break; } }
   hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 2.5));
