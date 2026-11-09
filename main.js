@@ -243,7 +243,7 @@ const SHOP_ITEMS = {
     { id: 'aks_jubah', name: 'Jubah Merah', price: 350 }
   ],
   gamepass: [
-    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 1000, gamepass: true, desc: 'Dorong teman saat balapan (tombol 🫸 / tombol E)' }
+    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 10000000, gamepass: true, desc: 'Dorong teman saat balapan (tombol 🫸 / tombol E)' }
   ]
 };
 
