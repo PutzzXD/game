@@ -2909,6 +2909,58 @@ async function sendGameInvite(targetKey, targetName) {
   showToast(`Undangan dikirim ke ${targetName}`);
 }
 
+// ----- PROFIL PUBLIK PEMAIN (fitur periksa akun / stalking) -----
+function ensurePublicProfileModal() {
+  if (document.getElementById('public-player-profile')) return;
+  const css = document.createElement('style');
+  css.id = 'public-player-profile-style';
+  css.textContent = `#public-player-profile{position:fixed;inset:0;z-index:10030;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);font-family:sans-serif}#public-player-card{width:min(360px,100%);max-height:82vh;overflow:auto;padding:20px;border:1px solid rgba(66,217,255,.7);border-radius:18px;background:linear-gradient(145deg,#172a49,#080f20);box-shadow:0 12px 40px #0009;color:#fff}#pp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px}#pp-title{font-size:18px;font-weight:900;color:#42d9ff}#pp-close{border:0;border-radius:8px;background:#34435c;color:#fff;width:32px;height:32px;font-size:20px}#pp-avatar{width:64px;height:64px;margin:0 auto 10px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#355b87,#141c30);border:2px solid #ffd76a;font-size:30px}#pp-name{text-align:center;font-size:21px;font-weight:900;overflow-wrap:anywhere}#pp-role{text-align:center;color:#a9c9ff;font-size:12px;margin:5px 0 15px}#pp-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}#pp-stats .pp-stat{padding:11px;border-radius:10px;background:rgba(255,255,255,.07);text-align:center}#pp-stats b{display:block;font-size:19px;color:#ffd76a}#pp-stats small{color:#aab9d0}#pp-outfit{margin-top:12px;padding:11px;border-radius:10px;background:rgba(255,255,255,.06);font-size:13px;line-height:1.7}#pp-status{text-align:center;margin-top:12px;color:#8fffc1;font-size:12px}`;
+  document.head.appendChild(css);
+  const overlay = document.createElement('div'); overlay.id = 'public-player-profile';
+  overlay.innerHTML = `<section id="public-player-card"><div id="pp-head"><span id="pp-title">👤 PROFIL PEMAIN</span><button id="pp-close" type="button">×</button></div><div id="pp-avatar">👤</div><div id="pp-name">Pemain</div><div id="pp-role">PLAYER</div><div id="pp-stats"><div class="pp-stat"><b id="pp-crowns">👑 0</b><small>Mahkota</small></div><div class="pp-stat"><b id="pp-coins">🪙 0</b><small>Koin</small></div><div class="pp-stat"><b id="pp-items">0</b><small>Item dimiliki</small></div><div class="pp-stat"><b id="pp-id">------</b><small>ID pemain</small></div></div><div id="pp-outfit">Kostum: -</div><div id="pp-status">Data profil publik</div></section>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
+  document.getElementById('pp-close').onclick = () => { overlay.style.display = 'none'; };
+}
+function getEquippedPublicNames(profile) {
+  const eq = profile?.equipped || {};
+  const categories = [['baju','baju'],['celana','celana'],['sepatu','sepatu'],['aksesoris','aksesoris']];
+  return categories.map(([key, cat]) => {
+    const id = eq[key];
+    const item = (SHOP_ITEMS[cat] || []).find(x => x.id === id);
+    return item ? item.name : (id ? String(id).replace(/^(baju|celana|sepatu|aks_)/,'').replaceAll('_',' ') : 'Default');
+  }).join(' · ');
+}
+async function inspectPlayerAccount(playerKey, fallbackName = '') {
+  const key = String(playerKey || '').trim().toLowerCase();
+  if (!key || key === myPlayerKey()) { showToast('Itu akun kamu sendiri'); return; }
+  ensurePublicProfileModal();
+  const overlay = document.getElementById('public-player-profile');
+  overlay.style.display = 'flex';
+  document.getElementById('pp-name').textContent = fallbackName || key;
+  document.getElementById('pp-role').textContent = 'Memuat profil…';
+  document.getElementById('pp-status').textContent = 'Mengambil data publik dari Firebase…';
+  try {
+    const profile = await socialGet(`players/${key}`);
+    if (!profile) throw new Error('Akun tidak ditemukan');
+    const username = String(profile.username || fallbackName || key).slice(0, 24);
+    const crowns = Math.max(0, Math.floor(Number(profile.crowns) || 0));
+    const coins = Math.max(0, Math.floor(Number(profile.coins) || 0));
+    const inventory = Array.isArray(profile.inventory) ? profile.inventory : [];
+    document.getElementById('pp-name').textContent = username;
+    document.getElementById('pp-role').textContent = profile.isDev ? 'DEVELOPER ✔' : 'PLAYER';
+    document.getElementById('pp-crowns').textContent = `👑 ${crowns}`;
+    document.getElementById('pp-coins').textContent = `🪙 ${coins.toLocaleString('id-ID')}`;
+    document.getElementById('pp-items').textContent = String(inventory.length);
+    document.getElementById('pp-id').textContent = String(profile.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------'));
+    document.getElementById('pp-outfit').textContent = `Kostum dipakai: ${getEquippedPublicNames(profile)}`;
+    document.getElementById('pp-status').textContent = 'Profil publik · PIN dan data login tidak ditampilkan';
+  } catch (e) {
+    document.getElementById('pp-role').textContent = 'PROFIL TIDAK TERSEDIA';
+    document.getElementById('pp-status').textContent = e.message || 'Gagal memuat profil';
+  }
+}
+
 async function searchGlobalPlayers(query) {
   const q = String(query || '').trim().toLowerCase();
   const result = document.getElementById('player-search-results');
@@ -2933,11 +2985,15 @@ async function searchGlobalPlayers(query) {
       const name = document.createElement('b'); name.textContent = String(pl.username || key);
       const meta = document.createElement('small'); meta.textContent = `ID: ${String(pl.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------'))} · ${key === DEV_USERNAME || pl.isDev ? 'ADMIN' : 'PLAYER'}`;
       info.append(name, meta);
+      const actions = document.createElement('div'); actions.className = 'ps-friend-actions';
+      const inspect = document.createElement('button'); inspect.className = 'ps-action'; inspect.textContent = '👁'; inspect.title = 'Periksa akun';
+      inspect.onclick = () => inspectPlayerAccount(key, String(pl.username || key)).catch(e => showToast(e.message));
+      actions.appendChild(inspect);
       const action = document.createElement('button'); action.className = 'ps-action ps-add'; action.title = friends[key] ? 'Sudah berteman' : 'Tambah teman';
       if (friends[key]) { action.textContent = '✓'; action.disabled = true; action.title = 'Sudah berteman'; }
       else if (outgoing?.status === 'pending') { action.textContent = '⌛'; action.disabled = true; action.title = 'Menunggu diterima'; }
       else { action.textContent = '+'; action.title = 'Kirim permintaan teman'; action.onclick = () => { action.disabled = true; action.textContent = '…'; addFriend(key, String(pl.username || key)).then(() => { action.textContent = '⌛'; action.title = 'Menunggu diterima'; }).catch(e => { action.disabled = false; action.textContent = '+'; showToast(e.message); }); }; }
-      row.append(info, action); result.appendChild(row);
+      actions.appendChild(action); row.append(info, actions); result.appendChild(row);
     }
   } catch (e) {
     result.textContent = 'Gagal mencari. Periksa koneksi Firebase.';
@@ -2963,11 +3019,13 @@ async function renderFriendsList() {
       const dot = document.createElement('span'); dot.className = 'ps-dot'; dot.dataset.key = key; name.prepend(dot);
       const meta = document.createElement('small'); meta.textContent = `ID: ${String(profile.playerId || '------')}`;
       info.append(name, meta);
+      const inspect = document.createElement('button'); inspect.className = 'ps-action'; inspect.textContent = '👁'; inspect.title = 'Periksa akun';
+      inspect.onclick = () => inspectPlayerAccount(key, String(profile.username || key)).catch(e => showToast(e.message));
       const invite = document.createElement('button'); invite.className = 'ps-action ps-invite'; invite.textContent = '+'; invite.title = 'Undang ke room';
       invite.onclick = () => sendGameInvite(key, String(profile.username || key)).catch(e => showToast(e.message));
       const removeBtn = document.createElement('button'); removeBtn.className = 'ps-remove'; removeBtn.textContent = '×'; removeBtn.title = 'Hapus teman';
       removeBtn.onclick = () => removeFriend(key).catch(e => showToast(e.message));
-      const actions = document.createElement('div'); actions.className = 'ps-friend-actions'; actions.append(invite, removeBtn);
+      const actions = document.createElement('div'); actions.className = 'ps-friend-actions'; actions.append(inspect, invite, removeBtn);
       row.append(info, actions); list.append(row);
     }
     friendKeysCache = new Set(entries.map(([k]) => k));
@@ -3184,11 +3242,10 @@ function buildRoomUI() {
   if (document.getElementById('countdown')) return;
   const css = document.createElement('style');
   css.textContent = `#countdown{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;font:900 140px sans-serif;color:#fff;text-shadow:0 0 30px #3b6cf6;pointer-events:none}
-#race-timer{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:69;padding:7px 15px;border:1px solid rgba(66,217,255,.7);border-radius:12px;background:rgba(7,15,30,.82);color:#fff;font:900 20px monospace;letter-spacing:1px;box-shadow:0 0 16px #168bd755;display:none;pointer-events:none}`;
+`;
   document.head.appendChild(css);
   const cd = document.createElement('div'); cd.id = 'countdown';
-  const raceTimer = document.createElement('div'); raceTimer.id = 'race-timer'; raceTimer.textContent = '00:00.0';
-  document.body.append(cd, raceTimer);
+  document.body.append(cd);
 }
 
 window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() => {}); });
@@ -3284,19 +3341,7 @@ function animate() {
   if (!renderer) return;
   const delta = Math.min(clock.getDelta(), 0.1);
   const t = roomStartAt ? Math.max(0, (serverNow() - roomStartAt) / 1000) : clock.getElapsedTime();
-  const timerEl = document.getElementById('race-timer');
-  if (timerEl) {
-    const running = gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN';
-    timerEl.style.display = running && (soloStart > 0 || roomStartAt) ? 'block' : 'none';
-    if (running && (soloStart > 0 || roomStartAt)) {
-      const elapsedMs = runElapsedMs();
-      const totalTenths = Math.floor(elapsedMs / 100);
-      const mins = Math.floor(totalTenths / 600);
-      const secs = Math.floor((totalTenths % 600) / 10);
-      const tenth = totalTenths % 10;
-      timerEl.textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}.${tenth}`;
-    }
-  }
+  // Timer visual di HUD dihapus: progres kemenangan menggunakan mahkota.
   tickMultiplayer();
   if (snowController) snowController.updateHud({ currentMap, gameState });
   animateRemotePlayers(delta);
