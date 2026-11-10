@@ -1,7 +1,7 @@
 // Map ice/salju PARKOUR 3D. Dipisahkan dari main.js.
 export function buildSnowWorld(THREE, scene, api) {
   const { runElapsedMs, insidePlat, showToast } = api;
-  const SNOW_TIMER_SEC = 20;
+  const SNOW_TIMER_SEC = 35;
   const SNOW_FIRE_WINDOW_SEC = 10;
   const SNOW_CYCLE_SEC = SNOW_TIMER_SEC + SNOW_FIRE_WINDOW_SEC;
   // NPC lebih responsif: cepat mengunci sasaran, lalu memberi jeda singkat antar-tembakan.
