@@ -2707,7 +2707,7 @@ async function refreshSoloLeaderboard(force = false) {
         bestScore: Number(p.bestScore) || 0, bestTimeMs: Number(p.bestTimeMs) || 0,
         finishMs: Number(p.bestTimeMs) || null
       }))
-      .sort((a, b) => b.bestScore - a.bestScore || a.bestTimeMs - b.bestTimeMs)
+      .sort((a, b) => b.crowns - a.crowns || String(a.username).localeCompare(String(b.username)))
       .slice(0, MAX_PLAYERS);
     soloLeaderboardLastFetch = Date.now();
     if (!roomCode) updateLobbyLeaderboard();
@@ -2721,7 +2721,7 @@ function updateLobbyLeaderboard() {
   const sourcePlayers = roomCode ? (roomPlayers || {}) : Object.fromEntries(soloLeaderboardEntries.map(p => [p.id, p]));
   const ids = Object.keys(sourcePlayers).sort((a, b) => {
     const pa = sourcePlayers[a] || {}, pb = sourcePlayers[b] || {};
-    if (!roomCode) return (Number(pb.bestScore) || 0) - (Number(pa.bestScore) || 0) || (Number(pa.bestTimeMs) || 0) - (Number(pb.bestTimeMs) || 0);
+    if (!roomCode) return (Number(pb.crowns) || 0) - (Number(pa.crowns) || 0) || String(pa.username || '').localeCompare(String(pb.username || ''));
     const af = Number.isFinite(Number(pa.finishMs)) && pa.finishMs != null;
     const bf = Number.isFinite(Number(pb.finishMs)) && pb.finishMs != null;
     if (af && bf) return Number(pb.score || 0) - Number(pa.score || 0) || Number(pa.finishMs) - Number(pb.finishMs);
@@ -2736,7 +2736,7 @@ function updateLobbyLeaderboard() {
     const timeMs = roomCode ? (Number(p.finishMs) || 0) : (Number(p.bestTimeMs) || 0);
     return {
       id, index, name: String(p.username || 'Pemain').slice(0, 18),
-      finished, score, timeMs, time: finished ? `${score.toLocaleString('id-ID')} POIN` : 'BELUM ADA',
+      crowns: Math.max(0, Math.floor(Number(p.crowns) || 0)), finished, score, timeMs,
       host: !!(roomMeta && roomMeta.host === id),
       isMe: roomCode ? id === mpUid : id === String(playerData.username || '').toLowerCase(),
       eqKey: JSON.stringify(p.equipped || {})
@@ -2757,7 +2757,7 @@ function updateLobbyLeaderboard() {
   x.font = '900 76px sans-serif'; x.fillStyle = '#ffffff';
   x.fillText('LEADERBOARD', 512, 82);
   x.font = 'bold 30px sans-serif'; x.fillStyle = '#42d9ff';
-  x.fillText(roomCode ? `ROOM ${roomCode}  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : `TOP SKOR • MIN. ${leaderboardMinCrowns} 👑`, 512, 142);
+  x.fillText(roomCode ? `ROOM ${roomCode}  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : `JUMLAH MAHKOTA • MIN. ${leaderboardMinCrowns} 👑`, 512, 142);
   x.strokeStyle = 'rgba(66,217,255,.55)'; x.lineWidth = 3;
   x.beginPath(); x.moveTo(55, 188); x.lineTo(969, 188); x.stroke();
 
@@ -2778,10 +2778,10 @@ function updateLobbyLeaderboard() {
       const name = (e.host ? '👑 ' : '') + e.name + (e.isMe ? ' (KAMU)' : '');
       x.fillText(name, 178, top + 34, 500);
       x.textAlign = 'left'; x.font = '22px sans-serif'; x.fillStyle = '#8fb9dc';
-      x.fillText('ID ' + String((sourcePlayers[e.id] || {}).playerId || (e.name.toLowerCase() === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')) + '  •  👑 ' + String(Number((sourcePlayers[e.id] || {}).crowns) || 0), 180, top + 67, 460);
-      x.textAlign = 'right'; x.font = 'bold 27px sans-serif';
-      x.fillStyle = e.finished ? '#7dffb0' : '#a9b8d2';
-      x.fillText(e.finished ? `${e.score.toLocaleString('id-ID')} POIN` : e.time, 950, top + 44);
+      x.fillText('ID ' + String((sourcePlayers[e.id] || {}).playerId || (e.name.toLowerCase() === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')), 180, top + 67, 460);
+      x.textAlign = 'right'; x.font = '900 30px sans-serif';
+      x.fillStyle = '#ffd76a';
+      x.fillText('👑 ' + String(e.crowns), 950, top + 44);
     });
   }
   lobbyLeaderboardTexture.needsUpdate = true;
