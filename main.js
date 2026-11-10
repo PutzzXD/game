@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildSnowWorld } from './snow.js';
 import { buildAngkasaWorld } from './angkasa.js';
+import { buildLavaMap, updateLavaMap } from './lava.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
@@ -1074,9 +1075,10 @@ let joystickVector = new THREE.Vector2(0, 0);
 let isRunning = false;
 let trailParticles = [], jumpParticles = [];
 let laserBeam = null; // Objek Laser NPC
-let rig, leftElbow, rightElbow, leftKnee, rightKnee, embers;
+let rig, leftElbow, rightElbow, leftKnee, rightKnee;
+let lavaMapVisuals = null;
 // Efek visual dan kamera khusus map Lava; tidak menyentuh sistem kostum/mahkota.
-let lavaSparks = null, lavaVolcanoLights = [], lavaMazeCameraActive = false;
+
 let sq = { x: 0, v: 0 }, moveVel = new THREE.Vector2(0, 0), wasGrounded = true, laserState = 'off';
 const LASER_Z = -44, LASER_Y = 9.3;
 let FIN_Y = 1e9, checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
@@ -1314,64 +1316,9 @@ function init3DGame() {
   sun.castShadow = true;
   scene.add(sun);
 
-  lavaMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-  const lava = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), lavaMat);
-  lava.rotation.x = -Math.PI / 2;
-  lava.position.y = -8;
-  scene.add(lava);
-  const emberPos = new Float32Array(150 * 3);
-  for (let i = 0; i < 150; i++) { emberPos[i*3] = (Math.random()-0.5)*90; emberPos[i*3+1] = -8 + Math.random()*30; emberPos[i*3+2] = -35 + (Math.random()-0.5)*100; }
-  const emberGeo = new THREE.BufferGeometry();
-  emberGeo.setAttribute('position', new THREE.BufferAttribute(emberPos, 3));
-  embers = new THREE.Points(emberGeo, new THREE.PointsMaterial({ color: 0xff7722, size: 0.25, transparent: true, opacity: 0.8 }));
-  scene.add(embers);
-
-  // ===== DEKORASI MAP LAVA: GUNUNG BERAPI BERCahaya + PARTIKEL MAGMA =====
-  // Semua objek ini hanya dekorasi visual di dunia Lava, tanpa collider/gameplay baru.
-  lavaVolcanoLights = [];
-  const volcanoSpots = [
-    [-38, -8, -32, 1.0], [38, -8, -55, 0.9],
-    [-42, -8, -105, 1.15], [42, -8, -132, 1.0],
-    [0, -8, -158, 0.85]
-  ];
-  volcanoSpots.forEach(([vx, baseY, vz, scale]) => {
-    const volcano = new THREE.Group();
-    volcano.position.set(vx, baseY, vz);
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x28202a, roughness: 1 });
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(11 * scale, 24 * scale, 9), rockMat);
-    cone.position.y = 12 * scale;
-    cone.castShadow = true; cone.receiveShadow = true; volcano.add(cone);
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(2.6 * scale, 0.48 * scale, 10, 28),
-      new THREE.MeshStandardMaterial({ color: 0xff4a12, emissive: 0xff2600, emissiveIntensity: 2.4 })
-    );
-    rim.rotation.x = Math.PI / 2; rim.position.y = 23.1 * scale; volcano.add(rim);
-    const crater = new THREE.Mesh(
-      new THREE.CircleGeometry(2.15 * scale, 24),
-      new THREE.MeshBasicMaterial({ color: 0xff6a00, side: THREE.DoubleSide })
-    );
-    crater.rotation.x = -Math.PI / 2; crater.position.y = 23.12 * scale; volcano.add(crater);
-    scene.add(volcano);
-    const glow = new THREE.PointLight(0xff3b08, 3.2 * scale, 34 * scale, 2);
-    glow.position.set(vx, baseY + 20 * scale, vz); scene.add(glow);
-    lavaVolcanoLights.push({ light: glow, base: 2.4 * scale, phase: vx * 0.13 + vz * 0.07 });
-  });
-  const lavaSparkPositions = new Float32Array(240 * 3);
-  const lavaSparkSpeeds = new Float32Array(240);
-  for (let i = 0; i < 240; i++) {
-    lavaSparkPositions[i * 3] = (Math.random() - 0.5) * 100;
-    lavaSparkPositions[i * 3 + 1] = -7 + Math.random() * 26;
-    lavaSparkPositions[i * 3 + 2] = -85 + (Math.random() - 0.5) * 150;
-    lavaSparkSpeeds[i] = 1.2 + Math.random() * 3.2;
-  }
-  const lavaSparkGeo = new THREE.BufferGeometry();
-  lavaSparkGeo.setAttribute('position', new THREE.BufferAttribute(lavaSparkPositions, 3));
-  lavaSparks = new THREE.Points(lavaSparkGeo, new THREE.PointsMaterial({
-    color: 0xff9a24, size: 0.34, transparent: true, opacity: 0.9,
-    blending: THREE.AdditiveBlending, depthWrite: false
-  }));
-  lavaSparks.userData.speeds = lavaSparkSpeeds;
-  scene.add(lavaSparks);
+  // Map Lava visual dipisah ke lava.js agar modul map mudah dirawat.
+  lavaMapVisuals = buildLavaMap(scene);
+  lavaMat = lavaMapVisuals.lavaMat;
 
   const platformMat = new THREE.MeshStandardMaterial({ color: 0x444455, roughness: 0.8 });
   const breakableMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9 });
@@ -2219,9 +2166,9 @@ function init3DGame() {
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
-  controls.enablePan = false; controls.minDistance = 2.5; controls.maxDistance = 24;
+  controls.enablePan = false; controls.minDistance = 1.0; controls.maxDistance = 120;
   controls.maxPolarAngle = Math.PI / 2 - 0.05;
-  controls.enableZoom = true; controls.zoomSpeed = 1.2; controls.rotateSpeed = 0.9;
+  controls.enableZoom = true; controls.zoomSpeed = 1.8; controls.rotateSpeed = 0.9;
   controls.enableDamping = true; controls.dampingFactor = 0.12;
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE }; // 1 jari = putar kamera, 2 jari = cubit zoom
 
@@ -3729,51 +3676,26 @@ function animate() {
   const st = THREE.MathUtils.clamp(sq.x + air, -0.35, 0.35);
   rig.scale.set(1 - st * 0.5, 1 + st, 1 - st * 0.5);
   camera.fov += ((60 + runK * 8) - camera.fov) * k * 0.5; camera.updateProjectionMatrix();
-  if (embers) { const ep = embers.geometry.attributes.position; for (let i = 0; i < ep.count; i++) { let y = ep.getY(i) + delta * 1.5; if (y > 22) y = -8; ep.setY(i, y); } ep.needsUpdate = true; }
-  // Percikan magma bergerak naik hanya saat map Lava aktif.
-  if (currentMap === 'lava' && lavaSparks) {
-    const sp = lavaSparks.geometry.attributes.position, speeds = lavaSparks.userData.speeds;
-    for (let i = 0; i < sp.count; i++) {
-      let y = sp.getY(i) + speeds[i] * delta;
-      if (y > 20) { y = -7; sp.setX(i, (Math.random() - 0.5) * 100); sp.setZ(i, -85 + (Math.random() - 0.5) * 150); }
-      sp.setY(i, y);
-    }
-    sp.needsUpdate = true;
-    lavaVolcanoLights.forEach(v => { v.light.intensity = v.base * (0.82 + 0.18 * Math.sin(t * 3 + v.phase)); });
-  }
+  updateLavaMap(lavaMapVisuals, delta, t, currentMap === 'lava');
 
   const targetPos = character.position.clone(); targetPos.y += 1.5;
   const prevT = controls.target.clone();
   controls.target.lerp(targetPos, 1 - Math.exp(-delta * 8));
   camera.position.add(controls.target.clone().sub(prevT)); // kamera ikut bergerak bersama pemain
 
-  // Mode kamera third-person khusus saat pemain berada di dalam labirin Lava.
-  const inLavaMaze = currentMap === 'lava' &&
-    character.position.y > FIN_Y - 1 &&
-    Math.abs(character.position.x) < MAZE_H &&
-    character.position.z < -89 &&
-    character.position.z > MAZE_Z - MAZE_H;
-  if (inLavaMaze) {
-    if (!lavaMazeCameraActive) { lavaMazeCameraActive = true; controls.enabled = false; }
-    const behindX = -Math.sin(character.rotation.y) * 5.8;
-    const behindZ = -Math.cos(character.rotation.y) * 5.8;
-    const desiredCam = new THREE.Vector3(character.position.x + behindX, character.position.y + 3.0, character.position.z + behindZ);
-    camera.position.lerp(desiredCam, 1 - Math.exp(-delta * 5));
-    controls.target.copy(targetPos);
-    camera.lookAt(controls.target);
-  } else if (lavaMazeCameraActive) {
-    lavaMazeCameraActive = false;
-    controls.enabled = true;
-  }
-
-  if (zoomDir && !lavaMazeCameraActive) {
+  // Kamera tetap bebas dikontrol dan di-zoom, termasuk ketika berada di labirin.
+  // Tidak ada kamera paksa yang menimpa jarak zoom pemain.
+  if (zoomDir) {
     const off = camera.position.clone().sub(controls.target);
-    off.setLength(THREE.MathUtils.clamp(off.length() * (1 + zoomDir * 1.2 * delta), controls.minDistance, controls.maxDistance));
+    const nextDistance = THREE.MathUtils.clamp(
+      off.length() * (1 + zoomDir * 1.2 * delta),
+      controls.minDistance,
+      controls.maxDistance
+    );
+    off.setLength(nextDistance);
     camera.position.copy(controls.target).add(off);
   }
-  if (!lavaMazeCameraActive) controls.update();
-
-  lavaMat.color.setHSL(0.03 + Math.sin(t * 2) * 0.02, 1, 0.5);
+  controls.update();
 }
 
 window.addEventListener('resize', () => {
