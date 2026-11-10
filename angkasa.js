@@ -339,35 +339,47 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
   createPlatform(3.8, 23.4, -370, 5.8, 5.8, 'moving_y', 'round', { glow: M.cyan, range: 1.0, speed: 1.0, route: true, under: true });
 
 
-  // Dek akhir menjadi area pilihan: tiga jalur finish yang tampak sama.
-  // Platform lama dipertahankan sebagai area pendekatan sebelum bercabang.
+  // Dek akhir: tiga jalur finish berjauhan, dihubungkan oleh jembatan bercabang.
+  // Platform pendekatan tetap dipertahankan sebagai titik awal percabangan.
   createPlatform(0, FIN.y, FIN.z, 13, 12, 'static', 'box', {
     glow: M.lime, route: true, checkpoint: true, under: true
   });
 
   const finishLanes = [];
-  const finishLaneXs = [-9, 0, 9];
-  const finishZ = FIN.z - 14;
+  const finishLaneXs = [-18, 0, 18];
+  const finishZ = FIN.z - 27;
   const finishArchMat = new THREE.MeshStandardMaterial({
     color: 0x37f5c2, emissive: 0x0b9b7b, emissiveIntensity: 1.2
   });
 
-  // Tiga pijakan penghubung dari area pendekatan ke setiap pilihan.
+  // Jembatan bercabang: setiap jalur dibuat cukup lebar dan terpisah jelas.
+  // Jalur tengah lurus; kiri dan kanan memiliki pijakan diagonal menuju platform masing-masing.
   finishLaneXs.forEach((x) => {
-    createPlatform(x * 0.72, FIN.y, FIN.z - 7, 5.8, 7.5, 'static', 'box', {
+    const steps = 4;
+    for (let i = 1; i <= steps; i++) {
+      const f = i / (steps + 1);
+      const bx = x * f;
+      const bz = FIN.z - 5 - f * 17;
+      createPlatform(bx, FIN.y + (i % 2 ? 0.15 : 0), bz, 5.2, 5.8, 'static', 'box', {
+        glow: M.cyan, route: true, under: true
+      });
+    }
+  });
+  finishLaneXs.forEach((x) => {
+    createPlatform(x, FIN.y, finishZ + 7, 6.2, 8, 'static', 'box', {
       glow: M.cyan, route: true, under: true
     });
   });
 
-  // Semua gerbang, tulisan, ukuran, dan material identik.
+  // Semua gerbang memiliki bentuk, ukuran, tulisan, dan material identik.
   finishLaneXs.forEach((x, index) => {
-    const lanePad = createPlatform(x, FIN.y, finishZ, 7, 9, 'static', 'box', {
+    const lanePad = createPlatform(x, FIN.y, finishZ, 9, 11, 'static', 'box', {
       glow: M.lime, route: true, under: true
     });
-    const archZ = finishZ;
-    add(new THREE.BoxGeometry(0.4, 5, 0.4), finishArchMat, x - 2.8, FIN.y + 2.5, archZ);
-    add(new THREE.BoxGeometry(0.4, 5, 0.4), finishArchMat, x + 2.8, FIN.y + 2.5, archZ);
-    add(new THREE.BoxGeometry(6.0, 0.4, 0.4), finishArchMat, x, FIN.y + 5, archZ);
+    const archZ = finishZ - 1.0;
+    add(new THREE.BoxGeometry(0.4, 5, 0.4), finishArchMat, x - 3.2, FIN.y + 2.5, archZ);
+    add(new THREE.BoxGeometry(0.4, 5, 0.4), finishArchMat, x + 3.2, FIN.y + 2.5, archZ);
+    add(new THREE.BoxGeometry(6.8, 0.4, 0.4), finishArchMat, x, FIN.y + 5, archZ);
 
     const cv = document.createElement('canvas');
     cv.width = 512; cv.height = 128;
@@ -383,7 +395,70 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
       x, FIN.y + 3.4, archZ
     );
     sign.userData.isDecoration = true;
-    finishLanes.push({ index, x, y: FIN.y, z: finishZ, platform: lanePad });
+    finishLanes.push({ index, x, y: FIN.y, z: finishZ - 3.5, platform: lanePad });
+  });
+
+  // Tiga NPC penjaga menghadap lurus ke depan (-Z). Dua jalur palsu memberi penalti
+  // jika pemain mendekat dalam radius 3 meter; NPC di jalur asli tetap pasif.
+  const finishGuards = finishLanes.map((lane) => {
+    const npc = new THREE.Group();
+    npc.position.set(lane.x + 2.35, FIN.y + 0.25, finishZ + 1.2);
+    npc.rotation.y = 0; // fokus tetap ke depan, tidak mengikuti/membidik pemain
+    group.add(npc);
+
+    const armor = new THREE.MeshStandardMaterial({ color: 0x202b48, metalness: 0.65, roughness: 0.32 });
+    const trim = new THREE.MeshStandardMaterial({ color: 0x17213a, emissive: 0x163b75, emissiveIntensity: 0.65, metalness: 0.5 });
+    const visor = new THREE.MeshBasicMaterial({ color: 0x62eaff });
+    const part = (geo, mat, x, y, z) => {
+      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); npc.add(m); return m;
+    };
+    part(new THREE.CylinderGeometry(0.38, 0.48, 0.28, 8), trim, 0, 0.18, 0);
+    part(new THREE.CapsuleGeometry(0.34, 0.78, 4, 8), armor, 0, 1.0, 0);
+    part(new THREE.SphereGeometry(0.34, 16, 12), trim, 0, 1.82, 0);
+    part(new THREE.BoxGeometry(0.42, 0.12, 0.08), visor, 0, 1.85, -0.29);
+    for (const side of [-1, 1]) {
+      part(new THREE.CapsuleGeometry(0.12, 0.48, 4, 8), armor, side * 0.43, 1.0, 0);
+      part(new THREE.CylinderGeometry(0.12, 0.16, 0.58, 8), trim, side * 0.22, 0.28, 0);
+    }
+    const energy = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.12, 1, 8),
+      new THREE.MeshBasicMaterial({ color: 0x69efff, transparent: true, opacity: 0.88 })
+    );
+    energy.visible = false;
+    group.add(energy);
+    const from = new THREE.Vector3(), to = new THREE.Vector3(), dir = new THREE.Vector3();
+    let flash = 0;
+
+    const guard = {
+      reset() { flash = 0; energy.visible = false; },
+      update(delta, playerPos, t, canKill) {
+        // NPC tidak pernah memutar badan untuk mengejar pemain.
+        npc.rotation.y = 0;
+        flash = Math.max(0, flash - delta);
+        if (flash <= 0) energy.visible = false;
+        const dx = playerPos.x - npc.position.x;
+        const dz = playerPos.z - npc.position.z;
+        const dy = playerPos.y - (FIN.y + 0.8);
+        const near = Math.hypot(dx, dz) <= 3 && Math.abs(dy) <= 3.2;
+        const isRealFinish = activeFinishIndex === lane.index;
+        if (!near || isRealFinish || !canKill) return false;
+
+        // Efek sinar energi singkat sebagai tanda pemain terkena penjaga.
+        from.set(npc.position.x, npc.position.y + 1.85, npc.position.z - 0.3);
+        to.set(playerPos.x, playerPos.y + 0.8, playerPos.z);
+        dir.subVectors(to, from);
+        const len = Math.max(0.01, dir.length());
+        energy.position.copy(from).addScaledVector(dir, 0.5);
+        energy.scale.set(1, len, 1);
+        energy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+        energy.visible = true;
+        flash = 0.18;
+        if (typeof showToast === 'function') showToast('⚡ FINISH PALSU! Penjaga menangkapmu!');
+        return true;
+      }
+    };
+    guards.push(guard);
+    return { npc, energy, guard };
   });
 
   // Nomor jalur benar diacak setiap map dimasuki/ditinggalkan.
@@ -401,7 +476,6 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
     world.activeFinishLane = activeFinishIndex;
     return activeFinishIndex;
   };
-
 
   // ---------- dekorasi hidup (planet berputar, sabuk asteroid, bintang terang berkedip) ----------
   hazards.push({
