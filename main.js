@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { buildSnowWorld } from './snow.js';
+import { buildAngkasaWorld } from './angkasa.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
@@ -372,7 +374,8 @@ window.addEventListener('DOMContentLoaded', () => {
     profileModal.style.display = 'none';
     shopModal.style.display = 'none';
     // GACHA MAP: room memakai hasil gacha host (tersimpan di meta.map) agar semua pemain satu map.
-    const pickedMap = (roomCode && roomStartAt) ? ((roomMeta && roomMeta.map === 'snow' && snowWorld) ? 'snow' : 'lava') : rollMap();
+    const roomMap = roomMeta && roomMeta.map;
+    const pickedMap = (roomCode && roomStartAt) ? ((roomMap === 'snow' && snowWorld) ? 'snow' : (roomMap === 'angkasa' && angkasaWorld) ? 'angkasa' : 'lava') : rollMap();
     gachaBusy = true;
     playMapGacha(pickedMap, roomCode ? 900 : 1500, () => {
       gachaBusy = false;
@@ -556,6 +559,8 @@ async function returnToLobby() {
   setLobbyOnlyHud(true);
   if (parkourWorldGroup) parkourWorldGroup.visible = false;
   if (snowWorldGroup) snowWorldGroup.visible = false;
+  if (angkasaWorldGroup) angkasaWorldGroup.visible = false;
+  if (angkasaController) angkasaController.reset(physics);
   if (lobbyWorldGroup) lobbyWorldGroup.visible = true;
   if (scene) { scene.background = new THREE.Color(0x10182b); scene.fog = null; }
   if (camera && controls) { camera.position.set(0, 3.8, 9.5); controls.target.set(0, 1.45, 0); }
@@ -989,7 +994,7 @@ let batGrp, capeB, ironHelm, ironBody, thorHelm, thorBody, capeT;
 let MAZE_H = 12, MAZE_Z = -101;
 let zoomDir = 0, guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 // Sistem multi-map (gacha): map aktif + dunia tiap map. Lihat blok SNOW-MODULE.
-let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, curGroundPlat = null, gachaBusy = false;
+let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, snowController = null, angkasaWorld = null, angkasaWorldGroup = null, angkasaController = null, curGroundPlat = null, gachaBusy = false;
 const ROASTS = {
   hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
   fall: ['Beruntung banget jatuh ke lava, hangat kan? 🔥😹', 'Pemain paling beruntung sedunia: jatuh dari tempat yang sama lagi 🍀💀', 'Mantap, rekor jatuh terbaru! Lava bangga sama kamu 🏅🔥'],
@@ -1522,7 +1527,8 @@ function init3DGame() {
   scene.add(parkourWorldGroup);
   parkourWorldGroup.visible = false;
   lavaWorld = { platforms, hazards, guards, laserBeam, FIN_Y, WIN, MAZE_H, MAZE_Z };
-  try { snowWorld = buildSnowWorld(); } catch (e) { console.error('Map Salju gagal dibuat, hanya Lava yang aktif:', e); snowWorld = null; if (snowWorldGroup) { scene.remove(snowWorldGroup); snowWorldGroup = null; } }
+  try { const builtSnow = buildSnowWorld(THREE, scene, { runElapsedMs, insidePlat, showToast }); snowWorld = builtSnow.world; snowWorldGroup = builtSnow.group; snowController = builtSnow.controller; } catch (e) { console.error('Map Salju gagal dibuat, hanya Lava yang aktif:', e); snowWorld = null; snowController = null; if (snowWorldGroup) { scene.remove(snowWorldGroup); snowWorldGroup = null; } }
+  try { const builtAngkasa = buildAngkasaWorld(THREE, scene, { showToast }); angkasaWorld = builtAngkasa.world; angkasaWorldGroup = builtAngkasa.group; angkasaController = builtAngkasa.controller; } catch (e) { console.error('Map Angkasa gagal dibuat:', e); angkasaWorld = null; angkasaController = null; if (angkasaWorldGroup) { scene.remove(angkasaWorldGroup); angkasaWorldGroup = null; } }
 
   lobbyWorldGroup = new THREE.Group();
   lobbyWorldGroup.name = 'FREE_FIRE_STYLE_LOBBY';
@@ -1908,9 +1914,12 @@ function init3DGame() {
     }
   });
 
-  // Fitur lari dihapus: tombol lari disembunyikan, isRunning selalu false (kecepatan tetap jalan biasa).
   const btnRun = document.getElementById('btn-run');
-  if (btnRun) { btnRun.style.display = 'none'; btnRun.style.pointerEvents = 'none'; }
+  btnRun.addEventListener('touchstart', (e) => { e.preventDefault(); isRunning = true; });
+  btnRun.addEventListener('touchend', (e) => { e.preventDefault(); isRunning = false; });
+  btnRun.addEventListener('pointerdown', (e) => { isRunning = true; });
+  btnRun.addEventListener('pointerup', (e) => { isRunning = false; });
+  btnRun.addEventListener('pointerleave', (e) => { isRunning = false; });
 
   document.getElementById('btn-restart').addEventListener('click', () => { if (gameState === 'WIN') location.reload(); else respawn(); });
   document.getElementById('overlay').style.display = 'none';
@@ -2955,12 +2964,10 @@ window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() =>
 // sehingga seluruh sistem lama (kontrol, kamera, respawn, multiplayer) tetap
 // memakai kode yang sama.
 // =====================================================================
-const SNOW_TIMER_SEC = 60;                                   // hitung mundur sebelum NPC menembak
-const SNOW_AIM_TIME = 1.3, SNOW_LOCK_TIME = 0.35, SNOW_COOL_TIME = 2.4;
-const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' } };
+const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' }, angkasa: { icon: '🚀', name: 'MAP ANGKASA', color: '#a78bfa' } };
 
 // Gacha: hanya memilih map yang benar-benar tersedia.
-function rollMap() { return (snowWorld && Math.random() < 0.5) ? 'snow' : 'lava'; }
+function rollMap() { const available = ['lava']; if (snowWorld) available.push('snow'); if (angkasaWorld) available.push('angkasa'); return available[Math.floor(Math.random() * available.length)]; }
 
 // Animasi gacha singkat sebelum loading screen. done() dipanggil setelah hasil tampil.
 function playMapGacha(result, spinMs, done) {
@@ -2984,7 +2991,7 @@ function playMapGacha(result, spinMs, done) {
     }
     const slot = document.getElementById('gc-slot'), icon = document.getElementById('gc-icon'), nm = document.getElementById('gc-name'), sub = document.getElementById('gc-sub');
     el.style.display = 'flex'; slot.classList.add('spin'); slot.style.borderColor = '#fff'; slot.style.boxShadow = 'none'; sub.textContent = 'Mengacak map...';
-    const keys = ['lava', 'snow']; let k = 0;
+    const keys = ['lava', ...(snowWorld ? ['snow'] : []), ...(angkasaWorld ? ['angkasa'] : [])]; let k = 0;
     const iv = setInterval(() => { k = (k + 1) % keys.length; const m = MAP_LABELS[keys[k]]; icon.textContent = m.icon; nm.textContent = m.name; }, 95);
     setTimeout(() => {
       clearInterval(iv);
@@ -2999,313 +3006,30 @@ function playMapGacha(result, spinMs, done) {
 // Menukar dunia aktif. Dipanggil tepat sebelum onGameBegin().
 function applyMap(id) {
   if (id === 'snow' && !snowWorld) id = 'lava';
-  const w = id === 'snow' ? snowWorld : lavaWorld;
+  if (id === 'angkasa' && !angkasaWorld) id = 'lava';
+  const w = id === 'snow' ? snowWorld : (id === 'angkasa' ? angkasaWorld : lavaWorld);
   if (!w) return;
   currentMap = id;
-  platforms = w.platforms; hazards = w.hazards; guards = w.guards; laserBeam = w.laserBeam;
-  FIN_Y = w.FIN_Y; WIN = w.WIN; MAZE_H = w.MAZE_H; MAZE_Z = w.MAZE_Z;
+  platforms = w.platforms; hazards = w.hazards; guards = w.guards || []; laserBeam = w.laserBeam || null;
+  FIN_Y = w.FIN_Y; WIN = w.WIN; MAZE_H = w.MAZE_H || 0; MAZE_Z = w.MAZE_Z || 0;
   laserState = 'off'; curGroundPlat = null;
   if (parkourWorldGroup) parkourWorldGroup.visible = id === 'lava';
   if (snowWorldGroup) snowWorldGroup.visible = id === 'snow';
-  if (id === 'snow') resetSnowWorld();
+  if (angkasaWorldGroup) angkasaWorldGroup.visible = id === 'angkasa';
+  if (id === 'snow' && snowController) snowController.reset();
+  if (angkasaController) angkasaController.reset(physics);
+  if (id === 'angkasa' && scene) {
+    scene.background = new THREE.Color(0x050817);
+    scene.fog = new THREE.Fog(0x050817, 90, 260);
+  } else if (scene) {
+    // Kembalikan latar default game untuk Lava/Snow; efek khusus map tetap
+    // dikelola oleh modul map masing-masing.
+    scene.background = new THREE.Color(0x1a1a24);
+    scene.fog = new THREE.Fog(0x1a1a24, 20, 150);
+  }
   try { guards.forEach(gd => gd.reset()); } catch (e) {}
 }
-function resetSnowWorld() {
-  if (!snowWorld) return;
-  snowWorld.cracks.forEach(p => { p.crackState = 0; p.crackT = 0; p.isFallen = false; p.mesh.visible = true; p.mesh.position.x = p.startX; });
-  snowSys.alarmed = false;
-}
-
-const snowSys = { alarmed: false, hudText: '', hudMode: '' };
-// Sisa detik sebelum NPC menembak. Ikut timer run, jadi reset saat respawn seperti timer lama.
-function snowTimeLeft() { return Math.max(0, SNOW_TIMER_SEC - runElapsedMs() / 1000); }
-
-// ----- Ray tembakan vs objek perlindungan (cover) -----
-function snowRayBlocked(ax, ay, az, bx, by, bz) {
-  if (!snowWorld) return null;
-  const dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz);
-  const n = Math.max(2, Math.ceil(len / 0.25));
-  for (let i = 1; i < n; i++) {
-    const f = i / n, x = ax + dx * f, y = ay + dy * f, z = az + dz * f;
-    for (const c of snowWorld.cover) {
-      const m = c.mesh.position;
-      if (y < m.y - c.hh || y > m.y + c.hh) continue;
-      if (insidePlat(c, x, z, 0)) return { x, y, z };
-    }
-  }
-  return null;
-}
-function distPointSeg(px, py, pz, ax, ay, az, bx, by, bz) {
-  const abx = bx - ax, aby = by - ay, abz = bz - az, l2 = abx * abx + aby * aby + abz * abz || 1e-6;
-  let t = ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / l2; t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + abx * t), py - (ay + aby * t), pz - (az + abz * t));
-}
-
-// ----- HUD hitung mundur -----
-function updateSnowHud() {
-  let el = document.getElementById('snow-hud');
-  const on = currentMap === 'snow' && (gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN' || gameState === 'COUNTDOWN');
-  if (!on) { if (el && el.style.display !== 'none') el.style.display = 'none'; return; }
-  if (!el) {
-    el = document.createElement('div'); el.id = 'snow-hud';
-    el.style.cssText = 'position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:30;padding:6px 14px;border-radius:12px;font:700 15px sans-serif;color:#fff;background:rgba(10,30,55,.72);border:2px solid #7fd6ff;pointer-events:none;white-space:nowrap';
-    document.body.appendChild(el);
-  }
-  const left = gameState === 'COUNTDOWN' ? SNOW_TIMER_SEC : snowTimeLeft();
-  let txt, mode;
-  if (gameState === 'WIN') { txt = '❄️ Map Salju selesai!'; mode = 'win'; }
-  else if (left > 0) { const s = Math.ceil(left); txt = '❄️ NPC menembak dalam ' + String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); mode = left <= 10 ? 'warn' : 'ok'; }
-  else { txt = '🔫 NPC MENEMBAK! Cari perlindungan!'; mode = 'fire'; }
-  if (snowSys.hudText !== txt) { el.textContent = txt; snowSys.hudText = txt; }
-  if (snowSys.hudMode !== mode) {
-    snowSys.hudMode = mode;
-    el.style.borderColor = mode === 'fire' ? '#ff3a2a' : (mode === 'warn' ? '#ffb02a' : '#7fd6ff');
-    el.style.background = mode === 'fire' ? 'rgba(120,10,10,.8)' : 'rgba(10,30,55,.72)';
-  }
-  el.style.display = 'block';
-  if (gameState === 'PLAYING') {
-    if (left <= 0 && !snowSys.alarmed) { snowSys.alarmed = true; showToast('🔫 Waktu habis! NPC mulai menembak, berlindung!'); }
-    if (left > 0) snowSys.alarmed = false;
-  }
-}
-
-// ----- Update per frame khusus map Salju (hanya dipanggil saat PLAYING) -----
-function updateSnowWorld(delta) {
-  const w = snowWorld; if (!w) return;
-  for (const p of w.cracks) { // es retak: diinjak -> bergetar -> jatuh -> muncul lagi
-    if (p.crackState === 0) { if (curGroundPlat === p && physics.isGrounded) { p.crackState = 1; p.crackT = 0; } }
-    else if (p.crackState === 1) {
-      p.crackT += delta; p.mesh.position.x = p.startX + Math.sin(p.crackT * 70) * 0.06;
-      if (p.crackT > 0.75) { p.crackState = 2; p.crackT = 0; p.isFallen = true; p.mesh.visible = false; p.mesh.position.x = p.startX; }
-    } else { p.crackT += delta; if (p.crackT > 3) { p.isFallen = false; p.mesh.visible = true; p.crackState = 0; } }
-  }
-  if (w.snowfall && character) { // salju turun mengikuti pemain
-    const sp = w.snowfall, pos = sp.geometry.attributes.position;
-    sp.position.set(character.position.x, character.position.y - 6, character.position.z);
-    for (let i = 0; i < pos.count; i++) { let y = pos.getY(i) - (2 + (i % 5) * 0.5) * delta; if (y < 0) y += 30; pos.setY(i, y); }
-    pos.needsUpdate = true;
-  }
-}
-
-// ----- Pembuat dunia Salju -----
-function buildSnowWorld() {
-  const grp = new THREE.Group(); grp.name = 'SNOW_WORLD'; grp.visible = false; scene.add(grp);
-  snowWorldGroup = grp;
-  const P = [], C = [], cracks = [], npcs = [], route = [], cpList = [];
-
-  grp.add(new THREE.HemisphereLight(0xe4f4ff, 0x6d88aa, 1.15));
-  const sunS = new THREE.DirectionalLight(0xffffff, 1.25); sunS.position.set(-25, 70, 35); grp.add(sunS);
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.MeshBasicMaterial({ color: 0x6fa8d6 }));
-  water.rotation.x = -Math.PI / 2; water.position.y = -8; grp.add(water);
-
-  const iceMat = new THREE.MeshStandardMaterial({ color: 0x9fdcff, roughness: 0.12, metalness: 0.15, emissive: 0x16405e, emissiveIntensity: 0.35 });
-  const snowMat = new THREE.MeshStandardMaterial({ color: 0xf4f9ff, roughness: 0.95 });
-  const cubeMat = new THREE.MeshStandardMaterial({ color: 0x7fcfff, roughness: 0.1, metalness: 0.2, emissive: 0x1b5a86, emissiveIntensity: 0.4 });
-  const crackMat = new THREE.MeshStandardMaterial({ color: 0xd8f1ff, roughness: 0.25, emissive: 0x4a7a9c, emissiveIntensity: 0.3 });
-  const cpMat = new THREE.MeshStandardMaterial({ color: 0x22ddaa, emissive: 0x22ddaa, emissiveIntensity: 0.45 });
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xbfeaff, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.9, emissive: 0x2a5878, emissiveIntensity: 0.25 });
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0xe9f1f8, roughness: 0.9 });
-  const towerMat = new THREE.MeshStandardMaterial({ color: 0xaed9f2, roughness: 0.3, emissive: 0x1d4663, emissiveIntensity: 0.3 });
-  const ICE_GRIP = [0.22, 0.1], SNOW_GRIP = [0.6, 0.55]; // [saat ada input, saat lepas input] -> licin
-
-  const pushColl = (p) => { P.push(p); return p; };
-  // y = nilai "nominal" seperti map Lava: permukaan atas selalu y + 0.25
-  function plat(x, y, z, w, d, o = {}) {
-    const kind = o.kind || 'ice', shape = o.shape || 'box', type = o.type || 'static', h = o.h || 0.5, cy = y + 0.25 - h / 2;
-    const geo = shape === 'round' ? new THREE.CylinderGeometry(w / 2, w / 2, h, 28) : new THREE.BoxGeometry(w, h, d);
-    const mat = o.cp ? cpMat : (type === 'crack' ? crackMat : (kind === 'snow' ? snowMat : (kind === 'cube' ? cubeMat : iceMat)));
-    const mesh = new THREE.Mesh(geo, mat); mesh.position.set(x, cy, z); grp.add(mesh);
-    const p = { mesh, width: w, depth: d, type, hh: h / 2, startX: x, startY: cy, startZ: z, range: o.range != null ? o.range : 2.5, speed: o.speed != null ? o.speed : 1.5,
-      phase: (P.length * 2.39996) % (Math.PI * 2), isFallen: false, tell: 0, revealTimer: 0, dx: 0, r: shape === 'round' ? w / 2 : 0,
-      grip: kind === 'snow' ? SNOW_GRIP : ICE_GRIP, crackState: 0, crackT: 0 };
-    if (o.cp) {
-      p.checkpoint = true; p.checkpointActivated = false; p.checkpointReadyMaterial = cpMat; cpList.push(p);
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3, 8), new THREE.MeshStandardMaterial({ color: 0xdddddd }));
-      pole.position.set(x + w / 2 - 0.7, y + 0.25 + 1.5, z + d / 2 - 0.7); grp.add(pole);
-      const flag = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 0.05), new THREE.MeshBasicMaterial({ color: 0x22ddaa }));
-      flag.position.set(x + w / 2 - 0.7 + 0.65, y + 0.25 + 2.6, z + d / 2 - 0.7); grp.add(flag);
-    }
-    if (type === 'crack') cracks.push(p);
-    if (o.route) route.push(p);
-    return pushColl(p);
-  }
-  function coverEntry(mesh, w, d, hh, r) {
-    const p = { mesh, width: w, depth: d, type: 'wall', hh, startX: mesh.position.x, startY: mesh.position.y, startZ: mesh.position.z, range: 0, speed: 0, phase: 0, isFallen: false, tell: 0, revealTimer: 0, dx: 0, r: r || 0, cover: true };
-    P.push(p); C.push(p); return p;
-  }
-  function wall(cx, floorTop, cz, w, h, d) { // dinding es / penghalang es besar (collision kotak)
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat); m.position.set(cx, floorTop + h / 2, cz); grp.add(m);
-    return coverEntry(m, w, d, h / 2, 0);
-  }
-  function rock(cx, floorTop, cz, rad, h) { // bongkahan batu salju (collision lingkaran)
-    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), rockMat); m.scale.set(rad * 1.06, h / 2, rad * 1.06); m.position.set(cx, floorTop + h / 2, cz); grp.add(m);
-    return coverEntry(m, rad * 2, rad * 2, h / 2, rad);
-  }
-  function column(cx, cz, rad, y0, y1) { // pilar es raksasa
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad * 1.15, y1 - y0, 20), towerMat); m.position.set(cx, (y0 + y1) / 2, cz); grp.add(m);
-    return coverEntry(m, rad * 2, rad * 2, (y1 - y0) / 2, rad);
-  }
-  function crystal(x, y, z, s) {
-    const m = new THREE.Mesh(new THREE.OctahedronGeometry(1, 0), cubeMat); m.scale.set(s * 0.5, s, s * 0.5); m.position.set(x, y + s, z); grp.add(m);
-  }
-  const top = (p) => p.mesh.position.y + p.hh;
-
-  // ================= ZONA 1: Camp awal + Lapangan Es (licin, zig-zag dinding) =================
-  plat(0, 0, 0, 10, 10, { kind: 'snow', route: 1 });
-  plat(0, 0, -16, 16, 20, { route: 1 });
-  wall(-3, 0.25, -3.2, 4, 3.2, 1);
-  wall(-4.5, 0.25, -12, 7, 3.2, 1);
-  wall(4.5, 0.25, -18, 7, 3.2, 1);
-  rock(-5.5, 0.25, -22.5, 1.7, 3.2);
-  rock(5.8, 0.25, -8.2, 1.5, 3.0);
-  crystal(-7, 0.25, -7, 1.6); crystal(7.2, 0.25, -24, 1.3);
-
-  // ================= ZONA 2: Jembatan es batu melayang (bergerak, retak) =================
-  plat(11.5, 0.5, -22, 3.6, 3.6, { kind: 'cube', h: 1.4, route: 1 });
-  plat(16.5, 1.0, -22, 3.6, 3.6, { kind: 'cube', h: 1.4, type: 'moving_y', range: 0.9, speed: 1.4, route: 1 });
-  plat(21.5, 1.5, -25, 3.6, 3.6, { kind: 'cube', h: 1.4, type: 'moving_x', range: 1.5, speed: 1.2, route: 1 });
-  plat(26.5, 2.0, -28.5, 3.6, 3.6, { kind: 'cube', h: 1.4, type: 'crack', route: 1 });
-  plat(31.5, 2.0, -31.5, 3.6, 3.6, { kind: 'cube', h: 1.4, route: 1 });
-
-  // ================= ZONA 3: Teras Timur (CHECKPOINT 1) + tangga zig-zag bertingkat =================
-  plat(40, 2.5, -33, 10, 10, { kind: 'snow', cp: true, route: 1 });
-  wall(38.75, 2.75, -35.5, 6.5, 4, 1);
-  wall(44.2, 2.75, -30.5, 1, 4, 5);
-  plat(38, 4, -43, 7, 7, { route: 1 });
-  plat(31.5, 5.5, -48, 7, 7, { route: 1 });
-  plat(25, 7, -43, 7, 7, { route: 1 });
-  plat(18.5, 8.5, -48, 7, 7, { route: 1 });
-  plat(12, 10, -43, 7, 7, { route: 1 });
-  rock(33.8, 5.75, -48.3, 1.4, 3.4);
-  rock(14.4, 10.25, -44.6, 1.3, 3.4);
-  plat(4.5, 11.5, -45, 8, 8, { kind: 'snow', cp: true, route: 1 });   // CHECKPOINT 2
-
-  // ================= ZONA 4: Jembatan es sempit licin + pad perlindungan =================
-  plat(-6, 11.5, -45, 10, 2.8, { route: 1 });
-  plat(-17, 12, -45, 9, 9, { route: 1 });
-  rock(-14.2, 12.25, -47.2, 1.6, 3.8);
-  plat(-17, 12.5, -56.5, 2.8, 14, { route: 1 });
-  plat(-17, 13, -69, 10, 10, { kind: 'snow', cp: true, route: 1 });   // CHECKPOINT 3
-  wall(-13.2, 13.25, -69, 1, 3.8, 7);
-  wall(-14.6, 13.25, -72.8, 4, 3.8, 1);
-
-  // ================= ZONA 5: Menara spiral es (naik melingkar) =================
-  const SC = { x: -17, z: -83 }, SR = 9, SN = 14, SDA = 0.62;
-  column(SC.x, SC.z, 3.2, 12, 34);
-  for (let i = 1; i <= SN; i++) {
-    const a = Math.PI / 2 + i * SDA, o = { shape: 'round', route: 1 };
-    if (i % 4 === 0) o.type = 'crack'; else if (i % 5 === 2) { o.type = 'moving_y'; o.range = 0.5; o.speed = 1.3; }
-    plat(SC.x + SR * Math.cos(a), 13 + i, SC.z + SR * Math.sin(a), 3.8, 3.8, o);
-  }
-
-  // ================= ZONA 6: Puncak (CHECKPOINT 4) + medan terakhir =================
-  plat(-27, 27.5, -97, 9, 9, { kind: 'snow', cp: true, route: 1 });   // CHECKPOINT 4
-  const PF2 = plat(-27, 28, -113.5, 14, 19, { route: 1 });
-  wall(-31, 28.25, -106.5, 7, 3.6, 1);
-  wall(-23, 28.25, -110, 7, 3.6, 1);
-  rock(-32, 28.25, -116, 1.5, 3.2);
-  crystal(-21.5, 28.25, -120, 1.4);
-  const FY = 28, WINP = { x: -27, y: FY, z: -118 };
-  const finishLine = new THREE.Mesh(new THREE.BoxGeometry(7, 0.1, 7), new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 1 }));
-  finishLine.position.set(WINP.x, FY + 0.3, WINP.z); grp.add(finishLine);
-  for (const sd of [-1, 1]) { const pl = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 6), new THREE.MeshStandardMaterial({ color: 0xcccccc })); pl.position.set(WINP.x + sd * 4, FY + 3, WINP.z); grp.add(pl); }
-  { const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256; const cx = cv.getContext('2d');
-    cx.fillStyle = '#0d2238'; cx.fillRect(0, 0, 1024, 256); cx.strokeStyle = '#7fd6ff'; cx.lineWidth = 15; cx.strokeRect(10, 10, 1004, 236);
-    cx.font = 'bold 80px sans-serif'; cx.fillStyle = '#7fd6ff'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('DUNIA SALJU', 512, 100);
-    cx.font = 'bold 90px sans-serif'; cx.fillStyle = '#ffffff'; cx.fillText('KAMU LOLOS!', 512, 188);
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
-    board.position.set(WINP.x, FY + 4, WINP.z); grp.add(board); }
-
-  // ================= NPC penjaga (menara es) =================
-  const A = new THREE.Vector3(), B = new THREE.Vector3(), D = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
-  function makeGuard(gx, gy, gz, idx, range, yaw, zone) { // zone = [xMin,xMax,zMin,zMax,yMin,yMax] sektor jaga NPC
-    const tw = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.0, gy + 8, 16), towerMat); tw.position.set(gx, (gy - 8) / 2, gz); grp.add(tw);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.3, 16), snowMat); cap.position.set(gx, gy - 0.15, gz); grp.add(cap);
-    const g = new THREE.Group(); g.position.set(gx, gy, gz); grp.add(g);
-    const parka = new THREE.MeshStandardMaterial({ color: 0x2c4a7a, roughness: 0.7 }), fur = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.95 }), dark = new THREE.MeshStandardMaterial({ color: 0x15151c, metalness: 0.6, roughness: 0.4 });
-    const add = (geo, mat, x, y, z, par = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); par.add(m); return m; };
-    add(new THREE.CapsuleGeometry(0.32, 0.8, 4, 12), parka, 0, 1.4, 0);
-    add(new THREE.SphereGeometry(0.3, 16, 12), fur, 0, 2.3, 0);
-    add(new THREE.BoxGeometry(0.34, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: 0xff2200 }), 0, 2.32, 0.26);
-    for (const sd of [-1, 1]) add(new THREE.CapsuleGeometry(0.12, 0.45, 4, 8), parka, sd * 0.16, 0.5, 0);
-    add(new THREE.BoxGeometry(0.1, 0.1, 1.1), dark, 0.3, 1.6, 0.6);
-    add(new THREE.CapsuleGeometry(0.09, 0.4, 4, 8), parka, 0.3, 1.5, 0.15);
-    const muzzle = add(new THREE.SphereGeometry(0.07, 8, 8), new THREE.MeshBasicMaterial({ color: 0x66f6ff }), 0.3, 1.6, 1.2);
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8), new THREE.MeshBasicMaterial({ color: 0xff3322, transparent: true, opacity: 0.9 })); beam.visible = false; grp.add(beam);
-    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff })); spark.visible = false; grp.add(spark);
-    const drawBeam = (a, ex, ey, ez, rad) => { B.set(ex, ey, ez); D.subVectors(B, a); const len = D.length() || 0.01; beam.position.copy(a).addScaledVector(D, 0.5); beam.scale.set(rad, len, rad); beam.quaternion.setFromUnitVectors(UP, D.normalize()); };
-    let state = 'wait', timer = 0, coolDur = 0, lx = 0, ly = 0, lz = 0, llen = 0;
-    const npc = {
-      mesh: g, x: gx, y: gy + 2.0, z: gz, range, zone,
-      inZone(pp) { return !zone || (pp.x >= zone[0] && pp.x <= zone[1] && pp.z >= zone[2] && pp.z <= zone[3] && pp.y >= zone[4] && pp.y <= zone[5]); },
-      reset() { state = 'wait'; timer = 0; beam.visible = false; spark.visible = false; muzzle.scale.set(1, 1, 1); },
-      update(delta, pp, t, canKill) {
-        if (snowTimeLeft() > 0) { // masih hitung mundur: NPC hanya berjaga
-          if (state !== 'wait') this.reset();
-          g.rotation.y = yaw + Math.sin(t * 0.7 + idx * 1.7) * 0.5; return false;
-        }
-        if (state === 'wait') { state = 'cool'; timer = 0; coolDur = 0.8 + idx * 0.9; }
-        muzzle.getWorldPosition(A);
-        const cx = pp.x, cy = pp.y + 1.0, cz = pp.z, hy = pp.y + 1.7;
-        const dist = Math.hypot(cx - A.x, cy - A.y, cz - A.z);
-        timer += delta;
-        let df = Math.atan2(cx - g.position.x, cz - g.position.z) - g.rotation.y; df = Math.atan2(Math.sin(df), Math.cos(df));
-        if (state !== 'fire') g.rotation.y += df * (1 - Math.exp(-delta * 8));
-        if (state === 'cool') {
-          if (timer >= coolDur) { if (dist <= range && this.inZone(pp)) { state = 'aim'; timer = 0; } else timer = coolDur; }
-          return false;
-        }
-        if (state === 'aim' || state === 'lock') {
-          if (state === 'aim' && (dist > range + 8 || !this.inZone(pp))) { state = 'cool'; timer = 0; coolDur = 0.5; beam.visible = false; return false; }
-          // pilih sasaran: dada, atau kepala jika dada tertutup tapi kepala terlihat
-          let ty = cy; if (snowRayBlocked(A.x, A.y, A.z, cx, cy, cz) && !snowRayBlocked(A.x, A.y, A.z, cx, hy, cz)) ty = hy;
-          if (state === 'aim') { lx = cx - A.x; ly = ty - A.y; lz = cz - A.z; llen = Math.hypot(lx, ly, lz) || 1; }
-          const ux = lx / llen, uy = ly / llen, uz = lz / llen;
-          const ex = A.x + ux * (llen + 3), ey = A.y + uy * (llen + 3), ez = A.z + uz * (llen + 3);
-          const hit = snowRayBlocked(A.x, A.y, A.z, ex, ey, ez);
-          if (hit) drawBeam(A, hit.x, hit.y, hit.z, state === 'aim' ? 0.03 : 0.06); else drawBeam(A, ex, ey, ez, state === 'aim' ? 0.03 : 0.06);
-          beam.material.color.setHex(state === 'aim' ? 0xff3322 : 0xff9900);
-          beam.visible = state === 'lock' || Math.sin(timer * 30) > -0.3;
-          if (state === 'aim' && timer >= SNOW_AIM_TIME) { state = 'lock'; timer = 0; }
-          else if (state === 'lock' && timer >= SNOW_LOCK_TIME) {
-            // TEMBAK: arah sudah terkunci, jadi pemain bisa menghindar dengan bergerak/berlindung
-            state = 'fire'; timer = 0;
-            const end = hit || { x: ex, y: ey, z: ez };
-            drawBeam(A, end.x, end.y, end.z, 0.14); beam.material.color.setHex(0x66f6ff); beam.visible = true;
-            spark.position.set(end.x, end.y, end.z); spark.visible = true; muzzle.scale.set(3, 3, 3);
-            const hitPlayer = distPointSeg(cx, cy, cz, A.x, A.y, A.z, end.x, end.y, end.z) < 1.0 || distPointSeg(cx, hy, cz, A.x, A.y, A.z, end.x, end.y, end.z) < 0.9;
-            return !!(hitPlayer && canKill);
-          }
-          return false;
-        }
-        if (state === 'fire' && timer > 0.3) { beam.visible = false; spark.visible = false; muzzle.scale.set(1, 1, 1); state = 'cool'; timer = 0; coolDur = SNOW_COOL_TIME; }
-        return false;
-      }
-    };
-    g.rotation.y = yaw; npcs.push(npc); return npc;
-  }
-  // NPC 1: menjaga Lapangan Es | NPC 2: menjaga Teras Timur & tangga | NPC 3: jembatan & spiral bawah | NPC 4: area finish
-  const guardsArr = [
-    makeGuard(0, 6, -34, 0, 40, 0, [-12, 30, -34, 8, -3, 6]),                       // camp awal, lapangan es, jembatan es batu
-    makeGuard(49, 8, -48, 1, 40, -Math.PI / 2, [17, 50, -52, -25, 0, 14]),           // teras timur & tangga zig-zag
-    makeGuard(-2, 16, -64, 2, 40, -Math.PI / 2, [-24, 0.5, -92, -40, 10, 30]),       // jembatan es, pad, spiral
-    makeGuard(-27, 32, -131, 3, 36, 0, [-36, -18, -125, -101, 26, 34])               // medan terakhir & finish
-  ];
-
-  // Salju turun
-  const N = 260, sp = new Float32Array(N * 3);
-  for (let i = 0; i < N; i++) { sp[i * 3] = (Math.random() - 0.5) * 50; sp[i * 3 + 1] = Math.random() * 30; sp[i * 3 + 2] = (Math.random() - 0.5) * 50; }
-  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-  const snowfall = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.28, transparent: true, opacity: 0.9 })); snowfall.frustumCulled = false; grp.add(snowfall);
-
-  // Posisi aman (di belakang cover) untuk pengujian & titik teleport admin
-  const tpOf = (p) => [p.mesh.position.x, top(p) + 0.05, p.mesh.position.z];
-  const cp = cpList;
-  return { platforms: P, hazards: [], guards: guardsArr, laserBeam: null, FIN_Y: top(PF2), WIN: WINP, MAZE_H: 0, MAZE_Z: 0,
-    cover: C, cracks, snowfall, route, npcs, cps: cp,
-    tp: { start: [0, 0.25, 0], hub: tpOf(cp[1]), top: tpOf(cp[2]), maze: tpOf(cp[3]), finish: [WINP.x, top(PF2), WINP.z] } };
-}
-// ===== SNOW-MODULE-END =====
+// ===== ICE MAP BUILDER MOVED TO snow.js =====
 
 const clock = new THREE.Clock();
 let walkTime = 0;
@@ -3329,7 +3053,7 @@ function animate() {
     }
   }
   tickMultiplayer();
-  updateSnowHud();
+  if (snowController) snowController.updateHud({ currentMap, gameState });
   animateRemotePlayers(delta);
   if (lobbyAccentRing && gameState === 'LOBBY') lobbyAccentRing.rotation.z += delta * 0.12;
   if (scene && camera) renderer.render(scene, camera);
@@ -3397,7 +3121,12 @@ function animate() {
   });
 
   hazards.forEach(h => h.update(t));
-  if (currentMap === 'snow') updateSnowWorld(delta);
+  if (currentMap === 'snow' && snowController) snowController.update(delta, {
+    curGroundPlat, physics, character, godMode, flyMode, hitCD, knock
+  });
+  if (currentMap === 'angkasa' && angkasaController) angkasaController.update(delta, {
+    curGroundPlat, physics, character, godMode, flyMode, hitCD, knock
+  });
   if (!mazeHinted && character.position.y > FIN_Y - 1 && Math.abs(character.position.x) < MAZE_H && character.position.z < -89 && character.position.z > MAZE_Z - MAZE_H) { mazeHinted = true; showToast('🧩 SALAH BEGO,MAMPUS'); }
   for (const gd of guards) { if (gd.update(delta, character.position, t, !godMode && !flyMode)) { gameState = 'GAMEOVER'; showGameOver(currentMap === 'snow' ? 'snowshot' : 'shot'); break; } }
   hitCD = Math.max(0, hitCD - delta); knock.multiplyScalar(Math.exp(-delta * 2.5));
@@ -3514,7 +3243,7 @@ function animate() {
     updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins;
     onFinish();
-    showOverlay('YOU WIN!', (currentMap === 'snow' ? 'Kamu lolos dari dunia salju dan tembakan NPC! +1000 🪙' : 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +1000 🪙') + finishSummary(), '#00ff00');
+    showOverlay('YOU WIN!', (currentMap === 'snow' ? 'Kamu lolos dari dunia salju dan tembakan NPC! +1000 🪙' : currentMap === 'angkasa' ? 'Kamu berhasil menaklukkan lintasan luar angkasa! +1000 🪙' : 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +1000 🪙') + finishSummary(), '#00ff00');
   }
 
   // ===== Animasi karakter: damping + squash & stretch + condong badan =====
