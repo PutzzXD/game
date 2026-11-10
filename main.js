@@ -1786,31 +1786,171 @@ function init3DGame() {
     mk(new THREE.TorusGeometry(0.098, 0.014, 8, 24), ultraRed, 0, -0.12, 0, bracer).rotation.x = Math.PI / 2;
   }
 
-  // ===== KOSTUM GODZILLA: sisik, sirip punggung, ekor dan cakar =====
-  const godSkin = accMat(0x315b42, { roughness: 0.82 });
-  const godScale = accMat(0x527d55, { roughness: 0.72 });
-  const godSpine = accMat(0xb8d9c4, { metalness: 0.18, roughness: 0.42, emissive: 0x173d31, emissiveIntensity: 0.35 });
+  // ===== KOSTUM GODZILLA HD: armor bersisik dari kepala sampai kaki =====
+  // Semua bagian berada di group terpisah agar hanya muncul saat kostum Godzilla dipakai.
+  const godSkin = accMat(0x252a2c, { roughness: 0.9 });
+  const godScale = accMat(0x343b3d, { roughness: 0.82 });
+  const godDark = accMat(0x171c1e, { roughness: 0.94 });
+  const godClaw = accMat(0x0d1113, { roughness: 0.58, metalness: 0.12 });
+  const godGlow = accMat(0x087d83, {
+    color: 0x159da0, emissive: 0x087e91, emissiveIntensity: 0.72,
+    roughness: 0.38, metalness: 0.12
+  });
+  const godSpine = accMat(0x1b777b, {
+    color: 0x29aeb1, emissive: 0x087e91, emissiveIntensity: 0.85,
+    roughness: 0.36, metalness: 0.16
+  });
+
+  // Tekstur mikro-sisik untuk memberi permukaan kulit reptil yang lebih kaya.
+  const godTexCanvas = document.createElement('canvas');
+  godTexCanvas.width = godTexCanvas.height = 512;
+  const gtx = godTexCanvas.getContext('2d');
+  gtx.fillStyle = '#303638'; gtx.fillRect(0, 0, 512, 512);
+  for (let gy = -12; gy < 540; gy += 18) {
+    for (let gx = -12 + ((Math.floor(gy / 18) % 2) * 9); gx < 540; gx += 18) {
+      gtx.fillStyle = 'rgba(5,10,12,0.34)';
+      gtx.beginPath(); gtx.ellipse(gx, gy, 7, 5.2, 0, 0, Math.PI * 2); gtx.fill();
+      gtx.strokeStyle = 'rgba(145,160,157,0.17)'; gtx.lineWidth = 1.5;
+      gtx.beginPath(); gtx.arc(gx - 1, gy - 1, 5.4, Math.PI * 1.05, Math.PI * 1.9); gtx.stroke();
+    }
+  }
+  const godTex = new THREE.CanvasTexture(godTexCanvas);
+  godTex.wrapS = godTex.wrapT = THREE.RepeatWrapping;
+  godTex.repeat.set(2, 2); godTex.colorSpace = THREE.SRGBColorSpace;
+  godTex.anisotropy = 8;
+  godSkin.map = godTex; godSkin.bumpMap = godTex; godSkin.bumpScale = 0.075;
+  godSkin.needsUpdate = true;
+  godScale.map = godTex; godScale.bumpMap = godTex; godScale.bumpScale = 0.055;
+  godScale.needsUpdate = true;
+
   const godHead = grp(headGroup, costumeParts.godzilla);
-  const snout = mk(new THREE.SphereGeometry(0.19, 20, 14), godSkin, 0, -0.08, 0.26, godHead); snout.scale.set(1.05, 0.62, 1.15);
+  // Kubah kepala menutupi rambut dan kepala avatar, dengan moncong reptil lebar.
+  const skull = mk(new THREE.SphereGeometry(0.365, 48, 32), godSkin, 0, 0.015, 0.005, godHead);
+  skull.scale.set(1.12, 0.96, 1.08);
+  const jaw = mk(new THREE.SphereGeometry(0.255, 36, 24), godDark, 0, -0.17, 0.12, godHead);
+  jaw.scale.set(1.18, 0.42, 1.15);
+  const snout = mk(new THREE.SphereGeometry(0.225, 40, 28), godScale, 0, -0.105, 0.255, godHead);
+  snout.scale.set(1.25, 0.58, 1.2);
+  const mouthLine = mk(new THREE.BoxGeometry(0.36, 0.018, 0.025), godClaw, 0, -0.205, 0.43, godHead);
   for (const sd of [-1, 1]) {
-    const brow = mk(new THREE.BoxGeometry(0.17, 0.07, 0.1), godScale, sd * 0.105, 0.13, 0.26, godHead); brow.rotation.z = sd * 0.18;
-    mk(new THREE.SphereGeometry(0.025, 10, 8), blackSuit, sd * 0.07, -0.045, 0.425, godHead);
-    const horn = mk(new THREE.ConeGeometry(0.045, 0.18, 7), godSpine, sd * 0.2, 0.26, -0.04, godHead); horn.rotation.z = -sd * 0.55;
-  }
-  const godBack = grp(rig, costumeParts.godzilla);
-  for (let i = 0; i < 7; i++) {
-    const plate = mk(new THREE.ConeGeometry(0.22 - i * 0.012, 0.34 - i * 0.018, 5), godSpine, 0, 1.15 + i * 0.13, -0.29, godBack);
-    plate.rotation.x = -0.22; plate.rotation.z = Math.PI;
-  }
-  const tail = new THREE.Group(); tail.position.set(0, 1.0, -0.25); godBack.add(tail);
-  const tailA = mk(new THREE.ConeGeometry(0.22, 0.72, 10), godSkin, 0, 0, -0.42, tail); tailA.rotation.x = -Math.PI / 2;
-  const tailB = mk(new THREE.ConeGeometry(0.12, 0.48, 9), godSkin, 0, 0, -0.88, tail); tailB.rotation.x = -Math.PI / 2;
-  const tailTip = mk(new THREE.ConeGeometry(0.055, 0.28, 7), godSpine, 0, 0, -1.18, tail); tailTip.rotation.x = -Math.PI / 2;
-  for (const sd of [-1, 1]) {
-    const claw = grp(sd < 0 ? leftElbow : rightElbow, costumeParts.godzilla);
-    for (let i = -1; i <= 1; i++) { const nail = mk(new THREE.ConeGeometry(0.025, 0.13, 7), godSpine, i * 0.055, -0.46, 0.025, claw); nail.rotation.x = Math.PI; }
+    const cheek = mk(new THREE.SphereGeometry(0.145, 24, 18), godScale, sd * 0.245, -0.075, 0.12, godHead);
+    cheek.scale.set(0.72, 0.78, 0.82);
+    const eyeSocket = mk(new THREE.SphereGeometry(0.075, 24, 16), godDark, sd * 0.145, 0.075, 0.292, godHead);
+    eyeSocket.scale.set(1.22, 0.72, 0.42);
+    const eye = mk(new THREE.SphereGeometry(0.035, 20, 14), accMat(0xd7b75a, { emissive: 0x6e4b12, emissiveIntensity: 0.45 }), sd * 0.145, 0.075, 0.323, godHead);
+    eye.scale.set(1.25, 0.55, 0.35);
+    for (let j = 0; j < 2; j++) {
+      const nostril = mk(new THREE.SphereGeometry(0.018, 12, 8), godDark, sd * (0.07 + j * 0.055), -0.115, 0.49, godHead);
+      nostril.scale.set(1, 0.6, 0.5);
+    }
+    const brow = mk(new THREE.BoxGeometry(0.19, 0.075, 0.11), godSkin, sd * 0.15, 0.16, 0.29, godHead);
+    brow.rotation.z = -sd * 0.16;
+    // Tonjolan kecil di sisi kepala.
+    const temple = mk(new THREE.ConeGeometry(0.07, 0.19, 8), godDark, sd * 0.29, 0.12, -0.03, godHead);
+    temple.rotation.z = -sd * 0.95;
   }
 
+  // Leher dan armor dada/perut menutup baju avatar.
+  const godTorso = grp(rig, costumeParts.godzilla);
+  const neck = mk(new THREE.CylinderGeometry(0.23, 0.29, 0.42, 32), godSkin, 0, 1.94, 0, godTorso);
+  neck.rotation.x = -0.08;
+  const chest = mk(new THREE.SphereGeometry(0.43, 40, 28), godSkin, 0, 1.62, 0.015, godTorso);
+  chest.scale.set(1.08, 0.9, 0.83);
+  const belly = mk(new THREE.SphereGeometry(0.35, 36, 24), godScale, 0, 1.27, 0.025, godTorso);
+  belly.scale.set(1.03, 0.95, 0.8);
+  for (let row = 0; row < 4; row++) {
+    const rib = mk(new THREE.TorusGeometry(0.275 - row * 0.012, 0.012, 8, 32, Math.PI), godDark, 0, 1.48 - row * 0.105, 0.23, godTorso);
+    rib.rotation.x = Math.PI / 2;
+    rib.scale.set(1.05, 0.72, 1);
+  }
+  for (const sd of [-1, 1]) {
+    const shoulder = mk(new THREE.SphereGeometry(0.22, 32, 22), godScale, sd * 0.43, 1.88, 0, godTorso);
+    shoulder.scale.set(1.12, 0.78, 1.08);
+    // Segmen armor lengan atas dan bawah.
+    const upperArmor = grp(sd < 0 ? leftArmPivot : rightArmPivot, costumeParts.godzilla);
+    const upper = mk(new THREE.CapsuleGeometry(0.135, 0.27, 8, 24), godSkin, 0, -0.22, 0, upperArmor);
+    upper.scale.set(1.14, 1.04, 1.1);
+    const elbowArmor = grp(sd < 0 ? leftElbow : rightElbow, costumeParts.godzilla);
+    const fore = mk(new THREE.CapsuleGeometry(0.12, 0.26, 8, 24), godScale, 0, -0.2, 0, elbowArmor);
+    fore.scale.set(1.13, 1.04, 1.12);
+    const wrist = mk(new THREE.TorusGeometry(0.105, 0.025, 10, 28), godDark, 0, -0.36, 0, elbowArmor);
+    wrist.rotation.x = Math.PI / 2;
+    // Cakar tiga jari yang mengarah ke depan.
+    for (let k = -1; k <= 1; k++) {
+      const finger = mk(new THREE.CapsuleGeometry(0.025, 0.105, 5, 12), godSkin, k * 0.055, -0.435, 0.035, elbowArmor);
+      finger.rotation.z = k * -0.18;
+      const nail = mk(new THREE.ConeGeometry(0.026, 0.105, 9), godClaw, k * 0.055, -0.49, 0.09, elbowArmor);
+      nail.rotation.x = Math.PI;
+    }
+    // Armor paha, tulang kering, dan kaki/cakar.
+    const legPivot = sd < 0 ? leftLegPivot : rightLegPivot;
+    const kneePivot = sd < 0 ? leftKnee : rightKnee;
+    const thigh = grp(legPivot, costumeParts.godzilla);
+    const thighPlate = mk(new THREE.CapsuleGeometry(0.155, 0.25, 8, 24), godSkin, 0, -0.2, 0, thigh);
+    thighPlate.scale.set(1.18, 1.08, 1.12);
+    const shin = grp(kneePivot, costumeParts.godzilla);
+    const shinPlate = mk(new THREE.CapsuleGeometry(0.135, 0.24, 8, 24), godScale, 0, -0.2, 0, shin);
+    shinPlate.scale.set(1.2, 1.08, 1.12);
+    const foot = mk(new THREE.SphereGeometry(0.16, 28, 18), godSkin, 0, -0.405, 0.1, shin);
+    foot.scale.set(1.25, 0.58, 1.5);
+    for (let toe = -1; toe <= 1; toe++) {
+      const talon = mk(new THREE.ConeGeometry(0.035, 0.15, 9), godClaw, toe * 0.085, -0.425, 0.255, shin);
+      talon.rotation.x = Math.PI / 2;
+      talon.rotation.z = toe * 0.16;
+    }
+    // Sisik kecil berlapis di sisi bahu dan paha.
+    for (let n = 0; n < 3; n++) {
+      const scale = mk(new THREE.ConeGeometry(0.075, 0.13, 6), godDark, sd * (0.48 + n * 0.025), 1.78 - n * 0.13, 0.06, godTorso);
+      scale.rotation.z = -sd * 0.7;
+    }
+  }
+
+  // Ekor tebal beruas, melengkung ke belakang, lengkap dengan sirip di bagian atas.
+  const godTail = new THREE.Group();
+  godTail.position.set(0, 1.02, -0.22);
+  godTorso.add(godTail);
+  const tailSections = [
+    { z: -0.23, r: 0.235, len: 0.48 },
+    { z: -0.61, r: 0.19, len: 0.48 },
+    { z: -0.98, r: 0.145, len: 0.43 },
+    { z: -1.31, r: 0.095, len: 0.34 },
+    { z: -1.57, r: 0.045, len: 0.22 }
+  ];
+  tailSections.forEach((part, i) => {
+    const section = mk(new THREE.SphereGeometry(part.r, 28, 20), godSkin, 0, -0.035 - i * 0.025, part.z, godTail);
+    section.scale.set(1, 0.88, part.len / (part.r * 2));
+    if (i < 4) {
+      const ridge = mk(new THREE.ConeGeometry(part.r * 0.72, 0.13 - i * 0.018, 7), godScale, 0, part.r * 0.72, part.z, godTail);
+      ridge.rotation.x = -0.12;
+    }
+  });
+  const tailTip = mk(new THREE.ConeGeometry(0.055, 0.28, 9), godDark, 0, -0.02, -1.78, godTail);
+  tailTip.rotation.x = -Math.PI / 2;
+
+  // Sirip punggung besar seperti Godzilla pada foto, dari tengkuk sampai ujung ekor.
+  const dorsal = grp(rig, costumeParts.godzilla);
+  const dorsalRows = [
+    { y: 2.12, z: -0.16, w: 0.105, h: 0.28 },
+    { y: 1.91, z: -0.19, w: 0.15, h: 0.38 },
+    { y: 1.68, z: -0.2, w: 0.19, h: 0.43 },
+    { y: 1.43, z: -0.2, w: 0.18, h: 0.38 },
+    { y: 1.2, z: -0.2, w: 0.15, h: 0.32 },
+    { y: 0.99, z: -0.22, w: 0.12, h: 0.25 }
+  ];
+  dorsalRows.forEach((d, i) => {
+    const plate = mk(new THREE.ConeGeometry(d.w, d.h, 5), godSpine, 0, d.y, d.z, dorsal);
+    plate.rotation.x = -0.18; plate.rotation.z = Math.PI;
+    plate.scale.set(1.15, 1, 0.58);
+    const inner = mk(new THREE.ConeGeometry(d.w * 0.58, d.h * 0.68, 5), godGlow, 0, d.y + 0.015, d.z + 0.035, dorsal);
+    inner.rotation.x = -0.18; inner.rotation.z = Math.PI;
+    inner.scale.set(1.08, 1, 0.42);
+  });
+  // Deretan sirip kecil melanjutkan punggung hingga ekor.
+  for (let i = 0; i < 5; i++) {
+    const z = -0.48 - i * 0.25;
+    const fin = mk(new THREE.ConeGeometry(0.095 - i * 0.012, 0.22 - i * 0.025, 5), godSpine, 0, 1.02 - i * 0.025, z, godTail);
+    fin.rotation.z = Math.PI; fin.rotation.x = -0.15;
+  }
   // ===== KOSTUM RAMEN RAIDER: helm mangkuk ramen, mie, sumpit dan emblem =====
   const ramenBowl = accMat(0xd94a32, { roughness: 0.42, metalness: 0.12 });
   const ramenCream = accMat(0xffe3a3, { roughness: 0.68 });
