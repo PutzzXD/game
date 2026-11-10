@@ -3010,6 +3010,13 @@ function applyMap(id) {
   const w = id === 'snow' ? snowWorld : (id === 'angkasa' ? angkasaWorld : lavaWorld);
   if (!w) return;
   currentMap = id;
+
+  // Fitur lari (sprint) dimatikan khusus di map Angkasa.
+  // Map Lava dan Salju tetap memakai tombol lari seperti biasa.
+  const runButton = document.getElementById('btn-run');
+  if (runButton) runButton.style.display = id === 'angkasa' ? 'none' : '';
+  isRunning = false;
+
   platforms = w.platforms; hazards = w.hazards; guards = w.guards || []; laserBeam = w.laserBeam || null;
   FIN_Y = w.FIN_Y; WIN = w.WIN; MAZE_H = w.MAZE_H || 0; MAZE_Z = w.MAZE_Z || 0;
   laserState = 'off'; curGroundPlat = null;
