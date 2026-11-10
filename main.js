@@ -156,8 +156,6 @@ document.addEventListener('keydown', startBackgroundMusic, { capture: true });
 const FIREBASE_URL = "https://game3d-66134-default-rtdb.asia-southeast1.firebasedatabase.app/";
 const DEV_USERNAME = "putzzdev";
 const ADMIN_PLAYER_ID = "123456";
-// Nilai mahkota akun admin dibuat konsisten antara profil dan leaderboard.
-const ADMIN_FIXED_CROWNS = 9999999;
 
 // ID dibuat oleh sistem, bukan dari input pemain.
 async function createUniquePlayerId() {
@@ -187,8 +185,7 @@ async function ensurePlayerId(userKey, data) {
 let playerData = { 
   username: "", 
   isDev: false, 
-  coins: 0,
-  crowns: 0,
+  coins: 0, 
   inventory: ['baju_default', 'celana_default', 'sepatu_default', 'efek_lari_default', 'efek_lompat_default', 'aks_none'],
   equipped: {
     baju: 'baju_default',
@@ -217,8 +214,7 @@ const SHOP_ITEMS = {
     { id: 'baju_ultraman', name: 'Kostum Ultraman', price: 4500, color: 0xd9e0e8, ultra: true, suit: 'mail' },
     { id: 'baju_godzilla', name: 'Kostum Godzilla', price: 5000, color: 0x315b42, godzilla: true },
     { id: 'baju_ramenraider', name: 'Kostum Ramen Raider', price: 4000, color: 0xd98a32, ramen: true },
-    { id: 'baju_saitama', name: 'Kostum Saitama — One Punch Man', price: 12000, color: 0xffd21a, saitama: true },
-    { id: 'baju_developer', name: 'DEVELOPER — Eksklusif Admin', price: 0, color: 0x101b35, dev: true, suit: 'mail' }
+    { id: 'baju_pacman', name: 'Kostum Pacman', price: 10000, color: 0xffd800, pac: true }
   ],
   celana: [
     { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
@@ -566,6 +562,8 @@ async function returnToLobby() {
   if (angkasaWorldGroup) angkasaWorldGroup.visible = false;
   if (angkasaController) angkasaController.reset(physics);
   if (lobbyWorldGroup) lobbyWorldGroup.visible = true;
+  if (lavaHudEl) lavaHudEl.style.display = 'none';
+  mazeCameraLocked = false;
   if (scene) { scene.background = new THREE.Color(0x10182b); scene.fog = null; }
   if (camera && controls) { camera.position.set(0, 3.8, 9.5); controls.target.set(0, 1.45, 0); }
   updateRoomUI();
@@ -628,70 +626,6 @@ function setLobbyOnlyHud(show) {
   if (inviteLaunch) inviteLaunch.style.display = show ? 'flex' : 'none';
 }
 
-// ===== MAHKOTA KEMENANGAN =====
-const DEFAULT_LEADERBOARD_MIN_CROWNS = 3;
-let leaderboardMinCrowns = DEFAULT_LEADERBOARD_MIN_CROWNS;
-function ensureCrownProfileUI() {
-  const btn = document.getElementById('btn-profile');
-  if (btn && !document.getElementById('profile-avatar-crown')) {
-    const avatar = document.createElement('span'); avatar.id = 'profile-avatar-crown'; avatar.textContent = '👤';
-    btn.insertBefore(avatar, btn.firstChild);
-  }
-  if (btn && !document.getElementById('hud-crowns')) {
-    const crowns = document.createElement('span'); crowns.id = 'hud-crowns';
-    crowns.style.cssText = 'display:inline-flex;align-items:center;gap:2px;margin-left:3px;font-size:12px;white-space:nowrap';
-    btn.appendChild(crowns);
-  }
-  const modal = document.getElementById('profile-modal');
-  if (modal && !document.getElementById('modal-crowns')) {
-    const row = document.createElement('p'); row.id = 'modal-crowns'; row.style.cssText = 'color:#ffd76a;font-weight:700';
-    const status = document.getElementById('modal-status')?.parentElement;
-    if (status) status.insertAdjacentElement('afterend', row); else modal.appendChild(row);
-  }
-  if (!document.getElementById('crown-profile-style')) {
-    const style = document.createElement('style'); style.id = 'crown-profile-style';
-    style.textContent = '#profile-avatar-crown{width:30px;height:30px;flex:0 0 30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#34466c,#151b2d);border:2px solid #ffd76a;font-size:17px;position:relative}#hud-crowns{color:#ffd76a;text-shadow:0 1px 4px #000}#modal-crowns{font-size:15px!important;color:#ffd76a!important}';
-    document.head.appendChild(style);
-  }
-}
-function updateCrownProfileUI() {
-  ensureCrownProfileUI();
-  const count = String(playerData.username || '').trim().toLowerCase() === DEV_USERNAME ? ADMIN_FIXED_CROWNS : Math.max(0, Math.floor(Number(playerData.crowns) || 0));
-  const hud = document.getElementById('hud-crowns');
-  if (hud) hud.textContent = `👑 ${count}`;
-  const modal = document.getElementById('modal-crowns');
-  if (modal) modal.textContent = `Mahkota kemenangan: ${'👑'.repeat(Math.min(count, 8))}${count > 8 ? ` ×${count}` : ''} (${count})`;
-}
-async function loadCrownSettings() {
-  try {
-    const value = await socialGet('settings/leaderboardMinCrowns');
-    leaderboardMinCrowns = Number.isFinite(Number(value)) ? Math.max(0, Math.floor(Number(value))) : DEFAULT_LEADERBOARD_MIN_CROWNS;
-  } catch (_) { leaderboardMinCrowns = DEFAULT_LEADERBOARD_MIN_CROWNS; }
-}
-async function awardWinCrown() {
-  const key = myPlayerKey();
-  if (!key) return;
-  if (key === DEV_USERNAME) {
-    playerData.crowns = ADMIN_FIXED_CROWNS;
-    await socialPatch(`players/${key}`, { crowns: ADMIN_FIXED_CROWNS, lastWinAt: Date.now() });
-    await socialPatch(`leaderboard/${key}`, { crowns: ADMIN_FIXED_CROWNS }).catch(() => {});
-    updateCrownProfileUI();
-    refreshSoloLeaderboard(true).catch(() => {});
-    showToast(`🏆 Akun admin: ${ADMIN_FIXED_CROWNS.toLocaleString('id-ID')} mahkota`, 2800);
-    return;
-  }
-  // Baca nilai terbaru agar mahkota yang sudah diatur admin tidak tertimpa data lama.
-  const latest = await socialGet(`players/${key}`).catch(() => null) || {};
-  const next = Math.max(0, Math.floor(Number(latest.crowns ?? playerData.crowns) || 0)) + 1;
-  await socialPatch(`players/${key}`, { crowns: next, lastWinAt: Date.now() });
-  playerData.crowns = next;
-  updateCrownProfileUI();
-  // Simpan juga salinan di node leaderboard supaya penyaringan dan tampilan selalu sinkron.
-  await socialPatch(`leaderboard/${key}`, { crowns: next }).catch(() => {});
-  refreshSoloLeaderboard(true).catch(() => {});
-  showToast(`🏆 MENANG! Kamu mendapat 1 mahkota (${next})`, 2800);
-}
-
 // ============ 4. FUNGSI LOBI & SHOP ============
 function startLobby() {
   tryAutoLandscape();
@@ -699,21 +633,8 @@ function startLobby() {
   document.getElementById('game-ui').style.display = 'block';
   gameState = 'LOBBY'; 
   if (!playerData.inventory.includes('aks_none')) playerData.inventory.push('aks_none');
-  const isOwnerAccount = String(playerData.username || '').trim().toLowerCase() === DEV_USERNAME;
-  if (isOwnerAccount && !playerData.inventory.includes('baju_developer')) {
-    playerData.inventory.push('baju_developer');
-    updatePlayerFirebase().catch(err => console.warn('Gagal menyimpan kostum Developer ke Vault:', err));
-  }
   if (!playerData.equipped.aksesoris) playerData.equipped.aksesoris = 'aks_none';
   document.getElementById('hud-username').textContent = playerData.username;
-  updateCrownProfileUI();
-  if (String(playerData.username || '').trim().toLowerCase() === DEV_USERNAME) {
-    playerData.crowns = ADMIN_FIXED_CROWNS;
-    socialPatch(`players/${DEV_USERNAME}`, { crowns: ADMIN_FIXED_CROWNS, crownsUpdatedAt: Date.now() }).catch(() => {});
-    socialPatch(`leaderboard/${DEV_USERNAME}`, { crowns: ADMIN_FIXED_CROWNS }).catch(() => {});
-    updateCrownProfileUI();
-  }
-  loadCrownSettings().then(() => refreshSoloLeaderboard(true)).catch(() => {});
   document.getElementById('coin-amount').textContent = playerData.coins || 0;
   document.getElementById('modal-username').textContent = `${playerData.username} · ID ${playerData.playerId || (playerData.isDev ? ADMIN_PLAYER_ID : 'belum tersedia')}`;
   
@@ -760,7 +681,6 @@ function renderShopTab(category) {
     return;
   }
   SHOP_ITEMS[category].forEach(item => {
-    if (item.adminOnly || item.id === 'baju_developer') return;
     const isOwned = playerData.inventory.includes(item.id);
     if (isOwned) return; // item yang sudah dibeli pindah ke Vault
     const isEquipped = Object.values(playerData.equipped).includes(item.id);
@@ -833,7 +753,6 @@ function renderVaultTab(category) {
 }
 
 window.buyItem = async function(category, itemId, price) {
-  if (itemId === 'baju_developer') { showToast('🔒 Kostum Developer tidak dijual'); return; }
   if (playerData.inventory.includes(itemId)) { showToast('Sudah dimiliki'); return; }
   if (playerData.coins < price) { showToast("❌ Koin kamu tidak cukup!"); return; }
   playerData.coins -= price;
@@ -846,10 +765,6 @@ window.buyItem = async function(category, itemId, price) {
 };
 
 window.equipItem = async function(category, itemId) {
-  if (itemId === 'baju_developer' && String(playerData.username || '').trim().toLowerCase() !== DEV_USERNAME) {
-    showToast('🔒 Kostum Developer khusus akun admin');
-    return;
-  }
   let equipKey = category;
   if (category === 'efek') equipKey = itemId.includes('lari') ? 'efek_lari' : 'efek_lompat';
   
@@ -932,7 +847,7 @@ function getSuitTex(kind, hex) {
 }
 function applyItemMat(m, it) {
   const tex = it.web ? getWebTex(it.color) : it.suit ? getSuitTex(it.suit, it.color) : null;
-  const metal = it.dev ? 0.82 : it.iron ? 0.75 : it.thor ? 0.55 : 0;
+  const metal = it.iron ? 0.75 : it.thor ? 0.55 : 0;
   m.map = tex; m.color.setHex(tex ? 0xffffff : it.color);
   m.bumpMap = tex; m.bumpScale = 0.6;
   m.metalness = metal; m.roughness = it.iron ? 0.28 : it.thor ? 0.4 : (tex ? 0.55 : 0.7);
@@ -942,14 +857,14 @@ function applyItemMat(m, it) {
 function pickCostume(eq) {
   const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
   const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor, hulk = !!baju.hulk;
-  const pac = !!baju.pac, saitama = !!baju.saitama;
-  const celana = saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
-  const sepatu = saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
-  return { baju, celana, sepatu, iron, thor, hulk, saitama };
+  const pac = !!baju.pac;
+  const celana = pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
+  const sepatu = pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
+  return { baju, celana, sepatu, iron, thor, hulk };
 }
-const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [] };
+const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [] };
 function setCostumeVis(baju, get) {
-  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac };
+  const on = { spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac };
   for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
 }
 
@@ -983,10 +898,6 @@ const SHAPES = {
 };
 function itemIcon(cat, it) {
   let inner = '';
-  if (it.id === 'baju_developer') {
-    inner = '<path d="M20 8L8 16L13 28L19 24V56H45V24L51 28L56 16L44 8Q32 16 20 8Z" fill="#101b35" stroke="#54dfff" stroke-width="2"/><path d="M32 17L35 25L44 26L37 32L39 41L32 36L25 41L27 32L20 26L29 25Z" fill="#ffd76a"/><path d="M18 48H46" stroke="#54dfff" stroke-width="3"/><text x="32" y="57" text-anchor="middle" font-size="7" font-weight="bold" fill="#fff">DEV</text>';
-    return `<svg viewBox="0 0 64 64" style="width:80%;height:80%">${inner}</svg>`;
-  }
   if (SHAPES[cat]) {
     const col = '#' + it.color.toString(16).padStart(6, '0'), d = SHAPES[cat];
     inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linejoin="round"/>`;
@@ -1016,7 +927,6 @@ function updateCharacterVisuals() {
     if (child.userData.type === 'sepatu') ap(child, sepatuV);
   });
   setCostumeVis(baju, o => o);
-  character.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !baju.saitama; });
   applyBodyType(character, { armL: leftArmPivot, armR: rightArmPivot, legL: leftLegPivot, legR: rightLegPivot }, baju.hulk);
   const a = playerData.equipped.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => { acc[id].visible = !(iron || thor) && id === a; });
@@ -1069,6 +979,7 @@ function createJumpEffect() {
 let scene, camera, renderer, character, nameSprite, controls;
 let parkourWorldGroup = null, lobbyWorldGroup = null, lobbyAccentRing = null;
 let platforms = [], physics, lavaMat;
+let lavaVolcanoFX = [], mazeCameraLocked = false, lavaHudEl = null;
 let leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot, headGroup;
 let joystickVector = new THREE.Vector2(0, 0);
 let isRunning = false;
@@ -1121,7 +1032,7 @@ function setupAdminPanel() {
   const wrap = document.createElement('div'); wrap.id = 'admin-wrap';
   const btn = document.createElement('button'); btn.id = 'admin-btn'; btn.textContent = '🛠️ Admin';
   const panel = document.createElement('div'); panel.id = 'admin-panel';
-  panel.innerHTML = '<b id="admin-title">☰ Admin Panel - Putzzdev (geser)</b><button id="ad-fly">✈️ Terbang: OFF (F)</button><label>Kecepatan: <span id="ad-spd">14</span><input id="ad-speed" type="range" min="5" max="40" value="14" style="width:100%"></label><button id="ad-god">🛡️ Anti-mati: OFF</button><button data-tp="start">📍 Ke Start</button><button data-tp="hub">📍 Ke Hub Tower</button><button data-tp="top">🏁 Ke Puncak Tower</button><button data-tp="maze">🧩 Ke Labirin</button><button data-tp="finish">🎉 Ke Finish</button><button id="ad-coin">🪙 +1000 Koin</button><hr style="width:100%;border-color:#46516b"><b>👑 PENGATURAN MAHKOTA</b><label>Batas masuk leaderboard<input id="ad-crown-min" type="number" min="0" max="999999" value="3" style="width:100%;padding:7px;border-radius:6px"></label><button id="ad-crown-save-min">Simpan batas ke Firebase</button><label>Username pemain<input id="ad-crown-user" type="text" placeholder="username" style="width:100%;padding:7px;border-radius:6px"></label><label>Jumlah mahkota<input id="ad-crown-count" type="number" min="0" max="999999" value="0" style="width:100%;padding:7px;border-radius:6px"></label><button id="ad-crown-set">Atur mahkota pemain</button>';
+  panel.innerHTML = '<b id="admin-title">☰ Admin Panel - Putzzdev (geser)</b><button id="ad-fly">✈️ Terbang: OFF (F)</button><label>Kecepatan: <span id="ad-spd">14</span><input id="ad-speed" type="range" min="5" max="40" value="14" style="width:100%"></label><button id="ad-god">🛡️ Anti-mati: OFF</button><button data-tp="start">📍 Ke Start</button><button data-tp="hub">📍 Ke Hub Tower</button><button data-tp="top">🏁 Ke Puncak Tower</button><button data-tp="maze">🧩 Ke Labirin</button><button data-tp="finish">🎉 Ke Finish</button><button id="ad-coin">🪙 +1000 Koin</button>';
   const fc = document.createElement('div'); fc.id = 'fly-ctrl';
   fc.innerHTML = '<button id="fly-up">▲</button><button id="fly-down">▼</button>';
   wrap.append(btn, panel); document.body.append(wrap, fc);
@@ -1158,30 +1069,6 @@ function setupAdminPanel() {
   document.getElementById('ad-coin').onclick = () => {
     playerData.coins = (playerData.coins || 0) + 1000; updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins; showToast('🪙 +1000 koin');
-  };
-  document.getElementById('ad-crown-min').value = String(leaderboardMinCrowns);
-  document.getElementById('ad-crown-save-min').onclick = async () => {
-    const value = Math.max(0, Math.floor(Number(document.getElementById('ad-crown-min').value) || 0));
-    try {
-      await socialPatch('settings', { leaderboardMinCrowns: value });
-      leaderboardMinCrowns = value;
-      await refreshSoloLeaderboard(true);
-      showToast(`✅ Minimal leaderboard: ${value} mahkota`);
-    } catch (e) { showToast('Gagal menyimpan pengaturan mahkota'); }
-  };
-  document.getElementById('ad-crown-set').onclick = async () => {
-    const key = document.getElementById('ad-crown-user').value.trim().toLowerCase();
-    const count = Math.max(0, Math.floor(Number(document.getElementById('ad-crown-count').value) || 0));
-    if (!/^[a-z0-9_]{3,15}$/.test(key)) { showToast('Masukkan username yang valid'); return; }
-    try {
-      const exists = await socialGet(`players/${key}`);
-      if (!exists) { showToast('Username tidak ditemukan'); return; }
-      await socialPatch(`players/${key}`, { crowns: count, crownsUpdatedAt: Date.now() });
-      await socialPatch(`leaderboard/${key}`, { crowns: count });
-      if (key === myPlayerKey()) { playerData.crowns = count; updateCrownProfileUI(); }
-      await refreshSoloLeaderboard(true);
-      showToast(`👑 Mahkota ${key} diatur menjadi ${count}`);
-    } catch (e) { showToast('Gagal mengatur mahkota di Firebase'); }
   };
   const hold = (id, up) => {
     const el = document.getElementById(id), set = (v) => { if (up) flyUp = v; else flyDown = v; };
@@ -1323,6 +1210,28 @@ function init3DGame() {
   embers = new THREE.Points(emberGeo, new THREE.PointsMaterial({ color: 0xff7722, size: 0.25, transparent: true, opacity: 0.8 }));
   scene.add(embers);
 
+  // ===== VOLCANO RIDGE: gunung berapi menyala + percikan lava =====
+  lavaVolcanoFX = [];
+  const volcanoRock = new THREE.MeshStandardMaterial({ color: 0x29232a, roughness: 0.96, flatShading: true });
+  const volcanoGlow = new THREE.MeshStandardMaterial({ color: 0xff4b12, emissive: 0xff2a00, emissiveIntensity: 2.2, roughness: 0.35 });
+  const volcanoRim = new THREE.MeshStandardMaterial({ color: 0x4a2520, emissive: 0x9b2108, emissiveIntensity: 0.6, roughness: 0.8 });
+  for (const [vx,vz,scale] of [[-24,-22,1.0],[25,-42,1.25],[-27,-76,1.35],[27,-105,1.05],[-23,-139,1.2],[23,-160,0.9]]) {
+    const vg = new THREE.Group(); vg.position.set(vx,-7.7,vz); scene.add(vg);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(9*scale,15*scale,9,3),volcanoRock); cone.position.y=7.1*scale; cone.rotation.y=0.18; cone.castShadow=true; vg.add(cone);
+    const crater = new THREE.Mesh(new THREE.CylinderGeometry(2.5*scale,3.5*scale,0.55*scale,12),volcanoGlow); crater.position.y=14.25*scale; vg.add(crater);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(2.8*scale,0.38*scale,8,18),volcanoRim); rim.rotation.x=Math.PI/2; rim.position.y=14.55*scale; vg.add(rim);
+    for(let k=0;k<3;k++) { const stream=new THREE.Mesh(new THREE.CylinderGeometry(0.16*scale,0.48*scale,4.5*scale,7),volcanoGlow); stream.position.set((k-1)*2.1*scale,5.0*scale,2.5*scale); stream.rotation.z=(k-1)*0.16; vg.add(stream); }
+    const sparks=[];
+    for(let j=0;j<10;j++){ const spark=new THREE.Mesh(new THREE.SphereGeometry(0.12+Math.random()*0.13,7,6),new THREE.MeshBasicMaterial({color:j%2?0xff6a18:0xffd34d})); spark.position.set((Math.random()-.5)*2.2*scale,14.8*scale+Math.random()*3, (Math.random()-.5)*2.2*scale); vg.add(spark); sparks.push({mesh:spark,phase:Math.random()*6.28,speed:1.4+Math.random()*1.8}); }
+    lavaVolcanoFX.push({group:vg,sparks,scale});
+  }
+
+  // HUD khusus map Lava: judul arena dan progres menuju labirin.
+  if (!document.getElementById('lava-hud-style')) {
+    const st=document.createElement('style'); st.id='lava-hud-style'; st.textContent='#lava-map-hud{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:45;width:min(270px,66vw);padding:9px 13px;border:1px solid rgba(255,117,48,.8);border-radius:14px;background:linear-gradient(135deg,rgba(35,13,15,.92),rgba(12,13,22,.88));box-shadow:0 0 22px rgba(255,74,20,.28);color:#fff;font:700 12px system-ui;pointer-events:none;display:none}#lava-map-hud .lava-hud-title{display:flex;align-items:center;justify-content:space-between;font-size:13px;letter-spacing:1px;color:#ffd0a0}#lava-map-hud .lava-hud-track{height:6px;margin-top:7px;border-radius:8px;background:#42252a;overflow:hidden}#lava-map-hud .lava-hud-fill{height:100%;width:0;background:linear-gradient(90deg,#ff4d1d,#ffc247);box-shadow:0 0 10px #ff5a21;border-radius:8px;transition:width .2s}'; document.head.appendChild(st);
+  }
+  if (!document.getElementById('lava-map-hud')) { lavaHudEl=document.createElement('div'); lavaHudEl.id='lava-map-hud'; lavaHudEl.innerHTML='<div class="lava-hud-title"><span>🌋 VOLCANO RUN</span><span id="lava-hud-percent">0%</span></div><div class="lava-hud-track"><div class="lava-hud-fill" id="lava-hud-fill"></div></div>'; document.body.appendChild(lavaHudEl); } else lavaHudEl=document.getElementById('lava-map-hud');
+
   const platformMat = new THREE.MeshStandardMaterial({ color: 0x444455, roughness: 0.8 });
   const breakableMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9 });
   const movingMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.7 });
@@ -1404,6 +1313,15 @@ function init3DGame() {
         return null;
       }
     });
+  }
+
+  // Pancuran api periodik: rintangan baru yang memaksa pemain mengatur timing lompatan.
+  function addFlameJet(px, py, pz) {
+    const root=new THREE.Group(); root.position.set(px,py+0.25,pz); scene.add(root);
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(0.52,0.7,0.22,12),new THREE.MeshStandardMaterial({color:0x29232a,metalness:0.55,roughness:0.6})); base.position.y=0.02; root.add(base);
+    const flame=new THREE.Mesh(new THREE.ConeGeometry(0.48,2.4,9),new THREE.MeshBasicMaterial({color:0xff5a12,transparent:true,opacity:0.9})); flame.position.y=1.25; root.add(flame);
+    const core=new THREE.Mesh(new THREE.ConeGeometry(0.22,1.65,8),new THREE.MeshBasicMaterial({color:0xffd34a,transparent:true,opacity:0.95})); core.position.y=1.0; root.add(core);
+    let jetActive=false; hazards.push({update(t){jetActive=Math.sin(t*2.1+px*0.3+pz*0.1)>0.05; flame.visible=core.visible=jetActive; flame.scale.y=0.8+0.25*Math.sin(t*9);},test(pp){if(jetActive&&Math.abs(pp.x-px)<0.68&&Math.abs(pp.z-pz)<0.68&&pp.y<py+2.65&&pp.y>py+0.1)return {x:0,z:1}; return null;}});
   }
 
   // ============ JALUR PARKOUR DENGAN JEBAKAN KIRI/KANAN & LASER NPC ============
@@ -1489,6 +1407,8 @@ function init3DGame() {
         d.mesh.material.opacity = 1;
       }
     }
+    if (i % 12 === 0) addFlameJet(cx, ty, cz);
+    if (i % 17 === 0) { createPlatform(cx + (rx * -2.2), ty + 0.55, cz + (rz * -2.2), 2.8, 2.8, 'moving_x', 0, 'hex'); platforms[platforms.length-1].range=1.8; platforms[platforms.length-1].speed=1.15; }
   }
   createPlatform(TC.x + Math.cos(ta) * 6.3, ty + 0.55, TC.z + Math.sin(ta) * 6.3, 3, 3, 'static'); // penghubung
   const FY = ty + 1.1; FIN_Y = FY + 0.25;
@@ -1535,6 +1455,12 @@ function init3DGame() {
     if (k.s) addWall(x, z - 2, CS + 0.6, 0.6);
     if (k.e) addWall(x + 2, z, 0.6, CS + 0.6);
   }
+
+  // Atap labirin tertutup: dari luar pemain tidak dapat melihat jalur maupun finish.
+  const mazeRoof = new THREE.Mesh(new THREE.BoxGeometry(2*MH+1.2,0.65,2*MH+1.2),new THREE.MeshStandardMaterial({color:0x171923,roughness:0.92,metalness:0.12}));
+  mazeRoof.position.set(mcx,floorTop+wallH+0.32,mcz); mazeRoof.castShadow=true; mazeRoof.receiveShadow=true; scene.add(mazeRoof);
+  const roofRim = new THREE.Mesh(new THREE.BoxGeometry(2*MH+1.55,0.16,2*MH+1.55),new THREE.MeshStandardMaterial({color:0x5a211d,emissive:0x7d1c0c,emissiveIntensity:0.65}));
+  roofRim.position.set(mcx,floorTop+wallH+0.72,mcz); scene.add(roofRim);
 
   // jalur benar (BFS pintu masuk -> keluar); semua sel di luar jalur = lorong salah
   const key = (r, c) => r + ',' + c;
@@ -2107,51 +2033,6 @@ function init3DGame() {
   const pacDisc = mk(new THREE.CylinderGeometry(0.15, 0.15, 0.035, 32), pacBlack, 0, 1.62, 0.3, pacChest); pacDisc.rotation.x = Math.PI / 2;
   const pacMouth = mk(new THREE.CylinderGeometry(0.115, 0.115, 0.04, 32, 1, false, Math.PI / 2 + 0.5, Math.PI * 2 - 1.0), pacYellow, 0, 1.62, 0.322, pacChest); pacMouth.rotation.x = Math.PI / 2;
 
-  // ===== SAITAMA / ONE PUNCH MAN: jumpsuit kuning, sarung tangan & sepatu merah, jubah putih =====
-  const saitamaYellow = accMat(0xffd21a, { roughness: 0.48 });
-  const saitamaRed = accMat(0xc92532, { roughness: 0.42 });
-  const saitamaWhite = accMat(0xf3f5f7, { roughness: 0.78, side: THREE.DoubleSide });
-  const saitamaDark = accMat(0x252832, { metalness: 0.35, roughness: 0.55 });
-  const saitamaSuit = grp(rig, costumeParts.saitama);
-  const suitTorso = mk(new THREE.CylinderGeometry(0.285, 0.31, 0.72, 24), saitamaYellow, 0, 1.62, 0, saitamaSuit);
-  suitTorso.scale.set(1.05, 1, 0.78);
-  mk(new THREE.SphereGeometry(0.30, 20, 14), saitamaYellow, 0, 1.96, 0, saitamaSuit).scale.set(1.05, 0.52, 0.78);
-  // Garis resleting dan sabuk khas kostum Saitama
-  mk(new THREE.BoxGeometry(0.025, 0.43, 0.012), saitamaDark, 0, 1.66, 0.247, saitamaSuit);
-  mk(new THREE.BoxGeometry(0.58, 0.075, 0.035), saitamaDark, 0, 1.28, 0.02, saitamaSuit);
-  mk(new THREE.BoxGeometry(0.12, 0.10, 0.04), saitamaWhite, 0, 1.28, 0.045, saitamaSuit);
-  // Kerah putih dan dua kancing kecil
-  const collar = mk(new THREE.TorusGeometry(0.19, 0.035, 8, 24), saitamaWhite, 0, 2.00, 0, saitamaSuit);
-  collar.rotation.x = Math.PI / 2;
-  for (const yy of [1.78, 1.62, 1.46]) mk(new THREE.SphereGeometry(0.018, 8, 8), saitamaWhite, 0.045, yy, 0.255, saitamaSuit);
-  // Sarung tangan merah menempel ke pivot lengan agar ikut animasi
-  for (const [arm, side] of [[leftArmPivot,-1],[rightArmPivot,1]]) {
-    const gloveGroup = grp(arm, costumeParts.saitama);
-    const glove = mk(new THREE.SphereGeometry(0.125, 16, 12), saitamaRed, 0, -0.48, 0, gloveGroup);
-    glove.scale.set(1, 1.15, 0.9);
-    mk(new THREE.CylinderGeometry(0.105, 0.105, 0.11, 16), saitamaWhite, 0, -0.34, 0, gloveGroup);
-    const shoulder = mk(new THREE.SphereGeometry(0.16, 16, 12), saitamaYellow, side * -0.02, -0.02, 0, gloveGroup);
-    shoulder.scale.set(1.18, 0.72, 0.9);
-  }
-  // Sepatu bot merah dan pelindung kaki kuning pada kedua kaki
-  for (const leg of [leftLegPivot, rightLegPivot]) {
-    const bootGroup = grp(leg, costumeParts.saitama);
-    mk(new THREE.CylinderGeometry(0.13, 0.14, 0.28, 18), saitamaRed, 0, -0.43, 0.025, bootGroup);
-    mk(new THREE.BoxGeometry(0.23, 0.10, 0.30), saitamaRed, 0, -0.57, 0.07, bootGroup);
-    mk(new THREE.CylinderGeometry(0.115, 0.12, 0.12, 16), saitamaYellow, 0, -0.23, 0, bootGroup);
-  }
-  // Jubah putih lebar dari bahu sampai betis, berada di belakang karakter
-  const saitamaCape = grp(rig, costumeParts.saitama);
-  saitamaCape.position.set(0, 1.98, -0.22);
-  const capeShape = new THREE.Shape();
-  capeShape.moveTo(-0.22, 0.02); capeShape.quadraticCurveTo(-0.42, -0.35, -0.38, -1.15);
-  capeShape.quadraticCurveTo(0, -1.28, 0.38, -1.15); capeShape.quadraticCurveTo(0.42, -0.35, 0.22, 0.02);
-  capeShape.closePath();
-  const capeMesh = new THREE.Mesh(new THREE.ShapeGeometry(capeShape, 12), saitamaWhite);
-  capeMesh.position.z = -0.035; saitamaCape.add(capeMesh);
-  mk(new THREE.SphereGeometry(0.11, 16, 12), saitamaWhite, -0.25, -0.02, 0.02, saitamaCape);
-  mk(new THREE.SphereGeometry(0.11, 16, 12), saitamaWhite, 0.25, -0.02, 0.02, saitamaCape);
-
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -2426,6 +2307,7 @@ function mpSyncEquipped() {
 
 // dipanggil tombol start (solo) ATAU saat host memulai room
 function onGameBegin() {
+  mazeCameraLocked = false;
   setLobbyOnlyHud(false);
   // Tampilkan tepat SATU map aktif. Sebelumnya parkourWorldGroup ikut
   // dinyalakan untuk Angkasa sehingga lantai/lava map lama terlihat menembus.
@@ -2500,7 +2382,7 @@ async function savePersonalBest(score, timeMs) {
   playerData.bestTimeMs = Math.round(timeMs);
   const res = await fetch(`${FIREBASE_URL}leaderboard/${key}.json`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: String(playerData.username || key).slice(0, 18), playerId: String(playerData.playerId || ''), isDev: !!playerData.isDev, equipped: myEquipped(), crowns: Math.max(0, Number(playerData.crowns) || 0), bestScore: score, bestTimeMs: Math.round(timeMs), updatedAt: Date.now() })
+    body: JSON.stringify({ username: String(playerData.username || key).slice(0, 18), playerId: String(playerData.playerId || ''), isDev: !!playerData.isDev, equipped: myEquipped(), bestScore: score, bestTimeMs: Math.round(timeMs), updatedAt: Date.now() })
   });
   if (!res.ok) throw new Error('Gagal menyimpan rekor leaderboard');
   refreshSoloLeaderboard(true).catch(() => {});
@@ -2511,7 +2393,6 @@ function onFinish() {
   finishMs = rawElapsedMs();
   personalRunScore = scoreFromTime(finishMs);
   if (myRef) update(myRef, { finishMs: Math.round(finishMs), score: personalRunScore }).catch(() => {});
-  awardWinCrown().catch(e => { console.warn('Mahkota kemenangan gagal disimpan:', e); showToast('⚠️ Mahkota gagal disimpan ke Firebase'); });
   if (currentMap === 'lava') savePersonalBest(personalRunScore, finishMs).catch(e => console.warn('Simpan rekor gagal:', e)); // leaderboard lama khusus map Lava
   updateLobbyLeaderboard();
 }
@@ -2772,21 +2653,17 @@ async function refreshSoloLeaderboard(force = false) {
   if (soloLeaderboardLoading || ( !force && Date.now() - soloLeaderboardLastFetch < 10000)) return;
   soloLeaderboardLoading = true;
   try {
-    const [data, profiles] = await Promise.all([
-      socialGet('leaderboard').catch(() => ({})),
-      socialGet('players').catch(() => ({}))
-    ]);
-    await loadCrownSettings();
-    soloLeaderboardEntries = Object.entries(data || {})
-      .filter(([key, p]) => p && Number(p.bestScore) > 0 && Number(p.crowns ?? profiles?.[key]?.crowns ?? 0) >= leaderboardMinCrowns)
+    const data = await socialGet('leaderboard') || {};
+    soloLeaderboardEntries = Object.entries(data)
+      .filter(([key, p]) => p && Number(p.bestScore) > 0)
       .map(([key, p]) => ({
         id: key, username: String(p.username || key).slice(0, 18),
         playerId: String(p.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')),
-        isDev: !!p.isDev, equipped: p.equipped || {}, crowns: key === DEV_USERNAME ? ADMIN_FIXED_CROWNS : Math.max(0, Number(profiles?.[key]?.crowns ?? p.crowns) || 0),
+        isDev: !!p.isDev, equipped: p.equipped || {},
         bestScore: Number(p.bestScore) || 0, bestTimeMs: Number(p.bestTimeMs) || 0,
         finishMs: Number(p.bestTimeMs) || null
       }))
-      .sort((a, b) => b.crowns - a.crowns || String(a.username).localeCompare(String(b.username)))
+      .sort((a, b) => b.bestScore - a.bestScore || a.bestTimeMs - b.bestTimeMs)
       .slice(0, MAX_PLAYERS);
     soloLeaderboardLastFetch = Date.now();
     if (!roomCode) updateLobbyLeaderboard();
@@ -2800,7 +2677,7 @@ function updateLobbyLeaderboard() {
   const sourcePlayers = roomCode ? (roomPlayers || {}) : Object.fromEntries(soloLeaderboardEntries.map(p => [p.id, p]));
   const ids = Object.keys(sourcePlayers).sort((a, b) => {
     const pa = sourcePlayers[a] || {}, pb = sourcePlayers[b] || {};
-    if (!roomCode) return (Number(pb.crowns) || 0) - (Number(pa.crowns) || 0) || String(pa.username || '').localeCompare(String(pb.username || ''));
+    if (!roomCode) return (Number(pb.bestScore) || 0) - (Number(pa.bestScore) || 0) || (Number(pa.bestTimeMs) || 0) - (Number(pb.bestTimeMs) || 0);
     const af = Number.isFinite(Number(pa.finishMs)) && pa.finishMs != null;
     const bf = Number.isFinite(Number(pb.finishMs)) && pb.finishMs != null;
     if (af && bf) return Number(pb.score || 0) - Number(pa.score || 0) || Number(pa.finishMs) - Number(pb.finishMs);
@@ -2815,13 +2692,13 @@ function updateLobbyLeaderboard() {
     const timeMs = roomCode ? (Number(p.finishMs) || 0) : (Number(p.bestTimeMs) || 0);
     return {
       id, index, name: String(p.username || 'Pemain').slice(0, 18),
-      crowns: Math.max(0, Math.floor(Number(p.crowns) || 0)), finished, score, timeMs,
+      finished, score, timeMs, time: finished ? `${score.toLocaleString('id-ID')} POIN` : 'BELUM ADA',
       host: !!(roomMeta && roomMeta.host === id),
       isMe: roomCode ? id === mpUid : id === String(playerData.username || '').toLowerCase(),
       eqKey: JSON.stringify(p.equipped || {})
     };
   });
-  const key = JSON.stringify({ roomCode, entries: entries.map(e => [e.id, e.name, e.finished, e.score, e.timeMs, e.host, e.isMe, e.eqKey, e.crowns]) });
+  const key = JSON.stringify({ roomCode, entries: entries.map(e => [e.id, e.name, e.finished, e.score, e.timeMs, e.host, e.isMe, e.eqKey]) });
   if (key === lobbyLeaderboardLastKey) return;
   lobbyLeaderboardLastKey = key;
 
@@ -2836,7 +2713,7 @@ function updateLobbyLeaderboard() {
   x.font = '900 76px sans-serif'; x.fillStyle = '#ffffff';
   x.fillText('LEADERBOARD', 512, 82);
   x.font = 'bold 30px sans-serif'; x.fillStyle = '#42d9ff';
-  x.fillText(roomCode ? `ROOM ${roomCode}  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : `JUMLAH MAHKOTA • MIN. ${leaderboardMinCrowns} 👑`, 512, 142);
+  x.fillText(roomCode ? `ROOM ${roomCode}  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : 'TOP SKOR TERBAIK • SOLO', 512, 142);
   x.strokeStyle = 'rgba(66,217,255,.55)'; x.lineWidth = 3;
   x.beginPath(); x.moveTo(55, 188); x.lineTo(969, 188); x.stroke();
 
@@ -2858,9 +2735,9 @@ function updateLobbyLeaderboard() {
       x.fillText(name, 178, top + 34, 500);
       x.textAlign = 'left'; x.font = '22px sans-serif'; x.fillStyle = '#8fb9dc';
       x.fillText('ID ' + String((sourcePlayers[e.id] || {}).playerId || (e.name.toLowerCase() === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')), 180, top + 67, 460);
-      x.textAlign = 'right'; x.font = '900 30px sans-serif';
-      x.fillStyle = '#ffd76a';
-      x.fillText('👑 ' + String(e.crowns), 950, top + 44);
+      x.textAlign = 'right'; x.font = 'bold 27px sans-serif';
+      x.fillStyle = e.finished ? '#7dffb0' : '#a9b8d2';
+      x.fillText(e.finished ? `${e.score.toLocaleString('id-ID')} POIN` : e.time, 950, top + 44);
     });
   }
   lobbyLeaderboardTexture.needsUpdate = true;
@@ -2988,58 +2865,6 @@ async function sendGameInvite(targetKey, targetName) {
   showToast(`Undangan dikirim ke ${targetName}`);
 }
 
-// ----- PROFIL PUBLIK PEMAIN (fitur periksa akun / stalking) -----
-function ensurePublicProfileModal() {
-  if (document.getElementById('public-player-profile')) return;
-  const css = document.createElement('style');
-  css.id = 'public-player-profile-style';
-  css.textContent = `#public-player-profile{position:fixed;inset:0;z-index:10030;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);font-family:sans-serif}#public-player-card{width:min(360px,100%);max-height:82vh;overflow:auto;padding:20px;border:1px solid rgba(66,217,255,.7);border-radius:18px;background:linear-gradient(145deg,#172a49,#080f20);box-shadow:0 12px 40px #0009;color:#fff}#pp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px}#pp-title{font-size:18px;font-weight:900;color:#42d9ff}#pp-close{border:0;border-radius:8px;background:#34435c;color:#fff;width:32px;height:32px;font-size:20px}#pp-avatar{width:64px;height:64px;margin:0 auto 10px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#355b87,#141c30);border:2px solid #ffd76a;font-size:30px}#pp-name{text-align:center;font-size:21px;font-weight:900;overflow-wrap:anywhere}#pp-role{text-align:center;color:#a9c9ff;font-size:12px;margin:5px 0 15px}#pp-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}#pp-stats .pp-stat{padding:11px;border-radius:10px;background:rgba(255,255,255,.07);text-align:center}#pp-stats b{display:block;font-size:19px;color:#ffd76a}#pp-stats small{color:#aab9d0}#pp-outfit{margin-top:12px;padding:11px;border-radius:10px;background:rgba(255,255,255,.06);font-size:13px;line-height:1.7}#pp-status{text-align:center;margin-top:12px;color:#8fffc1;font-size:12px}`;
-  document.head.appendChild(css);
-  const overlay = document.createElement('div'); overlay.id = 'public-player-profile';
-  overlay.innerHTML = `<section id="public-player-card"><div id="pp-head"><span id="pp-title">👤 PROFIL PEMAIN</span><button id="pp-close" type="button">×</button></div><div id="pp-avatar">👤</div><div id="pp-name">Pemain</div><div id="pp-role">PLAYER</div><div id="pp-stats"><div class="pp-stat"><b id="pp-crowns">👑 0</b><small>Mahkota</small></div><div class="pp-stat"><b id="pp-coins">🪙 0</b><small>Koin</small></div><div class="pp-stat"><b id="pp-items">0</b><small>Item dimiliki</small></div><div class="pp-stat"><b id="pp-id">------</b><small>ID pemain</small></div></div><div id="pp-outfit">Kostum: -</div><div id="pp-status">Data profil publik</div></section>`;
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
-  document.getElementById('pp-close').onclick = () => { overlay.style.display = 'none'; };
-}
-function getEquippedPublicNames(profile) {
-  const eq = profile?.equipped || {};
-  const categories = [['baju','baju'],['celana','celana'],['sepatu','sepatu'],['aksesoris','aksesoris']];
-  return categories.map(([key, cat]) => {
-    const id = eq[key];
-    const item = (SHOP_ITEMS[cat] || []).find(x => x.id === id);
-    return item ? item.name : (id ? String(id).replace(/^(baju|celana|sepatu|aks_)/,'').replaceAll('_',' ') : 'Default');
-  }).join(' · ');
-}
-async function inspectPlayerAccount(playerKey, fallbackName = '') {
-  const key = String(playerKey || '').trim().toLowerCase();
-  if (!key || key === myPlayerKey()) { showToast('Itu akun kamu sendiri'); return; }
-  ensurePublicProfileModal();
-  const overlay = document.getElementById('public-player-profile');
-  overlay.style.display = 'flex';
-  document.getElementById('pp-name').textContent = fallbackName || key;
-  document.getElementById('pp-role').textContent = 'Memuat profil…';
-  document.getElementById('pp-status').textContent = 'Mengambil data publik dari Firebase…';
-  try {
-    const profile = await socialGet(`players/${key}`);
-    if (!profile) throw new Error('Akun tidak ditemukan');
-    const username = String(profile.username || fallbackName || key).slice(0, 24);
-    const crowns = Math.max(0, Math.floor(Number(profile.crowns) || 0));
-    const coins = Math.max(0, Math.floor(Number(profile.coins) || 0));
-    const inventory = Array.isArray(profile.inventory) ? profile.inventory : [];
-    document.getElementById('pp-name').textContent = username;
-    document.getElementById('pp-role').textContent = profile.isDev ? 'DEVELOPER ✔' : 'PLAYER';
-    document.getElementById('pp-crowns').textContent = `👑 ${crowns}`;
-    document.getElementById('pp-coins').textContent = `🪙 ${coins.toLocaleString('id-ID')}`;
-    document.getElementById('pp-items').textContent = String(inventory.length);
-    document.getElementById('pp-id').textContent = String(profile.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------'));
-    document.getElementById('pp-outfit').textContent = `Kostum dipakai: ${getEquippedPublicNames(profile)}`;
-    document.getElementById('pp-status').textContent = 'Profil publik · PIN dan data login tidak ditampilkan';
-  } catch (e) {
-    document.getElementById('pp-role').textContent = 'PROFIL TIDAK TERSEDIA';
-    document.getElementById('pp-status').textContent = e.message || 'Gagal memuat profil';
-  }
-}
-
 async function searchGlobalPlayers(query) {
   const q = String(query || '').trim().toLowerCase();
   const result = document.getElementById('player-search-results');
@@ -3064,15 +2889,11 @@ async function searchGlobalPlayers(query) {
       const name = document.createElement('b'); name.textContent = String(pl.username || key);
       const meta = document.createElement('small'); meta.textContent = `ID: ${String(pl.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------'))} · ${key === DEV_USERNAME || pl.isDev ? 'ADMIN' : 'PLAYER'}`;
       info.append(name, meta);
-      const actions = document.createElement('div'); actions.className = 'ps-friend-actions';
-      const inspect = document.createElement('button'); inspect.className = 'ps-action'; inspect.textContent = '👁'; inspect.title = 'Periksa akun';
-      inspect.onclick = () => inspectPlayerAccount(key, String(pl.username || key)).catch(e => showToast(e.message));
-      actions.appendChild(inspect);
       const action = document.createElement('button'); action.className = 'ps-action ps-add'; action.title = friends[key] ? 'Sudah berteman' : 'Tambah teman';
       if (friends[key]) { action.textContent = '✓'; action.disabled = true; action.title = 'Sudah berteman'; }
       else if (outgoing?.status === 'pending') { action.textContent = '⌛'; action.disabled = true; action.title = 'Menunggu diterima'; }
       else { action.textContent = '+'; action.title = 'Kirim permintaan teman'; action.onclick = () => { action.disabled = true; action.textContent = '…'; addFriend(key, String(pl.username || key)).then(() => { action.textContent = '⌛'; action.title = 'Menunggu diterima'; }).catch(e => { action.disabled = false; action.textContent = '+'; showToast(e.message); }); }; }
-      actions.appendChild(action); row.append(info, actions); result.appendChild(row);
+      row.append(info, action); result.appendChild(row);
     }
   } catch (e) {
     result.textContent = 'Gagal mencari. Periksa koneksi Firebase.';
@@ -3098,13 +2919,11 @@ async function renderFriendsList() {
       const dot = document.createElement('span'); dot.className = 'ps-dot'; dot.dataset.key = key; name.prepend(dot);
       const meta = document.createElement('small'); meta.textContent = `ID: ${String(profile.playerId || '------')}`;
       info.append(name, meta);
-      const inspect = document.createElement('button'); inspect.className = 'ps-action'; inspect.textContent = '👁'; inspect.title = 'Periksa akun';
-      inspect.onclick = () => inspectPlayerAccount(key, String(profile.username || key)).catch(e => showToast(e.message));
       const invite = document.createElement('button'); invite.className = 'ps-action ps-invite'; invite.textContent = '+'; invite.title = 'Undang ke room';
       invite.onclick = () => sendGameInvite(key, String(profile.username || key)).catch(e => showToast(e.message));
       const removeBtn = document.createElement('button'); removeBtn.className = 'ps-remove'; removeBtn.textContent = '×'; removeBtn.title = 'Hapus teman';
       removeBtn.onclick = () => removeFriend(key).catch(e => showToast(e.message));
-      const actions = document.createElement('div'); actions.className = 'ps-friend-actions'; actions.append(inspect, invite, removeBtn);
+      const actions = document.createElement('div'); actions.className = 'ps-friend-actions'; actions.append(invite, removeBtn);
       row.append(info, actions); list.append(row);
     }
     friendKeysCache = new Set(entries.map(([k]) => k));
@@ -3321,10 +3140,11 @@ function buildRoomUI() {
   if (document.getElementById('countdown')) return;
   const css = document.createElement('style');
   css.textContent = `#countdown{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;font:900 140px sans-serif;color:#fff;text-shadow:0 0 30px #3b6cf6;pointer-events:none}
-`;
+#race-timer{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:69;padding:7px 15px;border:1px solid rgba(66,217,255,.7);border-radius:12px;background:rgba(7,15,30,.82);color:#fff;font:900 20px monospace;letter-spacing:1px;box-shadow:0 0 16px #168bd755;display:none;pointer-events:none}`;
   document.head.appendChild(css);
   const cd = document.createElement('div'); cd.id = 'countdown';
-  document.body.append(cd);
+  const raceTimer = document.createElement('div'); raceTimer.id = 'race-timer'; raceTimer.textContent = '00:00.0';
+  document.body.append(cd, raceTimer);
 }
 
 window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() => {}); });
@@ -3384,6 +3204,8 @@ function applyMap(id) {
   const w = id === 'snow' ? snowWorld : (id === 'angkasa' ? angkasaWorld : lavaWorld);
   if (!w) return;
   currentMap = id;
+  mazeCameraLocked = false;
+  if (lavaHudEl) lavaHudEl.style.display = id === 'lava' ? 'block' : 'none';
 
   // Fitur lari (sprint) dimatikan khusus di map Angkasa.
   // Map Lava dan Salju tetap memakai tombol lari seperti biasa.
@@ -3420,7 +3242,19 @@ function animate() {
   if (!renderer) return;
   const delta = Math.min(clock.getDelta(), 0.1);
   const t = roomStartAt ? Math.max(0, (serverNow() - roomStartAt) / 1000) : clock.getElapsedTime();
-  // Timer visual di HUD dihapus: progres kemenangan menggunakan mahkota.
+  const timerEl = document.getElementById('race-timer');
+  if (timerEl) {
+    const running = gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN';
+    timerEl.style.display = running && (soloStart > 0 || roomStartAt) ? 'block' : 'none';
+    if (running && (soloStart > 0 || roomStartAt)) {
+      const elapsedMs = runElapsedMs();
+      const totalTenths = Math.floor(elapsedMs / 100);
+      const mins = Math.floor(totalTenths / 600);
+      const secs = Math.floor((totalTenths % 600) / 10);
+      const tenth = totalTenths % 10;
+      timerEl.textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}.${tenth}`;
+    }
+  }
   tickMultiplayer();
   if (snowController) snowController.updateHud({ currentMap, gameState });
   animateRemotePlayers(delta);
@@ -3471,6 +3305,11 @@ function animate() {
 
   if (gameState !== 'PLAYING') return;
 
+  if (currentMap === 'lava' && lavaHudEl) {
+    const progress=Math.max(0,Math.min(100,Math.round((-character.position.z/155)*100)));
+    const pct=document.getElementById('lava-hud-percent'), fill=document.getElementById('lava-hud-fill');
+    if(pct)pct.textContent=progress+'%'; if(fill)fill.style.width=progress+'%';
+  }
   const speed = flyMode ? flySpeed : (isRunning ? 9 : 5);
   let isMoving = false;
 
@@ -3656,6 +3495,14 @@ function animate() {
   camera.fov += ((60 + runK * 8) - camera.fov) * k * 0.5; camera.updateProjectionMatrix();
   if (embers) { const ep = embers.geometry.attributes.position; for (let i = 0; i < ep.count; i++) { let y = ep.getY(i) + delta * 1.5; if (y > 22) y = -8; ep.setY(i, y); } ep.needsUpdate = true; }
 
+  if (currentMap === 'lava' && !mazeCameraLocked && character.position.y > FIN_Y - 1 && Math.abs(character.position.x) < MAZE_H-1 && character.position.z < -89 && character.position.z > MAZE_Z-MAZE_H+1) {
+    mazeCameraLocked = true;
+    const forward=new THREE.Vector3(Math.sin(character.rotation.y),0,Math.cos(character.rotation.y));
+    const behind=forward.clone().multiplyScalar(-4.8);
+    camera.position.set(character.position.x+behind.x,character.position.y+3.0,character.position.z+behind.z);
+    controls.target.set(character.position.x,character.position.y+1.35,character.position.z-1.0);
+    showToast('🧩 Kamu memasuki labirin tertutup!');
+  }
   const targetPos = character.position.clone(); targetPos.y += 1.5;
   const prevT = controls.target.clone();
   controls.target.lerp(targetPos, 1 - Math.exp(-delta * 8));
@@ -3668,6 +3515,10 @@ function animate() {
   controls.update();
 
   lavaMat.color.setHSL(0.03 + Math.sin(t * 2) * 0.02, 1, 0.5);
+  for(const v of lavaVolcanoFX){
+    v.group.children.forEach((obj,idx)=>{ if(obj.material && obj.material.emissive) obj.material.emissiveIntensity=1.7+0.55*Math.sin(t*3+idx); });
+    for(const sp of v.sparks){ sp.phase+=delta*sp.speed; sp.mesh.position.y=14.8*v.scale+Math.abs(Math.sin(sp.phase))*3.8*v.scale; sp.mesh.position.x=Math.sin(sp.phase*1.7)*0.75*v.scale; sp.mesh.scale.setScalar(0.65+Math.abs(Math.sin(sp.phase*2))*0.65); }
+  }
 }
 
 window.addEventListener('resize', () => {
