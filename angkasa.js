@@ -8,8 +8,8 @@
 //  - Ruang angkasa pekat: langit hitam penuh bintang (juga di BAWAH), nebula, planet batu berkawah,
 //    planet bercincin, sabuk asteroid. Tidak ada lantai/air/kabut di bawah jalur -> jurang hitam total.
 //  - Gravitasi rendah saat melompat (default -15, zona Nol-G -7) -> lompatan melayang ala astronot.
-//  - Rintangan ala Stumble Guys: palang berputar, bandul raksasa, honeycomb (ubin jebakan),
-//    dinding pendorong, trampolin pantul, laser gate, meteor.
+//  - Jalur parkour antariksa: pijakan hexagon, platform orbit bergerak, trampolin, checkpoint, finish.
+//  - Semua rintangan lintasan adalah pijakan solid yang bisa diinjak; tanpa lava dan tanpa laser/bandul.
 //  - 5 checkpoint + finish.
 export function buildAngkasaWorld(THREE, scene, deps = {}) {
   const NORMAL_GRAVITY = -32;                       // gravitasi default game (dipulihkan saat keluar map)
@@ -41,8 +41,8 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
     cyan: new THREE.MeshStandardMaterial({ color: 0x0c2a55, emissive: 0x19b4ff, emissiveIntensity: 0.95, metalness: 0.5, roughness: 0.3 }),
     magenta: new THREE.MeshStandardMaterial({ color: 0x3a0f45, emissive: 0xd23cff, emissiveIntensity: 0.9, metalness: 0.5, roughness: 0.3 }),
     lime: new THREE.MeshStandardMaterial({ color: 0x103a2a, emissive: 0x2dffa0, emissiveIntensity: 0.85, metalness: 0.5, roughness: 0.3 }),
-    hazard: new THREE.MeshStandardMaterial({ color: 0xff4b83, emissive: 0xc0004f, emissiveIntensity: 1.1, metalness: 0.3, roughness: 0.35 }),
-    hazardAlt: new THREE.MeshStandardMaterial({ color: 0xffd23a, emissive: 0xb07a00, emissiveIntensity: 0.9, metalness: 0.3, roughness: 0.4 }),
+    hazard: new THREE.MeshStandardMaterial({ color: 0x284c91, emissive: 0x174dff, emissiveIntensity: 0.75, metalness: 0.55, roughness: 0.28 }),
+    hazardAlt: new THREE.MeshStandardMaterial({ color: 0x50317e, emissive: 0x8d45ff, emissiveIntensity: 0.75, metalness: 0.55, roughness: 0.28 }),
     white: new THREE.MeshStandardMaterial({ color: 0xe8f0ff, emissive: 0x6a86c8, emissiveIntensity: 0.35, metalness: 0.3, roughness: 0.4 }),
     bounce: new THREE.MeshStandardMaterial({ color: 0x063a4a, emissive: 0x00e5ff, emissiveIntensity: 1.3, metalness: 0.4, roughness: 0.25 }),
     checkpoint: new THREE.MeshStandardMaterial({ color: 0x23d69a, emissive: 0x087d62, emissiveIntensity: 0.9 }),
@@ -156,7 +156,7 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
     return mesh;
   };
   // planet batu besar (merah-oranye), bulan abu-abu, planet batu biru-kehijauan
-  planet(-70, 12, -110, 26, [[0.62, 0.32, 0.2], [0.8, 0.5, 0.3]], 14, 0.01);
+  planet(-70, 12, -110, 26, [[0.22, 0.25, 0.48], [0.42, 0.38, 0.68]], 14, 0.01);
   planet(52, 34, -70, 10, [[0.5, 0.5, 0.52], [0.72, 0.72, 0.74]], 12, 0.02);
   planet(60, -6, -210, 18, [[0.3, 0.38, 0.42], [0.45, 0.6, 0.58]], 12, -0.012);
   planet(-48, 40, -235, 8, [[0.55, 0.4, 0.3], [0.7, 0.58, 0.44]], 9, 0.03);
@@ -171,7 +171,7 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
   // sabuk asteroid (InstancedMesh: ringan untuk perangkat mobile)
   const belts = [];
   const asteroidBelt = (cx, cy, cz, count, spreadX, spreadY, spreadZ) => {
-    const geo = rockGeometry(1, 1, 3, [[0.45, 0.38, 0.33], [0.62, 0.52, 0.45]]);
+    const geo = rockGeometry(1, 1, 3, [[0.28, 0.32, 0.42], [0.48, 0.52, 0.66]]);
     const inst = new THREE.InstancedMesh(geo, M.rock, count), dummy = new THREE.Object3D();
     for (let i = 0; i < count; i++) {
       dummy.position.set((rand() - 0.5) * spreadX, (rand() - 0.5) * spreadY, (rand() - 0.5) * spreadZ);
@@ -249,176 +249,97 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
   createPlatform(0, 4.8, -65, 11, 10, 'static', 'box', { checkpoint: true, route: true });   // CP1
   gate(-58, 4.0, 0xd23cff);
 
-  // ===== 2. ARENA PALANG BERPUTAR (ala Stumble Guys) =====
+  // ===== 2. ARENA ASTEROID MELAYANG =====
+  // Arena lebar sebagai tempat mendarat, dilanjutkan platform bergerak yang semuanya bisa diinjak.
   const ARENA = { x: 0, y: 5.6, z: -84 };
-  createPlatform(ARENA.x, ARENA.y, ARENA.z, 21, 21, 'static', 'round', { glow: M.magenta, route: true });
+  createPlatform(ARENA.x, ARENA.y, ARENA.z, 18, 18, 'static', 'round', { glow: M.magenta, route: true });
   {
-    const ring = add(new THREE.TorusGeometry(10.1, 0.12, 6, 64), M.neon(0xff4b83), ARENA.x, ARENA.y + 0.3, ARENA.z);
+    const ring = add(new THREE.TorusGeometry(8.8, 0.14, 8, 64), M.neon(0x9b7bff), ARENA.x, ARENA.y + 0.3, ARENA.z);
     ring.rotation.x = Math.PI / 2;
   }
-  createPlatform(0, 6.4, -100, 8, 7, 'static', 'box', { checkpoint: true, route: true });    // CP2
+  createPlatform(-4.5, 6.2, -94, 5.2, 5.2, 'moving_x', 'hex', { glow: M.cyan, range: 1.8, speed: 1.0, route: true });
+  createPlatform(4.5, 6.8, -101, 5.2, 5.2, 'moving_y', 'round', { glow: M.magenta, range: 1.1, speed: 1.15, route: true });
+  createPlatform(0, 6.4, -108, 9, 8, 'static', 'box', { checkpoint: true, route: true }); // CP2
 
-  // Palang berputar rendah: harus dilompati. Collider mengikuti arah visual (rotation.y = angle).
-  const makeSweeper = (cx, floorTop, cz, length, speed, phase, mat) => {
-    const pivot = new THREE.Group();
-    pivot.position.set(cx, floorTop, cz);
-    group.add(pivot);
-    add(new THREE.CylinderGeometry(0.6, 0.8, 1.0, 16), M.deckDark, 0, 0.5, 0, pivot);
-    const bar = add(new THREE.BoxGeometry(length, 0.55, 0.7), mat, 0, 0.62, 0, pivot);
-    for (const s of [-1, 1]) add(new THREE.SphereGeometry(0.55, 12, 10), M.white, s * length / 2, 0.62, 0, pivot);
-    let angle = phase;
-    hazards.push({
-      update(t) { angle = phase + t * speed; pivot.rotation.y = angle; },
-      test(pp) {
-        const dx = pp.x - cx, dz = pp.z - cz, c = Math.cos(angle), s = Math.sin(angle);
-        const along = dx * c - dz * s;      // sumbu lokal-x palang di dunia = (cos a, 0, -sin a)
-        const across = dx * s + dz * c;
-        if (Math.abs(along) < length / 2 + 0.4 && Math.abs(across) < 0.75 && pp.y < floorTop + 0.95 && pp.y + 1.7 > floorTop + 0.1) {
-          const sgn = across >= 0 ? 1 : -1;
-          return { x: s * sgn, z: c * sgn };  // dorong tegak lurus palang
-        }
-        return null;
-      }
-    });
-    return bar;
-  };
-  makeSweeper(ARENA.x, ARENA.y + 0.25, ARENA.z, 17, 1.25, 0, M.hazard);
-  makeSweeper(ARENA.x, ARENA.y + 0.25, ARENA.z, 17, -1.7, 1.2, M.hazardAlt);
+  // ===== 3. JALUR BATU BINTANG =====
+  // Tidak ada bandul atau tiang penghalang yang tidak bisa diinjak.
+  const starSteps = [
+    [-3.8, 6.9, -116, 5.4, 'static'], [2.8, 7.5, -124, 5.2, 'moving_x'],
+    [-2.5, 8.0, -132, 5.2, 'moving_y'], [3.6, 8.5, -140, 5.4, 'static']
+  ];
+  starSteps.forEach(([x, y, z, w, type], i) => createPlatform(x, y, z, w, w, type, 'hex', {
+    glow: i % 2 ? M.magenta : M.cyan, range: 1.5, speed: 1.0 + i * 0.12, route: true
+  }));
+  gate(-113, 6.8, 0x7ff6ff);
 
-  // ===== 3. LORONG BANDUL RAKSASA =====
-  const HALL = { y: 6.4, z0: -107, z1: -137 };
-  createPlatform(0, HALL.y, (HALL.z0 + HALL.z1) / 2, 9.5, HALL.z0 - HALL.z1, 'static', 'box', { glow: M.cyan, route: true, under: true });
-  const makePendulum = (z, speed, phase) => {
-    const floorTop = HALL.y + 0.25, L = 7.2, R = 1.3, pivotY = floorTop + 1.2 + L;
-    const pivot = new THREE.Group(); pivot.position.set(0, pivotY, z); group.add(pivot);
-    add(new THREE.CylinderGeometry(0.08, 0.08, L, 8), M.white, 0, -L / 2, 0, pivot);
-    const ball = add(new THREE.IcosahedronGeometry(R, 1), M.rock, 0, -L, 0, pivot);
-    add(new THREE.TorusGeometry(R * 1.02, 0.1, 6, 24), M.hazard, 0, -L, 0, pivot).rotation.x = Math.PI / 2;
-    for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.4, pivotY - floorTop + 0.6, 0.4), M.deckAlt, s * 5.4, (pivotY + floorTop - 0.6) / 2 + 0.3, z);
-    add(new THREE.BoxGeometry(11.2, 0.4, 0.5), M.deckAlt, 0, pivotY + 0.5, z);
-    let bx = 0, by = floorTop + 1.2;
-    hazards.push({
-      update(t) {
-        const th = Math.sin(t * speed + phase) * 0.52;
-        pivot.rotation.z = th;
-        bx = Math.sin(th) * L; by = pivotY - Math.cos(th) * L;
-        ball.rotation.x += 0.03;
-      },
-      test(pp) {
-        const dx = pp.x - bx, dy = (pp.y + 0.9) - by, dz = pp.z - z;
-        if (Math.hypot(dx, dy, dz) < R + 0.55) { const l = Math.hypot(dx, dz) || 1; return { x: dx / l, z: (dz || 0.2) / l }; }
-        return null;
-      }
-    });
-  };
-  makePendulum(-114, 1.7, 0); makePendulum(-122, 2.1, 2.0); makePendulum(-130, 1.9, 4.1);
-  gate(-106, HALL.y, 0xff4b83);
-
-  // ===== 4. HONEYCOMB RUSH (ubin hex jebakan: yang palsu hilang saat diinjak) =====
-  const HC = { y: 7.2, z0: -143.5, dz: 4.8, dx: 5.5 };
-  const safeX = [0, -2.75, -5.5, -2.75, 0, 2.75];      // jalur ubin asli
-  for (let row = 0; row < 6; row++) {
-    const xs = row % 2 === 0 ? [-HC.dx, 0, HC.dx] : [-HC.dx / 2, HC.dx / 2];
-    for (const x of xs) {
-      const real = Math.abs(x - safeX[row]) < 0.01;
-      createPlatform(x, HC.y, HC.z0 - row * HC.dz, 5.4, 5.4, real ? 'static' : 'fake', 'hex', {
-        glow: row % 2 ? M.magenta : M.cyan, tell: Math.max(0.12, 0.55 - row * 0.07), route: real, under: false
+  // ===== 4. JEMBATAN HEXAGON =====
+  // Semua ubin di bagian ini adalah platform asli dan dapat diinjak; tidak ada ubin palsu.
+  const HC = { y: 8.8, z0: -148, dz: 5.2, dx: 4.6 };
+  const hexPath = [0, -4.6, 0, 4.6, 0, -4.6];
+  for (let row = 0; row < hexPath.length; row++) {
+    const x = hexPath[row];
+    createPlatform(x, HC.y + (row % 2) * 0.35, HC.z0 - row * HC.dz, 5.5, 5.5,
+      row === 2 || row === 4 ? 'moving_x' : 'static', 'hex', {
+        glow: row % 2 ? M.magenta : M.cyan, range: 1.15, speed: 1.0 + row * 0.08, route: true, under: true
       });
-    }
   }
-  createPlatform(0, 7.2, -177, 10, 9, 'static', 'box', { checkpoint: true, route: true });  // CP3
-  gate(-141, HC.y, 0x2dffa0);
+  createPlatform(0, 9.0, -181, 10, 9, 'static', 'box', { checkpoint: true, route: true }); // CP3
+  gate(-145, HC.y, 0x2dffa0);
 
-  // ===== 5. DINDING PENDORONG (blok geser) =====
-  const SL = { y: 7.8, z0: -185, z1: -213 };
-  createPlatform(0, SL.y, (SL.z0 + SL.z1) / 2, 10, SL.z0 - SL.z1, 'static', 'box', { glow: M.magenta, route: true, under: true });
-  const makeSlider = (z, amp, speed, phase) => {
-    const floorTop = SL.y + 0.25, W = 5.2, H = 3.0, D = 1.3;
-    const block = new THREE.Group(); block.position.set(0, floorTop, z); group.add(block);
-    add(new THREE.BoxGeometry(W, H, D), M.hazard, 0, H / 2, 0, block, true);
-    add(new THREE.BoxGeometry(W + 0.1, 0.35, D + 0.1), M.white, 0, H * 0.35, 0, block);
-    add(new THREE.BoxGeometry(W + 0.1, 0.35, D + 0.1), M.white, 0, H * 0.8, 0, block);
-    let bx = 0;
-    hazards.push({
-      update(t) { bx = Math.sin(t * speed + phase) * amp; block.position.x = bx; },
-      test(pp) {
-        const dx = pp.x - bx, dz = pp.z - z, ox = W / 2 + 0.4 - Math.abs(dx), oz = D / 2 + 0.45 - Math.abs(dz);
-        if (ox > 0 && oz > 0 && pp.y < floorTop + H && pp.y + 1.7 > floorTop) {
-          return ox < oz ? { x: dx >= 0 ? 1 : -1, z: 0 } : { x: 0, z: dz >= 0 ? 1 : -1 };
-        }
-        return null;
-      }
-    });
-  };
-  makeSlider(-191, 7.2, 1.35, 0); makeSlider(-199, 7.2, 1.55, 2.2); makeSlider(-207, 7.2, 1.75, 4.4);
-  createPlatform(0, 8.0, -219, 9, 8, 'static', 'box', { checkpoint: true, route: true });  // CP4
-  gate(-184, SL.y, 0xffd23a);
+  // ===== 5. KEPINGAN ORBIT =====
+  // Rintangan berupa pijakan bergerak, bukan dinding padat yang tidak bisa diinjak.
+  const orbitSteps = [
+    [-4.5, 9.5, -190, 5.6, 'moving_x'], [4.5, 10.2, -198, 5.6, 'moving_y'],
+    [-4.0, 10.8, -206, 5.6, 'moving_x'], [4.0, 11.4, -214, 5.6, 'moving_y']
+  ];
+  orbitSteps.forEach(([x, y, z, w, type], i) => createPlatform(x, y, z, w, w, type, 'round', {
+    glow: i % 2 ? M.magenta : M.lime, range: 1.7, speed: 1.0 + i * 0.13, route: true, under: true
+  }));
+  createPlatform(0, 11.8, -222, 9, 8, 'static', 'box', { checkpoint: true, route: true }); // CP4
+  gate(-188, 9.5, 0xffd23a);
 
   // ===== 6. TRAMPOLIN PANTUL =====
   const addBouncePad = (x, y, z, r) => {
-    const base = add(new THREE.CylinderGeometry(r, r * 1.15, 0.5, 24), M.deckDark, x, y, z, group, true);
-    const top = add(new THREE.CylinderGeometry(r * 0.88, r * 0.88, 0.22, 24), M.bounce, 0, 0.36, 0, base);
-    add(new THREE.TorusGeometry(r * 0.88, 0.1, 6, 28), M.neon(0x7ff6ff), 0, 0.48, 0, base).rotation.x = Math.PI / 2;
+    const base = add(new THREE.CylinderGeometry(r, r * 1.15, 0.55, 32), M.deckDark, x, y, z, group, true);
+    const top = add(new THREE.CylinderGeometry(r * 0.88, r * 0.88, 0.24, 32), M.bounce, 0, 0.39, 0, base);
+    add(new THREE.TorusGeometry(r * 0.88, 0.13, 8, 36), M.neon(0x7ff6ff), 0, 0.53, 0, base).rotation.x = Math.PI / 2;
+    add(new THREE.TorusGeometry(r * 0.58, 0.07, 6, 32), M.neon(0xd23cff), 0, 0.54, 0, base).rotation.x = Math.PI / 2;
     const p = { mesh: base, width: r * 2, depth: r * 2, type: 'static', startX: x, startY: y, startZ: z, range: 0, speed: 0, phase: 0,
       isFallen: false, tell: 0, revealTimer: 0, dx: 0, r, hh: 0.25 };
     platforms.push(p); route.push(p);
     bouncePads.push({ x, z, r, top: y + 0.25, squash: 0, topMesh: top });
     return p;
   };
-  addBouncePad(0, 8.4, -228, 2.6);                                   // lontar ke platform tinggi
-  createPlatform(0, 14.6, -240, 9, 8, 'static', 'box', { glow: M.lime, route: true, under: true });
-  gate(-226, 9, 0x7ff6ff, 5);
+  addBouncePad(0, 12.2, -231, 2.8);                                   // lontar ke platform tinggi
+  createPlatform(0, 18.0, -244, 9, 8, 'static', 'box', { glow: M.lime, route: true, under: true });
+  gate(-229, 12.8, 0x7ff6ff, 5);
 
   // ===== 7. ZONA NOL-G (batu planetoid melayang) =====
   const rocks = [
-    [0, 15.4, -253, 6.5, 'static'], [-5, 16.4, -263, 5.5, 'moving_y'], [4, 17.2, -273, 5.2, 'static'],
-    [-4, 18.0, -283, 5.0, 'moving_x'], [3, 17.2, -293, 5.4, 'static']
+    [0, 18.8, -256, 6.5, 'static'], [-5, 19.8, -266, 5.8, 'moving_y'], [4, 20.6, -276, 5.8, 'static'],
+    [-4, 21.4, -286, 5.8, 'moving_x'], [3, 20.8, -296, 5.8, 'static']
   ];
   rocks.forEach(([x, y, z, w, type], i) => createPlatform(x, y, z, w, w, type, 'round', {
     glow: i % 2 ? M.magenta : M.lime, range: type === 'moving_x' ? 2.6 : 1.4, speed: 1.0 + i * 0.1, route: true
   }));
-  createPlatform(0, 17.6, -303, 10, 9, 'static', 'box', { checkpoint: true, route: true });  // CP5
-  gate(-248, 15, 0x2dffa0);
+  createPlatform(0, 20.8, -306, 10, 9, 'static', 'box', { checkpoint: true, route: true });  // CP5
+  gate(-252, 18.5, 0x2dffa0);
 
-  // Meteor bergerak di zona Nol-G dan di bagian tengah.
-  const meteorHazard = (baseX, baseY, baseZ, amplitude, speed, phase, radius) => {
-    const mesh = add(rockGeometry(radius, 1, 4, [[0.5, 0.36, 0.28], [0.7, 0.5, 0.36]]), M.rock, baseX, baseY, baseZ);
-    let x = baseX, z = baseZ;
-    hazards.push({
-      update(t) {
-        x = baseX + Math.sin(t * speed + phase) * amplitude; z = baseZ + Math.cos(t * speed * 0.7 + phase) * 1.4;
-        mesh.position.set(x, baseY + Math.sin(t * speed * 1.4 + phase) * 0.8, z); mesh.rotation.x += 0.025; mesh.rotation.y += 0.035;
-      },
-      test(pp) {
-        const dx = pp.x - x, dz = pp.z - z, dy = (pp.y + 0.8) - mesh.position.y;
-        if (Math.hypot(dx, dy, dz) < radius + 0.7) { const l = Math.hypot(dx, dz) || 1; return { x: dx / l, z: dz / l }; }
-        return null;
-      }
-    });
-  };
-  meteorHazard(0, 5.4, -38.5, 6, 1.15, 0.4, 1.3);
-  meteorHazard(1, 19.2, -268, 5.5, 1.3, 2.1, 1.5);
-  meteorHazard(-1, 19.4, -288, 5.5, 1.1, 4.0, 1.5);
+  // ===== 7B. JALUR ASTEROID RAKSASA =====
+  // Asteroid di jalur ini berupa pijakan solid, bukan objek dekorasi yang menabrak pemain.
+  createPlatform(-3.5, 21.2, -315, 6.8, 6.8, 'moving_x', 'round', { glow: M.cyan, range: 1.3, speed: 0.9, route: true, under: true });
+  createPlatform(3.5, 21.8, -325, 6.8, 6.8, 'moving_y', 'hex', { glow: M.magenta, range: 1.0, speed: 1.0, route: true, under: true });
+  createPlatform(0, 22.2, -335, 8.5, 8.5, 'static', 'round', { glow: M.lime, route: true, under: true });
 
-  // ===== 8. LASER GATE + SPRINT FINAL =====
-  const FIN = { y: 17.6, z: -353 };
-  createPlatform(0, 17.6, -328, 9, 36, 'static', 'box', { glow: M.hazard, route: true, under: true });
-  const makeLaser = (z, speed, phase) => {
-    const floorTop = 17.85, grp = new THREE.Group(); grp.position.set(0, floorTop, z); group.add(grp);
-    const beam = add(new THREE.BoxGeometry(8.4, 0.2, 0.2), M.hazard.clone(), 0, 0.75, 0, grp);
-    for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.4, 0.45, 1.5, 12), M.deckAlt, s * 4.5, 0.75, 0, grp);
-    hazards.push({
-      update(t) { const on = Math.sin(t * speed + phase) > -0.1; beam.visible = on; beam.material.emissiveIntensity = on ? 1.9 : 0.2; },
-      test(pp) {
-        if (!beam.visible) return null;
-        if (Math.abs(pp.z - z) < 0.5 && Math.abs(pp.x) < 4.4 && pp.y < floorTop + 1.0 && pp.y + 1.6 > floorTop + 0.3) return { x: 0, z: pp.z >= z ? 1 : -1 };
-        return null;
-      }
-    });
-  };
-  makeLaser(-315, 2.4, 0); makeLaser(-323, 2.0, 1.7); makeLaser(-331, 2.7, 3.4); makeLaser(-339, 2.2, 5.0);
+  // ===== 8. LINTASAN FINAL DI ANTARABINTANG =====
+  // Menghapus laser gate yang tidak bisa diinjak; tantangan akhir memakai pijakan melayang.
+  const FIN = { y: 22.2, z: -383 };
+  createPlatform(0, 22.2, -350, 8.5, 8.5, 'static', 'box', { glow: M.cyan, route: true, under: true });
+  createPlatform(-3.8, 22.8, -360, 5.8, 5.8, 'moving_x', 'hex', { glow: M.magenta, range: 1.4, speed: 1.1, route: true, under: true });
+  createPlatform(3.8, 23.4, -370, 5.8, 5.8, 'moving_y', 'round', { glow: M.cyan, range: 1.0, speed: 1.0, route: true, under: true });
 
-  const finishPad = createPlatform(0, FIN.y, FIN.z, 12, 11, 'static', 'box', { glow: M.lime, route: true, checkpoint: true });
+
+  const finishPad = createPlatform(0, FIN.y, FIN.z, 13, 12, 'static', 'box', { glow: M.lime, route: true, checkpoint: true, under: true });
   const archMat = new THREE.MeshStandardMaterial({ color: 0x37f5c2, emissive: 0x0b9b7b, emissiveIntensity: 1.2 });
   add(new THREE.BoxGeometry(0.4, 5, 0.4), archMat, -4.6, FIN.y + 2.5, FIN.z);
   add(new THREE.BoxGeometry(0.4, 5, 0.4), archMat, 4.6, FIN.y + 2.5, FIN.z);
