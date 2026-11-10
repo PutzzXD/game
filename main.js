@@ -217,7 +217,8 @@ const SHOP_ITEMS = {
     { id: 'baju_ultraman', name: 'Kostum Ultraman', price: 4500, color: 0xd9e0e8, ultra: true, suit: 'mail' },
     { id: 'baju_godzilla', name: 'Kostum Godzilla', price: 5000, color: 0x315b42, godzilla: true },
     { id: 'baju_ramenraider', name: 'Kostum Ramen Raider', price: 4000, color: 0xd98a32, ramen: true },
-    { id: 'baju_pacman', name: 'Kostum Pacman', price: 10000, color: 0xffd800, pac: true }
+    { id: 'baju_pacman', name: 'Kostum Pacman', price: 10000, color: 0xffd800, pac: true },
+    { id: 'baju_developer', name: 'DEVELOPER — Eksklusif Admin', price: 0, color: 0x101b35, dev: true, suit: 'mail' }
   ],
   celana: [
     { id: 'celana_default', name: 'Celana Hitam', price: 0, color: 0x1a1a1c },
@@ -698,6 +699,11 @@ function startLobby() {
   document.getElementById('game-ui').style.display = 'block';
   gameState = 'LOBBY'; 
   if (!playerData.inventory.includes('aks_none')) playerData.inventory.push('aks_none');
+  const isOwnerAccount = String(playerData.username || '').trim().toLowerCase() === DEV_USERNAME;
+  if (isOwnerAccount && !playerData.inventory.includes('baju_developer')) {
+    playerData.inventory.push('baju_developer');
+    updatePlayerFirebase().catch(err => console.warn('Gagal menyimpan kostum Developer ke Vault:', err));
+  }
   if (!playerData.equipped.aksesoris) playerData.equipped.aksesoris = 'aks_none';
   document.getElementById('hud-username').textContent = playerData.username;
   updateCrownProfileUI();
@@ -754,6 +760,7 @@ function renderShopTab(category) {
     return;
   }
   SHOP_ITEMS[category].forEach(item => {
+    if (item.adminOnly || item.id === 'baju_developer') return;
     const isOwned = playerData.inventory.includes(item.id);
     if (isOwned) return; // item yang sudah dibeli pindah ke Vault
     const isEquipped = Object.values(playerData.equipped).includes(item.id);
@@ -826,6 +833,7 @@ function renderVaultTab(category) {
 }
 
 window.buyItem = async function(category, itemId, price) {
+  if (itemId === 'baju_developer') { showToast('🔒 Kostum Developer tidak dijual'); return; }
   if (playerData.inventory.includes(itemId)) { showToast('Sudah dimiliki'); return; }
   if (playerData.coins < price) { showToast("❌ Koin kamu tidak cukup!"); return; }
   playerData.coins -= price;
@@ -838,6 +846,10 @@ window.buyItem = async function(category, itemId, price) {
 };
 
 window.equipItem = async function(category, itemId) {
+  if (itemId === 'baju_developer' && String(playerData.username || '').trim().toLowerCase() !== DEV_USERNAME) {
+    showToast('🔒 Kostum Developer khusus akun admin');
+    return;
+  }
   let equipKey = category;
   if (category === 'efek') equipKey = itemId.includes('lari') ? 'efek_lari' : 'efek_lompat';
   
@@ -920,7 +932,7 @@ function getSuitTex(kind, hex) {
 }
 function applyItemMat(m, it) {
   const tex = it.web ? getWebTex(it.color) : it.suit ? getSuitTex(it.suit, it.color) : null;
-  const metal = it.iron ? 0.75 : it.thor ? 0.55 : 0;
+  const metal = it.dev ? 0.82 : it.iron ? 0.75 : it.thor ? 0.55 : 0;
   m.map = tex; m.color.setHex(tex ? 0xffffff : it.color);
   m.bumpMap = tex; m.bumpScale = 0.6;
   m.metalness = metal; m.roughness = it.iron ? 0.28 : it.thor ? 0.4 : (tex ? 0.55 : 0.7);
@@ -971,6 +983,10 @@ const SHAPES = {
 };
 function itemIcon(cat, it) {
   let inner = '';
+  if (it.id === 'baju_developer') {
+    inner = '<path d="M20 8L8 16L13 28L19 24V56H45V24L51 28L56 16L44 8Q32 16 20 8Z" fill="#101b35" stroke="#54dfff" stroke-width="2"/><path d="M32 17L35 25L44 26L37 32L39 41L32 36L25 41L27 32L20 26L29 25Z" fill="#ffd76a"/><path d="M18 48H46" stroke="#54dfff" stroke-width="3"/><text x="32" y="57" text-anchor="middle" font-size="7" font-weight="bold" fill="#fff">DEV</text>';
+    return `<svg viewBox="0 0 64 64" style="width:80%;height:80%">${inner}</svg>`;
+  }
   if (SHAPES[cat]) {
     const col = '#' + it.color.toString(16).padStart(6, '0'), d = SHAPES[cat];
     inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linejoin="round"/>`;
