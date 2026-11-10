@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildSnowWorld } from './snow.js';
+import { buildAngkasaWorld } from './angkasa.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
@@ -373,7 +374,8 @@ window.addEventListener('DOMContentLoaded', () => {
     profileModal.style.display = 'none';
     shopModal.style.display = 'none';
     // GACHA MAP: room memakai hasil gacha host (tersimpan di meta.map) agar semua pemain satu map.
-    const pickedMap = (roomCode && roomStartAt) ? ((roomMeta && roomMeta.map === 'snow' && snowWorld) ? 'snow' : 'lava') : rollMap();
+    const roomMap = roomMeta && roomMeta.map;
+    const pickedMap = (roomCode && roomStartAt) ? ((roomMap === 'snow' && snowWorld) ? 'snow' : (roomMap === 'angkasa' && angkasaWorld) ? 'angkasa' : 'lava') : rollMap();
     gachaBusy = true;
     playMapGacha(pickedMap, roomCode ? 900 : 1500, () => {
       gachaBusy = false;
@@ -557,6 +559,8 @@ async function returnToLobby() {
   setLobbyOnlyHud(true);
   if (parkourWorldGroup) parkourWorldGroup.visible = false;
   if (snowWorldGroup) snowWorldGroup.visible = false;
+  if (angkasaWorldGroup) angkasaWorldGroup.visible = false;
+  if (angkasaController) angkasaController.reset(physics);
   if (lobbyWorldGroup) lobbyWorldGroup.visible = true;
   if (scene) { scene.background = new THREE.Color(0x10182b); scene.fog = null; }
   if (camera && controls) { camera.position.set(0, 3.8, 9.5); controls.target.set(0, 1.45, 0); }
@@ -990,7 +994,7 @@ let batGrp, capeB, ironHelm, ironBody, thorHelm, thorBody, capeT;
 let MAZE_H = 12, MAZE_Z = -101;
 let zoomDir = 0, guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 // Sistem multi-map (gacha): map aktif + dunia tiap map. Lihat blok SNOW-MODULE.
-let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, snowController = null, curGroundPlat = null, gachaBusy = false;
+let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, snowController = null, angkasaWorld = null, angkasaWorldGroup = null, angkasaController = null, curGroundPlat = null, gachaBusy = false;
 const ROASTS = {
   hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
   fall: ['Beruntung banget jatuh ke lava, hangat kan? 🔥😹', 'Pemain paling beruntung sedunia: jatuh dari tempat yang sama lagi 🍀💀', 'Mantap, rekor jatuh terbaru! Lava bangga sama kamu 🏅🔥'],
@@ -1524,6 +1528,7 @@ function init3DGame() {
   parkourWorldGroup.visible = false;
   lavaWorld = { platforms, hazards, guards, laserBeam, FIN_Y, WIN, MAZE_H, MAZE_Z };
   try { const builtSnow = buildSnowWorld(THREE, scene, { runElapsedMs, insidePlat, showToast }); snowWorld = builtSnow.world; snowWorldGroup = builtSnow.group; snowController = builtSnow.controller; } catch (e) { console.error('Map Salju gagal dibuat, hanya Lava yang aktif:', e); snowWorld = null; snowController = null; if (snowWorldGroup) { scene.remove(snowWorldGroup); snowWorldGroup = null; } }
+  try { const builtAngkasa = buildAngkasaWorld(THREE, scene, { showToast }); angkasaWorld = builtAngkasa.world; angkasaWorldGroup = builtAngkasa.group; angkasaController = builtAngkasa.controller; } catch (e) { console.error('Map Angkasa gagal dibuat:', e); angkasaWorld = null; angkasaController = null; if (angkasaWorldGroup) { scene.remove(angkasaWorldGroup); angkasaWorldGroup = null; } }
 
   lobbyWorldGroup = new THREE.Group();
   lobbyWorldGroup.name = 'FREE_FIRE_STYLE_LOBBY';
@@ -2959,10 +2964,10 @@ window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() =>
 // sehingga seluruh sistem lama (kontrol, kamera, respawn, multiplayer) tetap
 // memakai kode yang sama.
 // =====================================================================
-const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' } };
+const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' }, angkasa: { icon: '🚀', name: 'MAP ANGKASA', color: '#a78bfa' } };
 
 // Gacha: hanya memilih map yang benar-benar tersedia.
-function rollMap() { return (snowWorld && Math.random() < 0.5) ? 'snow' : 'lava'; }
+function rollMap() { const available = ['lava']; if (snowWorld) available.push('snow'); if (angkasaWorld) available.push('angkasa'); return available[Math.floor(Math.random() * available.length)]; }
 
 // Animasi gacha singkat sebelum loading screen. done() dipanggil setelah hasil tampil.
 function playMapGacha(result, spinMs, done) {
@@ -2986,7 +2991,7 @@ function playMapGacha(result, spinMs, done) {
     }
     const slot = document.getElementById('gc-slot'), icon = document.getElementById('gc-icon'), nm = document.getElementById('gc-name'), sub = document.getElementById('gc-sub');
     el.style.display = 'flex'; slot.classList.add('spin'); slot.style.borderColor = '#fff'; slot.style.boxShadow = 'none'; sub.textContent = 'Mengacak map...';
-    const keys = ['lava', 'snow']; let k = 0;
+    const keys = ['lava', ...(snowWorld ? ['snow'] : []), ...(angkasaWorld ? ['angkasa'] : [])]; let k = 0;
     const iv = setInterval(() => { k = (k + 1) % keys.length; const m = MAP_LABELS[keys[k]]; icon.textContent = m.icon; nm.textContent = m.name; }, 95);
     setTimeout(() => {
       clearInterval(iv);
@@ -3001,15 +3006,27 @@ function playMapGacha(result, spinMs, done) {
 // Menukar dunia aktif. Dipanggil tepat sebelum onGameBegin().
 function applyMap(id) {
   if (id === 'snow' && !snowWorld) id = 'lava';
-  const w = id === 'snow' ? snowWorld : lavaWorld;
+  if (id === 'angkasa' && !angkasaWorld) id = 'lava';
+  const w = id === 'snow' ? snowWorld : (id === 'angkasa' ? angkasaWorld : lavaWorld);
   if (!w) return;
   currentMap = id;
-  platforms = w.platforms; hazards = w.hazards; guards = w.guards; laserBeam = w.laserBeam;
-  FIN_Y = w.FIN_Y; WIN = w.WIN; MAZE_H = w.MAZE_H; MAZE_Z = w.MAZE_Z;
+  platforms = w.platforms; hazards = w.hazards; guards = w.guards || []; laserBeam = w.laserBeam || null;
+  FIN_Y = w.FIN_Y; WIN = w.WIN; MAZE_H = w.MAZE_H || 0; MAZE_Z = w.MAZE_Z || 0;
   laserState = 'off'; curGroundPlat = null;
   if (parkourWorldGroup) parkourWorldGroup.visible = id === 'lava';
   if (snowWorldGroup) snowWorldGroup.visible = id === 'snow';
+  if (angkasaWorldGroup) angkasaWorldGroup.visible = id === 'angkasa';
   if (id === 'snow' && snowController) snowController.reset();
+  if (angkasaController) angkasaController.reset(physics);
+  if (id === 'angkasa' && scene) {
+    scene.background = new THREE.Color(0x050817);
+    scene.fog = new THREE.Fog(0x050817, 90, 260);
+  } else if (scene) {
+    // Kembalikan latar default game untuk Lava/Snow; efek khusus map tetap
+    // dikelola oleh modul map masing-masing.
+    scene.background = new THREE.Color(0x1a1a24);
+    scene.fog = new THREE.Fog(0x1a1a24, 20, 150);
+  }
   try { guards.forEach(gd => gd.reset()); } catch (e) {}
 }
 // ===== ICE MAP BUILDER MOVED TO snow.js =====
@@ -3105,6 +3122,9 @@ function animate() {
 
   hazards.forEach(h => h.update(t));
   if (currentMap === 'snow' && snowController) snowController.update(delta, {
+    curGroundPlat, physics, character, godMode, flyMode, hitCD, knock
+  });
+  if (currentMap === 'angkasa' && angkasaController) angkasaController.update(delta, {
     curGroundPlat, physics, character, godMode, flyMode, hitCD, knock
   });
   if (!mazeHinted && character.position.y > FIN_Y - 1 && Math.abs(character.position.x) < MAZE_H && character.position.z < -89 && character.position.z > MAZE_Z - MAZE_H) { mazeHinted = true; showToast('🧩 SALAH BEGO,MAMPUS'); }
@@ -3223,7 +3243,7 @@ function animate() {
     updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins;
     onFinish();
-    showOverlay('YOU WIN!', (currentMap === 'snow' ? 'Kamu lolos dari dunia salju dan tembakan NPC! +1000 🪙' : 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +1000 🪙') + finishSummary(), '#00ff00');
+    showOverlay('YOU WIN!', (currentMap === 'snow' ? 'Kamu lolos dari dunia salju dan tembakan NPC! +1000 🪙' : currentMap === 'angkasa' ? 'Kamu berhasil menaklukkan lintasan luar angkasa! +1000 🪙' : 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +1000 🪙') + finishSummary(), '#00ff00');
   }
 
   // ===== Animasi karakter: damping + squash & stretch + condong badan =====
