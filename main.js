@@ -156,6 +156,8 @@ document.addEventListener('keydown', startBackgroundMusic, { capture: true });
 const FIREBASE_URL = "https://game3d-66134-default-rtdb.asia-southeast1.firebasedatabase.app/";
 const DEV_USERNAME = "putzzdev";
 const ADMIN_PLAYER_ID = "123456";
+// Nilai mahkota akun admin dibuat konsisten antara profil dan leaderboard.
+const ADMIN_FIXED_CROWNS = 9999999;
 
 // ID dibuat oleh sistem, bukan dari input pemain.
 async function createUniquePlayerId() {
@@ -653,7 +655,7 @@ function ensureCrownProfileUI() {
 }
 function updateCrownProfileUI() {
   ensureCrownProfileUI();
-  const count = Math.max(0, Math.floor(Number(playerData.crowns) || 0));
+  const count = String(playerData.username || '').trim().toLowerCase() === DEV_USERNAME ? ADMIN_FIXED_CROWNS : Math.max(0, Math.floor(Number(playerData.crowns) || 0));
   const hud = document.getElementById('hud-crowns');
   if (hud) hud.textContent = `👑 ${count}`;
   const modal = document.getElementById('modal-crowns');
@@ -668,6 +670,15 @@ async function loadCrownSettings() {
 async function awardWinCrown() {
   const key = myPlayerKey();
   if (!key) return;
+  if (key === DEV_USERNAME) {
+    playerData.crowns = ADMIN_FIXED_CROWNS;
+    await socialPatch(`players/${key}`, { crowns: ADMIN_FIXED_CROWNS, lastWinAt: Date.now() });
+    await socialPatch(`leaderboard/${key}`, { crowns: ADMIN_FIXED_CROWNS }).catch(() => {});
+    updateCrownProfileUI();
+    refreshSoloLeaderboard(true).catch(() => {});
+    showToast(`🏆 Akun admin: ${ADMIN_FIXED_CROWNS.toLocaleString('id-ID')} mahkota`, 2800);
+    return;
+  }
   // Baca nilai terbaru agar mahkota yang sudah diatur admin tidak tertimpa data lama.
   const latest = await socialGet(`players/${key}`).catch(() => null) || {};
   const next = Math.max(0, Math.floor(Number(latest.crowns ?? playerData.crowns) || 0)) + 1;
@@ -690,6 +701,12 @@ function startLobby() {
   if (!playerData.equipped.aksesoris) playerData.equipped.aksesoris = 'aks_none';
   document.getElementById('hud-username').textContent = playerData.username;
   updateCrownProfileUI();
+  if (String(playerData.username || '').trim().toLowerCase() === DEV_USERNAME) {
+    playerData.crowns = ADMIN_FIXED_CROWNS;
+    socialPatch(`players/${DEV_USERNAME}`, { crowns: ADMIN_FIXED_CROWNS, crownsUpdatedAt: Date.now() }).catch(() => {});
+    socialPatch(`leaderboard/${DEV_USERNAME}`, { crowns: ADMIN_FIXED_CROWNS }).catch(() => {});
+    updateCrownProfileUI();
+  }
   loadCrownSettings().then(() => refreshSoloLeaderboard(true)).catch(() => {});
   document.getElementById('coin-amount').textContent = playerData.coins || 0;
   document.getElementById('modal-username').textContent = `${playerData.username} · ID ${playerData.playerId || (playerData.isDev ? ADMIN_PLAYER_ID : 'belum tersedia')}`;
@@ -2703,7 +2720,7 @@ async function refreshSoloLeaderboard(force = false) {
       .map(([key, p]) => ({
         id: key, username: String(p.username || key).slice(0, 18),
         playerId: String(p.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')),
-        isDev: !!p.isDev, equipped: p.equipped || {}, crowns: Math.max(0, Number(p.crowns ?? profiles?.[key]?.crowns) || 0),
+        isDev: !!p.isDev, equipped: p.equipped || {}, crowns: key === DEV_USERNAME ? ADMIN_FIXED_CROWNS : Math.max(0, Number(profiles?.[key]?.crowns ?? p.crowns) || 0),
         bestScore: Number(p.bestScore) || 0, bestTimeMs: Number(p.bestTimeMs) || 0,
         finishMs: Number(p.bestTimeMs) || null
       }))
