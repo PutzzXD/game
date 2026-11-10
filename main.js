@@ -2266,12 +2266,23 @@ function mpSyncEquipped() {
 // dipanggil tombol start (solo) ATAU saat host memulai room
 function onGameBegin() {
   setLobbyOnlyHud(false);
-  if (parkourWorldGroup) parkourWorldGroup.visible = currentMap !== 'snow';
+  // Tampilkan tepat SATU map aktif. Sebelumnya parkourWorldGroup ikut
+  // dinyalakan untuk Angkasa sehingga lantai/lava map lama terlihat menembus.
+  if (parkourWorldGroup) parkourWorldGroup.visible = currentMap === 'lava';
   if (snowWorldGroup) snowWorldGroup.visible = currentMap === 'snow';
+  if (angkasaWorldGroup) angkasaWorldGroup.visible = currentMap === 'angkasa';
   if (lobbyWorldGroup) lobbyWorldGroup.visible = false;
   if (scene) {
-    if (currentMap === 'snow') { scene.background = new THREE.Color(0xbcd8ee); scene.fog = new THREE.Fog(0xbcd8ee, 30, 190); }
-    else { scene.background = new THREE.Color(0x1a1a24); scene.fog = new THREE.Fog(0x1a1a24, 20, 150); }
+    if (currentMap === 'snow') {
+      scene.background = new THREE.Color(0xbcd8ee);
+      scene.fog = new THREE.Fog(0xbcd8ee, 30, 190);
+    } else if (currentMap === 'angkasa') {
+      if (angkasaController && angkasaController.enter) angkasaController.enter(scene);
+      else { scene.background = new THREE.Color(0x000000); scene.fog = null; }
+    } else {
+      scene.background = new THREE.Color(0x1a1a24);
+      scene.fog = new THREE.Fog(0x1a1a24, 20, 150);
+    }
   }
   const rp = document.getElementById('room-panel'); if (rp) rp.style.display = 'none';
   finishMs = null; deathFrozenMs = null; roomRunReset = 0;
@@ -3166,8 +3177,8 @@ function applyMap(id) {
   if (id === 'snow' && snowController) snowController.reset();
   if (angkasaController) angkasaController.reset(physics);
   if (id === 'angkasa' && scene) {
-    scene.background = new THREE.Color(0x050817);
-    scene.fog = new THREE.Fog(0x050817, 90, 260);
+    if (angkasaController && angkasaController.enter) angkasaController.enter(scene);
+    else { scene.background = new THREE.Color(0x000000); scene.fog = null; }
   } else if (scene) {
     // Kembalikan latar default game untuk Lava/Snow; efek khusus map tetap
     // dikelola oleh modul map masing-masing.

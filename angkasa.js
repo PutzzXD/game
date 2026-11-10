@@ -374,7 +374,7 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
     },
     enter(sc) {                                        // opsional: dipanggil saat map aktif -> latar hitam pekat tanpa kabut
       const s = sc || scene;
-      s.background = new THREE.Color(0x000000);
+      s.background = new THREE.Color(0x02030b);
       s.fog = null;
     },
     exit() {},
