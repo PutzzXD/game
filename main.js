@@ -1097,7 +1097,7 @@ const ROASTS = {
   snowshot: ['Ditembak NPC salju! Harusnya ngumpet di balik dinding es 🧊🔫', 'NPC: "waktu habis, sayang" ❄️🔫', 'Berdiri di tempat terbuka pas NPC nembak? Dingin banget 🥶💥', 'Dinding esnya ada buat dipakai, bukan dipandang 🧊😹'],
   shot: ['Ditembak NPC gara-gara salah belok. Beruntung banget kamu 🍀🔫', 'Peta nggak bisa dibaca, tapi pistolnya akurat. Beruntung kamu 😹🔫', 'NPC: "makasih udah nyasar ke sini" 🔫💀', 'Satu lorong benar, kamu pilih yang salah. Pecah rekor 🏅🔫']
 };
-const isAdminUser = () => !!(playerData && playerData.username && playerData.username.toLowerCase() === DEV_USERNAME);
+const isAdminUser = () => !!(playerData && (playerData.isDev === true || String(playerData.username || '').trim().toLowerCase() === DEV_USERNAME));
 // Pemain biasa di-roasting; admin/dev tidak (admin cuma dapat pesan biasa)
 function roast(kind, plain) {
   if (isAdminUser()) { if (plain) showToast(plain); return; }
@@ -1116,7 +1116,8 @@ function respawn() {
 
 // ===== ADMIN PANEL (khusus Putzzdev) =====
 function setupAdminPanel() {
-  if (playerData.username.toLowerCase() !== DEV_USERNAME || document.getElementById('admin-btn')) return;
+  // Gunakan flag admin dari akun ATAU username pemilik; trim/case-insensitive agar panel tidak hilang karena format data.
+  if (!isAdminUser() || document.getElementById('admin-btn')) return;
   const css = document.createElement('style');
   css.textContent = '#admin-wrap{position:fixed;top:54px;right:10px;z-index:9999;display:flex;flex-direction:column;align-items:flex-end;gap:6px;font-family:sans-serif}#admin-btn{padding:8px 12px;border:0;border-radius:10px;background:#ff3366;color:#fff;font-weight:700;cursor:grab;touch-action:none}#admin-panel{width:220px;padding:12px;border-radius:12px;background:rgba(15,15,25,.92);color:#fff;display:none;flex-direction:column;gap:8px;font-size:13px}#admin-title{cursor:grab;padding:4px 0;touch-action:none;user-select:none}#admin-panel button{padding:8px;border:0;border-radius:8px;background:#2d3550;color:#fff}#admin-panel button.on{background:#00b86b}#admin-roast{font-size:12px;color:#ffd166}#fly-ctrl{position:fixed;z-index:9999;right:14px;top:45%;display:none;flex-direction:column;gap:10px}#fly-ctrl button{width:56px;height:56px;border-radius:50%;border:0;background:rgba(255,255,255,.25);color:#fff;font-size:24px}';
   document.head.appendChild(css);
@@ -2267,15 +2268,26 @@ function init3DGame() {
   window.addEventListener('mousemove', (e) => { if (mouseJoy) moveKnobTo(e.clientX, e.clientY); });
   window.addEventListener('mouseup', () => { if (mouseJoy) { mouseJoy = false; handleEnd(); } });
 
-  document.getElementById('btn-jump').addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    if (physics.isGrounded) {
-      physics.jumpCount = 1; physics.velocityY = physics.jumpForce; physics.isGrounded = false; playJumpSound(); sq.v = 6; spawnDust(5);
-      createJumpEffect();
-    } else if (physics.jumpCount < physics.maxJumps) {
-      physics.jumpCount++; physics.velocityY = physics.jumpForce; playJumpSound(); sq.v = 6;
-      createJumpEffect();
-    }
+  // Sistem lompatan 2 tahap: satu lompatan dari tanah + satu lompatan di udara.
+  // Hitungan tidak di-reset saat karakter masih naik, supaya double jump konsisten di HP maupun PC.
+  const triggerPlayerJump = () => {
+    if (gameState !== 'PLAYING' || flyMode || !physics) return;
+    const maxJumps = Math.max(2, Number(physics.maxJumps) || 2);
+    let usedJumps = Math.max(0, Number(physics.jumpCount) || 0);
+    if (physics.isGrounded) usedJumps = 0;
+    if (usedJumps >= maxJumps) return;
+    physics.jumpCount = usedJumps + 1;
+    physics.velocityY = physics.jumpForce;
+    physics.isGrounded = false;
+    playJumpSound(); sq.v = 6;
+    if (physics.jumpCount === 1) spawnDust(5);
+    createJumpEffect();
+  };
+  const jumpButton = document.getElementById('btn-jump');
+  jumpButton.style.touchAction = 'none';
+  jumpButton.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    triggerPlayerJump();
   });
 
   const btnRun = document.getElementById('btn-run');
