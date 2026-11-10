@@ -339,18 +339,69 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
   createPlatform(3.8, 23.4, -370, 5.8, 5.8, 'moving_y', 'round', { glow: M.cyan, range: 1.0, speed: 1.0, route: true, under: true });
 
 
-  const finishPad = createPlatform(0, FIN.y, FIN.z, 13, 12, 'static', 'box', { glow: M.lime, route: true, checkpoint: true, under: true });
-  const archMat = new THREE.MeshStandardMaterial({ color: 0x37f5c2, emissive: 0x0b9b7b, emissiveIntensity: 1.2 });
-  add(new THREE.BoxGeometry(0.4, 5, 0.4), archMat, -4.6, FIN.y + 2.5, FIN.z);
-  add(new THREE.BoxGeometry(0.4, 5, 0.4), archMat, 4.6, FIN.y + 2.5, FIN.z);
-  add(new THREE.BoxGeometry(9.6, 0.4, 0.4), archMat, 0, FIN.y + 5, FIN.z);
-  {
-    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128;
+  // Dek akhir menjadi area pilihan: tiga jalur finish yang tampak sama.
+  // Platform lama dipertahankan sebagai area pendekatan sebelum bercabang.
+  createPlatform(0, FIN.y, FIN.z, 13, 12, 'static', 'box', {
+    glow: M.lime, route: true, checkpoint: true, under: true
+  });
+
+  const finishLanes = [];
+  const finishLaneXs = [-9, 0, 9];
+  const finishZ = FIN.z - 14;
+  const finishArchMat = new THREE.MeshStandardMaterial({
+    color: 0x37f5c2, emissive: 0x0b9b7b, emissiveIntensity: 1.2
+  });
+
+  // Tiga pijakan penghubung dari area pendekatan ke setiap pilihan.
+  finishLaneXs.forEach((x) => {
+    createPlatform(x * 0.72, FIN.y, FIN.z - 7, 5.8, 7.5, 'static', 'box', {
+      glow: M.cyan, route: true, under: true
+    });
+  });
+
+  // Semua gerbang, tulisan, ukuran, dan material identik.
+  finishLaneXs.forEach((x, index) => {
+    const lanePad = createPlatform(x, FIN.y, finishZ, 7, 9, 'static', 'box', {
+      glow: M.lime, route: true, under: true
+    });
+    const archZ = finishZ;
+    add(new THREE.BoxGeometry(0.4, 5, 0.4), finishArchMat, x - 2.8, FIN.y + 2.5, archZ);
+    add(new THREE.BoxGeometry(0.4, 5, 0.4), finishArchMat, x + 2.8, FIN.y + 2.5, archZ);
+    add(new THREE.BoxGeometry(6.0, 0.4, 0.4), finishArchMat, x, FIN.y + 5, archZ);
+
+    const cv = document.createElement('canvas');
+    cv.width = 512; cv.height = 128;
     const cx = cv.getContext('2d');
-    cx.fillStyle = '#05081a'; cx.fillRect(0, 0, 512, 128); cx.strokeStyle = '#37f5c2'; cx.lineWidth = 8; cx.strokeRect(6, 6, 500, 116);
-    cx.font = 'bold 64px sans-serif'; cx.fillStyle = '#ffffff'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('FINISH', 256, 66);
-    add(new THREE.PlaneGeometry(7, 1.75), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }), 0, FIN.y + 3.4, FIN.z);
-  }
+    cx.fillStyle = '#05081a'; cx.fillRect(0, 0, 512, 128);
+    cx.strokeStyle = '#37f5c2'; cx.lineWidth = 8; cx.strokeRect(6, 6, 500, 116);
+    cx.font = 'bold 64px sans-serif'; cx.fillStyle = '#ffffff';
+    cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillText('FINISH', 256, 66);
+    const sign = add(
+      new THREE.PlaneGeometry(5.6, 1.4),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }),
+      x, FIN.y + 3.4, archZ
+    );
+    sign.userData.isDecoration = true;
+    finishLanes.push({ index, x, y: FIN.y, z: finishZ, platform: lanePad });
+  });
+
+  // Nomor jalur benar diacak setiap map dimasuki/ditinggalkan.
+  let activeFinishIndex = -1;
+  const randomizeFinish = () => {
+    let next = Math.floor(Math.random() * finishLanes.length);
+    if (finishLanes.length > 1 && next === activeFinishIndex) {
+      next = (next + 1 + Math.floor(Math.random() * (finishLanes.length - 1))) % finishLanes.length;
+    }
+    activeFinishIndex = next;
+    const selected = finishLanes[activeFinishIndex];
+    world.WIN.x = selected.x;
+    world.WIN.y = selected.y;
+    world.WIN.z = selected.z;
+    world.activeFinishLane = activeFinishIndex;
+    return activeFinishIndex;
+  };
+
 
   // ---------- dekorasi hidup (planet berputar, sabuk asteroid, bintang terang berkedip) ----------
   hazards.push({
@@ -372,12 +423,14 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
       if (physics) physics.gravity = NORMAL_GRAVITY;   // pulihkan gravitasi default untuk map lain/lobby
       this.lowGravity = false; this.zeroG = false; this.bounceCooldown = 0;
     },
-    enter(sc) {                                        // opsional: dipanggil saat map aktif -> latar hitam pekat tanpa kabut
+    enter(sc) {                                        // map aktif: pilih ulang jalur finish untuk ronde baru
       const s = sc || scene;
       s.background = new THREE.Color(0x02030b);
       s.fog = null;
+      randomizeFinish();
     },
-    exit() {},
+    exit() { randomizeFinish(); },                     // saat kembali ke lobby, siapkan pilihan acak berikutnya
+    randomizeFinish,
     update(delta, state = {}) {
       const { physics, character, flyMode } = state;
       if (!physics || !character) return;
@@ -407,12 +460,16 @@ export function buildAngkasaWorld(THREE, scene, deps = {}) {
   const world = {
     platforms, hazards, guards, laserBeam: null,
     FIN_Y: FIN.y + 0.25,
-    WIN: { x: 0, y: FIN.y, z: FIN.z },
+    WIN: { x: 0, y: FIN.y, z: finishZ },
+    activeFinishLane: 0,
+    finishLanes,
+    randomizeFinish,
     MAZE_H: 0,
     MAZE_Z: 0,
     route,
     gravity: { base: BASE_GRAVITY, zero: ZERO_G, zeroRange: ZERO_G_RANGE, bounce: BOUNCE_VELOCITY }
   };
 
+  randomizeFinish(); // pilihan awal sudah acak sejak map pertama kali dibuat
   return { world, group, controller };
 }
