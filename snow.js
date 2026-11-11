@@ -1,7 +1,7 @@
 // Map ice/salju PARKOUR 3D. Dipisahkan dari main.js.
 export function buildSnowWorld(THREE, scene, api) {
   const { runElapsedMs, insidePlat, showToast } = api;
-  const SNOW_TIMER_SEC = 35;
+  const SNOW_TIMER_SEC = 20;
   const SNOW_FIRE_WINDOW_SEC = 10;
   const SNOW_CYCLE_SEC = SNOW_TIMER_SEC + SNOW_FIRE_WINDOW_SEC;
   // NPC lebih responsif: cepat mengunci sasaran, lalu memberi jeda singkat antar-tembakan.
@@ -489,130 +489,93 @@ export function buildSnowWorld(THREE, scene, api) {
     return { trigger, tick, hide };
   })();
 
-  // ================= NPC penjaga (menara es) =================
-  const A = new THREE.Vector3(), B = new THREE.Vector3(), D = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
-  function makeGuard(gx, gy, gz, idx, range, yaw, zone) { // zone = [xMin,xMax,zMin,zMax,yMin,yMax] sektor jaga NPC
-    const effRange = SNOW_NPC_UNLIMITED_RANGE ? SNOW_NPC_RANGE : range;
-    const tw = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.0, gy + 8, 16), towerMat); tw.position.set(gx, (gy - 8) / 2, gz); grp.add(tw);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.3, 16), snowMat); cap.position.set(gx, gy - 0.15, gz); grp.add(cap);
-    const g = new THREE.Group(); g.position.set(gx, gy, gz); grp.add(g);
-    const parka = new THREE.MeshStandardMaterial({ color: 0x2c4a7a, roughness: 0.7 }), fur = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.95 }), dark = new THREE.MeshStandardMaterial({ color: 0x15151c, metalness: 0.6, roughness: 0.4 });
-    const add = (geo, mat, x, y, z, par = g) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); par.add(m); return m; };
-    add(new THREE.CapsuleGeometry(0.32, 0.8, 4, 12), parka, 0, 1.4, 0);
-    add(new THREE.SphereGeometry(0.3, 16, 12), fur, 0, 2.3, 0);
-    add(new THREE.BoxGeometry(0.34, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: 0xff2200 }), 0, 2.32, 0.26);
-    for (const sd of [-1, 1]) add(new THREE.CapsuleGeometry(0.12, 0.45, 4, 8), parka, sd * 0.16, 0.5, 0);
-    add(new THREE.BoxGeometry(0.1, 0.1, 1.1), dark, 0.3, 1.6, 0.6);
-    add(new THREE.CapsuleGeometry(0.09, 0.4, 4, 8), parka, 0.3, 1.5, 0.15);
-    const muzzle = add(new THREE.SphereGeometry(0.07, 8, 8), new THREE.MeshBasicMaterial({ color: 0x66f6ff }), 0.3, 1.6, 1.2);
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 8), new THREE.MeshBasicMaterial({ color: 0xff3322, transparent: true, opacity: 0.9 })); beam.visible = false; grp.add(beam);
-    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff })); spark.visible = false; grp.add(spark);
-    // Untuk tembakan jauh, ketebalan sinar sedikit ditambah (hanya di atas 40 unit) agar tetap terlihat; jarak dekat tidak berubah.
-    const drawBeam = (a, ex, ey, ez, rad) => { B.set(ex, ey, ez); D.subVectors(B, a); const len = D.length() || 0.01; const k = 1 + Math.min(Math.max(0, len - 40), 700) * 0.01; beam.position.copy(a).addScaledVector(D, 0.5); beam.scale.set(rad * k, len, rad * k); beam.quaternion.setFromUnitVectors(UP, D.normalize()); };
-    let state = 'wait', timer = 0, coolDur = 0;
-    // Uji garis pandang ke beberapa titik tubuh. Objek cover yang memotong
-    // garis tembak tetap melindungi pemain; bagian tubuh yang terlihat bisa kena.
-    function visibleTarget(pp, origin) {
-      const targets = [
-        { x: pp.x, y: pp.y + 1.0, z: pp.z }, // dada
-        { x: pp.x, y: pp.y + 1.45, z: pp.z }, // bahu
-        { x: pp.x, y: pp.y + 1.8, z: pp.z }  // kepala
-      ];
-      for (const target of targets) {
-        if (!snowRayBlocked(origin.x, origin.y, origin.z, target.x, target.y, target.z)) return target;
-      }
-      return null;
-    }
-    const npc = {
-      mesh: g, x: gx, y: gy + 2.0, z: gz, range: effRange, zone,
-      inZone(pp) { return SNOW_NPC_IGNORE_ZONE || !zone || (pp.x >= zone[0] && pp.x <= zone[1] && pp.z >= zone[2] && pp.z <= zone[3] && pp.y >= zone[4] && pp.y <= zone[5]); },
-      reset() { state = 'wait'; timer = 0; coolDur = 0; beam.visible = false; spark.visible = false; muzzle.scale.set(1, 1, 1); },
+  // ================= SATU NPC RAKSASA: YETI (MERAH = DIAM, HIJAU = BOLEH GERAK) =================
+  // Yeti ditempatkan di area awal. Saat fase merah dimulai, pemain wajib berhenti.
+  // Perpindahan yang jelas selama fase merah akan mengembalikan true ke main.js
+  // melalui kontrak guards.update(), sehingga sistem GAMEOVER yang sudah ada tetap dipakai.
+  const yeti = (() => {
+    const root = new THREE.Group();
+    root.name = 'SNOW_GIANT_YETI';
+    root.position.set(0, 0.25, -5.2);
+    grp.add(root);
+    const fur = new THREE.MeshStandardMaterial({ color: 0xeaf7ff, roughness: 0.98 });
+    const shade = new THREE.MeshStandardMaterial({ color: 0x9fc8df, roughness: 0.92 });
+    const noseMat = new THREE.MeshStandardMaterial({ color: 0x263d50, roughness: 0.7 });
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x55eeff });
+    const redEyeMat = new THREE.MeshBasicMaterial({ color: 0xff160d });
+    const mouthMat = new THREE.MeshStandardMaterial({ color: 0x26313b, roughness: 1 });
+    const add = (geo, mat, x, y, z) => {
+      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); root.add(m); return m;
+    };
+    // Tubuh besar, kepala, lengan panjang, kaki, telinga, dan wajah Yeti.
+    add(new THREE.SphereGeometry(1.72, 20, 16), fur, 0, 2.15, 0);
+    add(new THREE.SphereGeometry(1.22, 20, 16), fur, 0, 4.15, 0.08);
+    add(new THREE.SphereGeometry(0.42, 12, 10), shade, -1.02, 4.55, 0.02);
+    add(new THREE.SphereGeometry(0.42, 12, 10), shade, 1.02, 4.55, 0.02);
+    const armL = add(new THREE.CapsuleGeometry(0.48, 1.75, 6, 12), fur, -1.78, 2.55, 0.02);
+    const armR = add(new THREE.CapsuleGeometry(0.48, 1.75, 6, 12), fur, 1.78, 2.55, 0.02);
+    armL.rotation.z = -0.22; armR.rotation.z = 0.22;
+    add(new THREE.CapsuleGeometry(0.55, 0.85, 5, 10), shade, -0.72, 0.7, 0);
+    add(new THREE.CapsuleGeometry(0.55, 0.85, 5, 10), shade, 0.72, 0.7, 0);
+    add(new THREE.SphereGeometry(0.2, 12, 10), noseMat, 0, 3.95, 1.15);
+    const eyeL = add(new THREE.SphereGeometry(0.13, 12, 10), eyeMat, -0.43, 4.3, 1.03);
+    const eyeR = add(new THREE.SphereGeometry(0.13, 12, 10), eyeMat, 0.43, 4.3, 1.03);
+    add(new THREE.BoxGeometry(0.58, 0.12, 0.12), mouthMat, 0, 3.55, 1.02);
+    // Taring es kecil di atas kepala.
+    const hornMat = new THREE.MeshStandardMaterial({ color: 0xeffcff, roughness: 0.45 });
+    const hornL = add(new THREE.ConeGeometry(0.2, 0.8, 7), hornMat, -0.72, 5.2, 0.0); hornL.rotation.z = 0.35;
+    const hornR = add(new THREE.ConeGeometry(0.2, 0.8, 7), hornMat, 0.72, 5.2, 0.0); hornR.rotation.z = -0.35;
+    // Lingkaran indikator di atas Yeti: biru saat aman, merah saat wajib diam.
+    const signal = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.13, 8, 24), new THREE.MeshBasicMaterial({ color: 0x35e6a1 }));
+    signal.position.set(0, 6.25, 0); root.add(signal);
+    const eyeRed = () => { eyeL.material = redEyeMat; eyeR.material = redEyeMat; };
+    const eyeBlue = () => { eyeL.material = eyeMat; eyeR.material = eyeMat; };
+    let red = false, anchor = null, caught = false, redElapsed = 0;
+    const guard = {
+      mesh: root,
+      reset() { red = false; anchor = null; caught = false; redElapsed = 0; signal.material.color.setHex(0x35e6a1); eyeBlue(); root.rotation.y = Math.PI; },
       update(delta, pp, t, canKill) {
-        if (snowTimeLeft() > 0) { // masih hitung mundur: NPC hanya berjaga
-          if (state !== 'wait') this.reset();
-          g.rotation.y = yaw + Math.sin(t * 0.7 + idx * 1.7) * 0.5; return false;
+        const left = snowTimeLeft();
+        const nowRed = left <= 0;
+        if (nowRed && !red) {
+          red = true; anchor = { x: pp.x, y: pp.y, z: pp.z }; caught = false; redElapsed = 0;
+          showToast('🧊 YETI MELIHAT! BERHENTI, JANGAN BERGERAK!');
+        } else if (!nowRed && red) {
+          red = false; anchor = null; caught = false; signal.material.color.setHex(0x35e6a1); eyeBlue();
+          showToast('✅ Yeti tidak melihat. Kamu boleh bergerak!');
         }
-        if (state === 'wait') { state = 'cool'; timer = 0; coolDur = 0.15 + (idx % 4) * 0.12; }
-        muzzle.getWorldPosition(A);
-        const cx = pp.x, cz = pp.z;
-        const dist = Math.hypot(cx - A.x, (pp.y + 1.0) - A.y, cz - A.z);
-        timer += delta;
-        let df = Math.atan2(cx - g.position.x, cz - g.position.z) - g.rotation.y;
-        df = Math.atan2(Math.sin(df), Math.cos(df));
-        if (state !== 'fire') g.rotation.y += df * (1 - Math.exp(-delta * 12));
-
-        if (state === 'cool') {
-          beam.visible = false;
-          if (timer >= coolDur) {
-            if (dist <= effRange && this.inZone(pp)) { state = 'aim'; timer = 0; }
-            else timer = coolDur;
-          }
-          return false;
-        }
-
-        if (state === 'aim' || state === 'lock') {
-          if (dist > effRange || !this.inZone(pp)) {
-            state = 'cool'; timer = 0; coolDur = 0.25; beam.visible = false; return false;
-          }
-          // Selalu perbarui sasaran selama membidik/mengunci agar pemain yang
-          // terlihat tidak lolos hanya karena bergerak sedikit.
-          const target = visibleTarget(pp, A);
-          if (!target) {
-            state = 'cool'; timer = 0; coolDur = 0.25; beam.visible = false;
-            spark.visible = false; return false;
-          }
-          B.set(target.x, target.y, target.z);
-          D.subVectors(B, A);
-          const len = D.length() || 0.01;
-          const ex = target.x, ey = target.y, ez = target.z;
-          drawBeam(A, ex, ey, ez, state === 'aim' ? 0.035 : 0.065);
-          beam.material.color.setHex(state === 'aim' ? 0xff3322 : 0xff9900);
-          beam.visible = state === 'lock' || Math.sin(timer * 34) > -0.3;
-
-          if (state === 'aim' && timer >= SNOW_AIM_TIME) { state = 'lock'; timer = 0; }
-          else if (state === 'lock' && timer >= SNOW_LOCK_TIME) {
-            // Cek ulang tepat saat menembak: cover yang kini menutupi pemain
-            // menghentikan tembakan, tetapi pemain yang masih terlihat kena.
-            const finalTarget = visibleTarget(pp, A);
-            state = 'fire'; timer = 0;
-            if (finalTarget) {
-              drawBeam(A, finalTarget.x, finalTarget.y, finalTarget.z, 0.14);
-              beam.material.color.setHex(0x66f6ff); beam.visible = true;
-              spark.position.set(finalTarget.x, finalTarget.y, finalTarget.z); spark.visible = true;
-              muzzle.scale.set(3, 3, 3);
-              hitFx.trigger(finalTarget.x, finalTarget.y, finalTarget.z, !!canKill); // efek pemain kena tembak
-              return !!canKill;
+        if (red) {
+          redElapsed += delta;
+          signal.material.color.setHex(0xff2418); eyeRed();
+          // Yeti menoleh ke arah pemain selama fase merah.
+          const targetYaw = Math.atan2(pp.x - root.position.x, pp.z - root.position.z);
+          let turn = targetYaw - root.rotation.y; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+          root.rotation.y += turn * (1 - Math.exp(-delta * 5));
+          // Gerak kecil akibat floating point diabaikan; gerak nyata (jalan/lari/lompat) tertangkap.
+          if (!caught && anchor && canKill) {
+            const moved = Math.hypot(pp.x - anchor.x, pp.z - anchor.z) > 0.24 || Math.abs(pp.y - anchor.y) > 0.38;
+            if (moved) {
+              caught = true;
+              showToast('☃️ YETI MENANGKAPMU KARENA BERGERAK!');
+              return true;
             }
-            beam.visible = false; spark.visible = false;
           }
-          return false;
-        }
-        if (state === 'fire' && timer > 0.22) {
-          beam.visible = false; spark.visible = false; muzzle.scale.set(1, 1, 1);
-          state = 'cool'; timer = 0; coolDur = SNOW_COOL_TIME;
+        } else {
+          signal.material.color.setHex(0x35e6a1); eyeBlue();
+          // Saat aman, Yeti membelakangi pemain dan bergerak santai.
+          root.rotation.y = Math.PI + Math.sin(t * 0.55) * 0.18;
+          root.position.y = 0.25 + Math.sin(t * 1.2) * 0.06;
+          armL.rotation.z = -0.22 + Math.sin(t * 1.5) * 0.08;
+          armR.rotation.z = 0.22 - Math.sin(t * 1.5) * 0.08;
         }
         return false;
       }
     };
-    g.rotation.y = yaw; npcs.push(npc); return npc;
-  }
-  // 4 NPC asli (Lapangan Es, Teras Timur, Jembatan & Spiral, area puncak lama) + 9 NPC untuk zona baru.
-  // Tiap NPC punya sektor jaga [xMin,xMax,zMin,zMax,yMin,yMax]; sektor saling tumpang tindih sedikit di perbatasan zona.
-  const guardsArr = [
-    makeGuard(0, 6, -34, 0, 40, 0, [-12, 30, -34, 8, -3, 6]),                       // camp awal, lapangan es, jembatan es batu
-    makeGuard(49, 8, -48, 1, 40, -Math.PI / 2, [17, 50, -52, -25, 0, 14]),           // teras timur & tangga zig-zag
-    makeGuard(-2, 16, -64, 2, 40, -Math.PI / 2, [-24, 0.5, -92, -40, 10, 30]),       // jembatan es, pad, spiral
-    makeGuard(-27, 38, -145, 3, 42, 0, [-36, -18, -158, -130, 30, 42]),              // medan puncak lama
-    makeGuard(-39, 41, -182, 4, 40, Math.PI / 2, [-40, -15, -210, -160, 32, 44]),    // hutan pinus beku
-    makeGuard(3, 46, -190, 5, 40, Math.PI, [-20, 32, -215, -190, 34, 44]),           // jembatan angin & checkpoint 6
-    makeGuard(35, 48, -232, 6, 40, -Math.PI / 2, [12, 40, -290, -205, 36, 50]),      // lembah bola salju & checkpoint 7
-    makeGuard(-2, 54, -286, 7, 40, Math.PI / 2, [-30, 20, -320, -262, 40, 56]),      // pendakian gunung es & lorong penyapu
-    makeGuard(-38, 58, -338, 8, 40, Math.PI / 2, [-40, -5, -380, -310, 44, 60]),     // titi badai
-    makeGuard(30, 64, -372, 9, 40, -Math.PI / 2, [-5, 40, -420, -350, 46, 62]),      // rimba pilar es
-    makeGuard(-14, 76, -426, 10, 40, Math.PI / 2, [-20, 25, -470, -395, 50, 76]),    // menara spiral II & checkpoint 10
-    makeGuard(24, 82, -480, 11, 40, -Math.PI / 2, [-12, 40, -545, -440, 60, 80]),    // puncak badai
-    makeGuard(-9, 84, -545, 12, 40, Math.PI / 2, [-15, 30, -600, -505, 64, 90])      // area finish baru
-  ];
+    guard.reset();
+    return guard;
+  })();
+  // Hanya satu NPC penjaga di seluruh map Salju.
+  const guardsArr = [yeti];
 
   // Salju turun
   const N = 260, sp = new Float32Array(N * 3);
@@ -709,6 +672,7 @@ export function buildSnowWorld(THREE, scene, api) {
     cracks.forEach(p => { p.crackState = 0; p.crackT = 0; p.isFallen = false; p.mesh.visible = true; p.mesh.position.x = p.startX; });
     vanish.forEach(p => { p.vanishState = 0; p.vanishT = 0; p.isFallen = false; p.mesh.visible = true; p.mesh.material.emissiveIntensity = 0.35; });
     snowSys.alarmed = false;
+    guardsArr.forEach(g => g.reset && g.reset());
     hitFx.hide();
   }
   function updateHud({ currentMap, gameState }) {
@@ -724,8 +688,8 @@ export function buildSnowWorld(THREE, scene, api) {
     const left = gameState === 'COUNTDOWN' ? SNOW_TIMER_SEC : snowTimeLeft();
     let txt, mode;
     if (gameState === 'WIN') { txt = '❄️ Map Salju selesai!'; mode = 'win'; }
-    else if (left > 0) { const sec = Math.ceil(left); txt = '❄️ NPC menembak dalam ' + String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0'); mode = left <= 10 ? 'warn' : 'ok'; }
-    else { txt = 'NPC DETECT SELAMA 10 DETIK'; mode = 'fire'; }
+    else if (left > 0) { const sec = Math.ceil(left); txt = '❄️ YETI TIDUR — BOLEH GERAK ' + String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0'); mode = left <= 10 ? 'warn' : 'ok'; }
+    else { txt = '🔴 YETI MELIHAT — JANGAN BERGERAK!'; mode = 'fire'; }
     if (snowSys.hudText !== txt) { el.textContent = txt; snowSys.hudText = txt; }
     if (snowSys.hudMode !== mode) {
       snowSys.hudMode = mode;
@@ -734,7 +698,7 @@ export function buildSnowWorld(THREE, scene, api) {
     }
     el.style.display = 'block';
     if (gameState === 'PLAYING') {
-      if (left <= 0 && !snowSys.alarmed) { snowSys.alarmed = true; showToast('Waktu habis! cepat berlindung'); }
+      if (left <= 0 && !snowSys.alarmed) { snowSys.alarmed = true; showToast('🔴 Waktu habis! Yeti melihat — berhenti bergerak!'); }
       if (left > 0) snowSys.alarmed = false;
     }
   }
