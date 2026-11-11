@@ -360,39 +360,8 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('btn-start-game').addEventListener('click', () => {
-    // Di room, tombol ini hanya meminta host memulai. Semua pemain baru mulai
-    // setelah startAt tersinkron dari Firebase.
-    if (roomCode && !roomStartAt) {
-      if (roomMeta && roomMeta.host === mpUid) hostStart().catch(e => showToast(mpErr(e)));
-      else showToast('Menunggu pembuat room memulai permainan.');
-      return;
-    }
-    if (gachaBusy || loadingActive) return;
-    requestFullscreenAndLock();
-    document.getElementById('btn-start-game').style.display = 'none';
-    document.getElementById('btn-shop').style.display = 'none';
-    document.getElementById('btn-vault').style.display = 'none';
-    setElDisplay('btn-music', 'none');
-    document.getElementById('in-game-controls').style.display = 'block'; setLobbyOnlyHud(false);
-    chatBox.style.display = 'none'; 
-    chatToggle.textContent = '💬 Chat Global';
-    profileModal.style.display = 'none';
-    shopModal.style.display = 'none';
-    // GACHA MAP: room memakai hasil gacha host (tersimpan di meta.map) agar semua pemain satu map.
-    const roomMap = roomMeta && roomMeta.map;
-    const pickedMap = (roomCode && roomStartAt) ? ((roomMap === 'snow' && snowWorld) ? 'snow' : (roomMap === 'angkasa' && angkasaWorld) ? 'angkasa' : 'lava') : rollMap();
-    gachaBusy = true;
-    playMapGacha(pickedMap, roomCode ? 900 : 1500, () => {
-      gachaBusy = false;
-      showLoadingScreen(() => {
-        applyMap(pickedMap);
-        isGameStarted = true;
-        onGameBegin();
-        setElDisplay('btn-exit-lobby', 'flex');
-        camera.position.set(0, 4, 8);
-        controls.target.set(0, 1.5, 0);
-      });
-    });
+    showToast('Lagi update bolo', 3000);
+    return;
   });
 
   // --- PROSES REGISTRASI & LOGIN ---
