@@ -9,6 +9,7 @@ export function buildSuperSlideWorld(THREE, scene, api = {}) {
   scene.add(group);
 
   const platforms = [], checkpoints = [], rotators = [], movers = [], splashParticles = [];
+  const slideSegments = [];
   const route = [];
   const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
 
@@ -70,10 +71,10 @@ export function buildSuperSlideWorld(THREE, scene, api = {}) {
       rail.position.set(side * (width / 2 - 0.17), 0.38, 0);
       mesh.add(rail);
     }
-    // Collider datar tersegmentasi kompatibel dengan collision axis-aligned di main.js.
-    const collider = addPlatform(mid.x, Math.max(a.y, b.y) - 0.18, mid.z, width - 0.5, length + 1.0, { h: 0.45, grip: [0.22, 0.12], type: 'slide' });
-    collider.slideDir = v3(dx, dy, dz).normalize();
-    collider.slideSpeed = 19 + Math.min(5, Math.abs(dy) * 0.35);
+    // Collider mengikuti bidang prosotan yang miring, bukan kotak datar.
+    // Karakter hanya dianggap menginjak prosotan saat benar-benar berada di atas mesh ini.
+    slideSegments.push({ a: v3(a.x, a.y, a.z), b: v3(b.x, b.y, b.z), width, slideDir: direction,
+      slideSpeed: 19 + Math.min(5, Math.abs(dy) * 0.35), type: 'slide', grip: [0.12, 0.08], mesh });
   }
 
   // Pulau tropis dekoratif dan pohon palem ringan.
@@ -113,9 +114,12 @@ export function buildSuperSlideWorld(THREE, scene, api = {}) {
   ];
   for (let i = 0; i < pts.length - 1; i++) addSlideSegment(pts[i], pts[i + 1], i % 5 === 2 ? 6.0 : 7.2);
 
-  // Platform checkpoint di sepanjang rute, diletakkan di tengah lintasan.
-  const cpSpecs = [pts[4], pts[9], pts[14], pts[18]];
-  cpSpecs.forEach((p, i) => addPlatform(p.x, p.y + 0.12, p.z, 8.5, 8.5, { checkpoint: true, material: cpMat, grip: [0.45, 0.3] }));
+  // Checkpoint menjadi penanda pada permukaan prosotan, bukan balok/platform tambahan.
+  const cpIndices = [3, 8, 13, 17];
+  cpIndices.forEach((index) => {
+    const seg = slideSegments[index];
+    if (seg) { seg.checkpoint = true; seg.checkpointActivated = false; checkpoints.push(seg); }
+  });
 
   // Rintangan: palang rendah (visual), gerbang, baling-baling, dan dinding zig-zag.
   function lowBar(x, y, z, width = 5.8) {
@@ -227,9 +231,26 @@ export function buildSuperSlideWorld(THREE, scene, api = {}) {
     splashes.rotation.y = Math.sin(elapsed * 0.15) * 0.025;
   }
 
+  function getSlideGround(x, z, feetY) {
+    let best = null;
+    for (const seg of slideSegments) {
+      const dx = seg.b.x - seg.a.x, dz = seg.b.z - seg.a.z;
+      const len2 = dx * dx + dz * dz;
+      const t = Math.max(0, Math.min(1, ((x - seg.a.x) * dx + (z - seg.a.z) * dz) / len2));
+      const px = seg.a.x + dx * t, pz = seg.a.z + dz * t;
+      const lateral = Math.hypot(x - px, z - pz);
+      if (lateral > seg.width * 0.5 - 0.22) continue;
+      const surfaceY = seg.a.y + (seg.b.y - seg.a.y) * t + 0.14;
+      const difference = feetY - surfaceY;
+      if (difference < -0.9 || difference > 1.35) continue;
+      if (!best || Math.abs(difference) < Math.abs(best.y - feetY)) best = { y: surfaceY, platform: seg };
+    }
+    return best;
+  }
+
   const world = {
-    platforms, hazards: [], guards: [], laserBeam: null, FIN_Y: finish.y, WIN: finish, MAZE_H: 0, MAZE_Z: 0,
-    cover: [], cracks: [], snowfall: null, route, npcs: [], cps: checkpoints, vanish: [], rotators, slidePlatforms: platforms.filter(p => p.type === 'slide'),
+    platforms, slideSegments, getSlideGround, hazards: [], guards: [], laserBeam: null, FIN_Y: finish.y, WIN: finish, MAZE_H: 0, MAZE_Z: 0,
+    cover: [], cracks: [], snowfall: null, route, npcs: [], cps: checkpoints, vanish: [], rotators, slidePlatforms: slideSegments,
     snowballs: [], windZones: [], swingPlanks: [], glowCrystals: [],
     tp: { start, hub: checkpoints[0] ? tp(cpSpecs[0]) : start, top: checkpoints[1] ? tp(cpSpecs[1]) : start,
       maze: checkpoints[2] ? tp(cpSpecs[2]) : start, finish: [finish.x, finish.y + 0.4, finish.z] },
