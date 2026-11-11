@@ -2286,6 +2286,12 @@ function checkGroundCollision(x, z, y) {
       if (feetY >= topY - tolerance && feetY <= topY + 0.5) return { y: topY, platform: p };
     }
   }
+  // Super Slide memakai collision bidang miring sesuai permukaan prosotan.
+  // Tidak ada collider kotak datar tersembunyi yang membuat karakter terpental/melayang.
+  if (currentMap === 'superslide' && superSlideWorld?.getSlideGround) {
+    const slideGround = superSlideWorld.getSlideGround(x, z, feetY);
+    if (slideGround) return slideGround;
+  }
   return null;
 }
 
@@ -3729,8 +3735,10 @@ function animate() {
   if (onSuperSlide) {
     const d = curGroundPlat.slideDir;
     const target = curGroundPlat.slideSpeed || 19;
-    moveVel.x += (d.x * target - moveVel.x) * (1 - Math.exp(-delta * 3.8));
-    moveVel.y += (d.z * target - moveVel.y) * (1 - Math.exp(-delta * 3.8));
+    // Begitu kaki menyentuh bidang prosotan, gerak otomatis mengikuti arah jalur.
+    moveVel.x += (d.x * target - moveVel.x) * (1 - Math.exp(-delta * 5.5));
+    moveVel.y += (d.z * target - moveVel.y) * (1 - Math.exp(-delta * 5.5));
+    character.rotation.y = Math.atan2(d.x, d.z);
     if (Math.random() < 0.22) createTrailEffect();
   }
   const hSpeed = moveVel.length();
@@ -3751,11 +3759,13 @@ function animate() {
       groundData.platform.checkpointActivated = true;
       activatedCheckpoints.add(groundData.platform);
       const m = groundData.platform.mesh.position;
-      checkpoint = { p: groundData.platform, set: true, x: m.x, y: groundData.y, z: m.z };
+      const cpX = groundData.platform.type === 'slide' ? character.position.x : m.x;
+      const cpZ = groundData.platform.type === 'slide' ? character.position.z : m.z;
+      checkpoint = { p: groundData.platform, set: true, x: cpX, y: groundData.y, z: cpZ };
       if (usedCheckpointMat) groundData.platform.mesh.material = usedCheckpointMat;
       showToast('✅ Checkpoint tersimpan!');
       if (!roomCode) { // mode solo: posisi checkpoint disimpan ke akun, jadi tetap di sini walau keluar game
-        const sv = { px: +m.x.toFixed(3), py: +m.y.toFixed(3), pz: +m.z.toFixed(3), y: +groundData.y.toFixed(3) };
+        const sv = { px: +cpX.toFixed(3), py: +groundData.y.toFixed(3), pz: +cpZ.toFixed(3), y: +groundData.y.toFixed(3) };
         if (currentMap === 'snow') playerData.savedCheckpointSnow = sv; else playerData.savedCheckpoint = sv; // checkpoint Salju terpisah dari Lava
         updatePlayerFirebase().catch(() => {});
       }
