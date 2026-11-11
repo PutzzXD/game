@@ -41,7 +41,7 @@ export function buildSuperSlideWorld(THREE, scene, api = {}) {
     mesh.receiveShadow = true;
     mesh.castShadow = true;
     group.add(mesh);
-    const p = { mesh, width: w, depth: d, hh: h / 2, type: 'static', isFallen: false, dx: 0,
+    const p = { mesh, width: w, depth: d, hh: h / 2, type: opts.type || 'static', isFallen: false, dx: 0,
       startX: x, startY: mesh.position.y, startZ: z, grip: opts.grip || [0.42, 0.28] };
     if (opts.checkpoint) {
       p.checkpoint = true; p.checkpointActivated = false; checkpoints.push(p);
@@ -63,13 +63,17 @@ export function buildSuperSlideWorld(THREE, scene, api = {}) {
     mesh.position.copy(mid);
     mesh.quaternion.setFromUnitVectors(v3(0, 0, 1), direction);
     group.add(mesh);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.035, length + 0.8), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x4bcfff, emissiveIntensity: 0.28, roughness: 0.22 }));
+    stripe.position.set(0, 0.17, 0); mesh.add(stripe);
     for (const side of [-1, 1]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.72, length + 1.4), edgeMat);
       rail.position.set(side * (width / 2 - 0.17), 0.38, 0);
       mesh.add(rail);
     }
     // Collider datar tersegmentasi kompatibel dengan collision axis-aligned di main.js.
-    addPlatform(mid.x, Math.max(a.y, b.y) - 0.18, mid.z, width - 0.5, length + 1.0, { h: 0.45, grip: [0.3, 0.2] });
+    const collider = addPlatform(mid.x, Math.max(a.y, b.y) - 0.18, mid.z, width - 0.5, length + 1.0, { h: 0.45, grip: [0.22, 0.12], type: 'slide' });
+    collider.slideDir = v3(dx, dy, dz).normalize();
+    collider.slideSpeed = 19 + Math.min(5, Math.abs(dy) * 0.35);
   }
 
   // Pulau tropis dekoratif dan pohon palem ringan.
@@ -160,6 +164,40 @@ export function buildSuperSlideWorld(THREE, scene, api = {}) {
     buoy.position.set(Math.sin(i * 2.4) * 48, -6.5, -15 - i * 13); buoy.rotation.x = Math.PI / 2; group.add(buoy);
   }
 
+  // Dekorasi waterpark tambahan: pilar penyangga, cincin bonus, papan arah, dan pancuran.
+  const supportMat = new THREE.MeshStandardMaterial({ color: 0x087b9d, roughness: 0.35, metalness: 0.25 });
+  const ringMat = new THREE.MeshStandardMaterial({ color: 0xffdf59, emissive: 0x9a5d00, emissiveIntensity: 0.35, metalness: 0.45, roughness: 0.2 });
+  pts.forEach((p, i) => {
+    if (i % 2 === 0) {
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, Math.max(2, p.y + 8), 8), supportMat);
+      pillar.position.set(p.x, (p.y - 8) / 2, p.z); group.add(pillar);
+    }
+    if (i > 1 && i < pts.length - 2 && i % 3 === 0) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(2.3, 0.22, 10, 28), ringMat);
+      ring.position.set(p.x, p.y + 2.2, p.z); ring.rotation.x = Math.PI / 2; group.add(ring);
+    }
+  });
+  // Air mancur di sisi lintasan sebagai landmark visual.
+  for (let i = 0; i < 7; i++) {
+    const z = -22 - i * 31;
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 0.7, 16), coralMat);
+    base.position.set(i % 2 ? 33 : -34, -5.5, z); group.add(base);
+    const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.42, 4.5, 10), new THREE.MeshStandardMaterial({ color: 0x9df5ff, transparent: true, opacity: 0.72, emissive: 0x28bfff, emissiveIntensity: 0.45 }));
+    jet.position.set(i % 2 ? 33 : -34, -2.8, z); group.add(jet);
+  }
+  // Papan petunjuk di start dan menjelang finish.
+  function sign(text, x, y, z, color = '#ffffff') {
+    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
+    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#075b80'; ctx.fillRect(0, 0, 512, 128);
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 8; ctx.strokeRect(5, 5, 502, 118);
+    ctx.fillStyle = color; ctx.font = 'bold 48px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, 256, 66);
+    const tex = new THREE.CanvasTexture(canvas); tex.needsUpdate = true;
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.5), new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, emissive: 0x123344, emissiveIntensity: 0.25 }));
+    board.position.set(x, y, z); group.add(board);
+  }
+  sign('GET READY!', 0, 38, 0, '#ffe66d');
+  sign('SLIDE TO WIN!', 0, -10, -238, '#ffffff');
+
   // Area finish dan papan kemenangan.
   const finish = { x: 0, y: -19.1, z: -246 };
   addPlatform(finish.x, finish.y, finish.z, 15, 15, { material: cpMat, grip: [0.7, 0.6] });
@@ -191,7 +229,7 @@ export function buildSuperSlideWorld(THREE, scene, api = {}) {
 
   const world = {
     platforms, hazards: [], guards: [], laserBeam: null, FIN_Y: finish.y, WIN: finish, MAZE_H: 0, MAZE_Z: 0,
-    cover: [], cracks: [], snowfall: null, route, npcs: [], cps: checkpoints, vanish: [], rotators,
+    cover: [], cracks: [], snowfall: null, route, npcs: [], cps: checkpoints, vanish: [], rotators, slidePlatforms: platforms.filter(p => p.type === 'slide'),
     snowballs: [], windZones: [], swingPlanks: [], glowCrystals: [],
     tp: { start, hub: checkpoints[0] ? tp(cpSpecs[0]) : start, top: checkpoints[1] ? tp(cpSpecs[1]) : start,
       maze: checkpoints[2] ? tp(cpSpecs[2]) : start, finish: [finish.x, finish.y + 0.4, finish.z] },

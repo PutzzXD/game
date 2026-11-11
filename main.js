@@ -3721,9 +3721,18 @@ function animate() {
     if (isRunning && Math.random() < 0.3) createTrailEffect();
   }
   // Map Salju: permukaan es licin = percepatan/pengereman lebih kecil. Map Lava tidak terpengaruh (gp = null).
-  const gp = (currentMap === 'snow' && !flyMode && physics.isGrounded && curGroundPlat && curGroundPlat.grip) ? curGroundPlat.grip : null;
+  const gp = ((currentMap === 'snow' || currentMap === 'superslide') && !flyMode && physics.isGrounded && curGroundPlat && curGroundPlat.grip) ? curGroundPlat.grip : null;
+  const onSuperSlide = currentMap === 'superslide' && !flyMode && physics.isGrounded && curGroundPlat?.type === 'slide' && curGroundPlat.slideDir;
   const accel = 1 - Math.exp(-delta * ((desX || desZ) ? 11 * (gp ? gp[0] : 1) : 14 * (gp ? gp[1] : 1)));
   moveVel.x += (desX - moveVel.x) * accel; moveVel.y += (desZ - moveVel.y) * accel;
+  // Saat menginjak lintasan seluncur, karakter otomatis meluncur mengikuti arah turunan.
+  if (onSuperSlide) {
+    const d = curGroundPlat.slideDir;
+    const target = curGroundPlat.slideSpeed || 19;
+    moveVel.x += (d.x * target - moveVel.x) * (1 - Math.exp(-delta * 3.8));
+    moveVel.y += (d.z * target - moveVel.y) * (1 - Math.exp(-delta * 3.8));
+    if (Math.random() < 0.22) createTrailEffect();
+  }
   const hSpeed = moveVel.length();
   isMoving = hSpeed > 0.4;
   nextX += (moveVel.x + knock.x) * delta; nextZ += (moveVel.y + knock.y) * delta;
