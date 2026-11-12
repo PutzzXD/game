@@ -549,8 +549,12 @@ window.addEventListener('DOMContentLoaded', () => {
 // ============ KELUAR KE LOBBY (tombol kecil kanan atas saat bermain) ============
 async function returnToLobby() {
   if (gameState === 'LOBBY') return;
-  if (roomCode) { try { await leaveRoom(false); } catch (e) { console.warn(e); } }
+  const inGroup = !!roomCode, leftRound = roomStartAt;
   gameState = 'LOBBY';
+  if (inGroup) { // TETAP di grup (kode room sama, tidak buat room baru); hanya keluar dari ronde
+    roomStarted = false; roomStartAt = null;
+    if (myRef) update(myRef, { status: 'LOBBY', out: leftRound || null, deadAt: null, push: null, x: null, y: null, z: null }).catch(() => {});
+  }
   flyMode = false; flyUp = flyDown = false;
   const fc = document.getElementById('fly-ctrl'); if (fc) fc.style.display = 'none';
   const adFly = document.getElementById('ad-fly'); if (adFly) { adFly.classList.remove('on'); adFly.textContent = '✈️ Terbang: OFF (F)'; }
@@ -2430,6 +2434,7 @@ const LOBBY_SLOTS = [[-1.7, 0], [1.7, 0], [-3.4, 0], [3.4, 0], [0, 2], [-1.7, 2]
 const SPAWN = [[0, 0], [-1.5, 0], [1.5, 0], [-3, 0], [3, 0], [-1.5, 1.5], [1.5, 1.5], [0, 1.5]];
 let mpUid = null, mpReady = false, mpOffset = 0;
 let roomCode = null, roomMeta = null, roomPlayers = {}, roomUnsub = null, roomStartAt = null, roomStarted = false;
+let lastRoundStartAt = null; // startAt ronde yang sudah/pernah dijalankan di klien ini (grup tetap utuh antar ronde)
 let lobbyLeaderboardGroup = null, lobbyLeaderboardTexture = null, lobbyLeaderboardCanvas = null, lobbyLeaderboardCtx = null, lobbyLeaderboardLastKey = '';
 const lobbyLeaderboardAvatars = new Map();
 let deathFrozenMs = null, roomRunReset = 0;
@@ -2487,7 +2492,7 @@ async function joinRoom(code) {
 }
 
 async function enterRoom(code) {
-  roomCode = code; roomStarted = false; roomStartAt = null; announcedFinish.clear();
+  roomCode = code; roomStarted = false; roomStartAt = null; lastRoundStartAt = null; announcedFinish.clear();
   myRef = ref(multiplayerDb, `rooms/${code}/players/${mpUid}`);
   await onDisconnect(myRef).remove();
   myJoinedAt = Date.now();
@@ -2495,6 +2500,13 @@ async function enterRoom(code) {
   roomUnsub = onValue(ref(multiplayerDb, `rooms/${code}`), onRoomSnapshot, (err) => { console.error(err); setRoomMsg(mpErr(err)); });
   rpCollapsed = true; // setelah masuk room, panel langsung mengecil
   updateRoomUI();
+}
+
+// Ronde dianggap sedang berjalan jika startAt baru saja ditetapkan atau masih ada pemain yang belum kembali ke lobby.
+function roomRoundBusy() {
+  if (!roomMeta || !roomMeta.startAt) return false;
+  if (serverNow() < roomMeta.startAt + 8000) return true;
+  return Object.values(roomPlayers || {}).some(p => p && p.status && String(p.status).toUpperCase() !== 'LOBBY');
 }
 
 function onRoomSnapshot(sn) {
@@ -2508,14 +2520,15 @@ function onRoomSnapshot(sn) {
   updateRoomUI(); updateRemoteAvatars();
   if (currentMap === 'honey' && honeyWorld && roomStartAt) honeyWorld.syncRemote(roomPlayers, mpUid, serverNow(), roomStartAt);
   if (currentMap === 'honey' && roomMeta.startAt) checkHoneyLastPlayer();
-  if (roomMeta.startAt && !roomStarted) { // host menekan MULAI (atau kamu gabung saat game sudah jalan)
-    roomStarted = true; roomStartAt = roomMeta.startAt;
+  if (roomMeta.startAt && !roomStarted && roomMeta.startAt !== lastRoundStartAt && roomRoundBusy()) { // host menekan MULAI (atau kamu gabung saat game sudah jalan)
+    roomStarted = true; roomStartAt = roomMeta.startAt; lastRoundStartAt = roomMeta.startAt;
     document.getElementById('btn-start-game').click();
   }
 }
 
 async function hostStart() {
-  if (!roomCode || !roomMeta || roomMeta.host !== mpUid || roomMeta.startAt) return;
+  if (!roomCode || !roomMeta || roomMeta.host !== mpUid) return;
+  if (roomRoundBusy()) { showToast('Tunggu semua teman kembali ke lobby dulu.'); return; }
   if (Object.keys(roomPlayers || {}).length < 2) {
     showToast('Tunggu teman menerima undangan dan masuk lobby dulu.');
     return;
@@ -2532,7 +2545,7 @@ async function leaveRoom(silent) {
     if (alone && !silent) await remove(ref(multiplayerDb, `rooms/${code}`));
   } catch (e) { console.warn(e); }
   for (const id of [...remotePlayers.keys()]) disposeAvatar(id);
-  roomCode = null; roomMeta = null; roomPlayers = {}; myRef = null; roomStartAt = null; roomStarted = false; lastLobbyCount = -1; rpCollapsed = false;
+  roomCode = null; roomMeta = null; roomPlayers = {}; myRef = null; roomStartAt = null; roomStarted = false; lastRoundStartAt = null; lastLobbyCount = -1; rpCollapsed = false;
   if (camera && controls) { camera.position.set(0, 3.8, 9.5); controls.target.set(0, 1.45, 0); }
   updateRoomUI();
 }
@@ -2585,7 +2598,7 @@ function onGameBegin() {
     const idx = Math.max(0, sortedIds().indexOf(mpUid)), sp = SPAWN[idx % SPAWN.length];
     if (currentMap === 'honey') character.position.set(sp[0], honeyWorld.spawn.y, sp[1]); else character.position.set(sp[0], 0.25, sp[1]); checkpoint.x = character.position.x; checkpoint.z = character.position.z;
     gameState = serverNow() < roomStartAt ? 'COUNTDOWN' : 'PLAYING';
-    update(myRef, { status: 'PLAYING', deadAt: null, ht: null }).catch(() => {});
+    update(myRef, { status: 'PLAYING', deadAt: null, ht: null, out: null, finishMs: null, score: null, eliminatedAt: null, wonAt: null }).catch(() => {});
   } else {
     soloStart = performance.now(); gameState = 'PLAYING'; if (currentMap === 'honey') character.position.copy(honeyWorld.spawn); else character.position.set(0, 0.25, 0); checkpoint.x = character.position.x; checkpoint.z = character.position.z;
     restoreSavedCheckpoint();
@@ -2669,7 +2682,7 @@ function checkHoneyLastPlayer() {
   if (!roomCode || !roomPlayers || honeyRoundEnded || gameState !== 'PLAYING') return;
   const active = Object.entries(roomPlayers).filter(([id, p]) =>
     id === mpUid ? gameState === 'PLAYING' :
-    !['ELIMINATED', 'WIN', 'LEFT'].includes(String(p.status || '').toUpperCase()));
+    !(['ELIMINATED', 'WIN', 'LEFT'].includes(String(p.status || '').toUpperCase()) || (p.out && p.out === roomStartAt)));
   if (active.length === 1 && active[0][0] === mpUid) honeyDeclareWin();
 }
 function tickMultiplayer() {
@@ -2771,7 +2784,7 @@ function updateRemoteAvatars() {
       if (u.label) { av.remove(u.label); u.label.material.map.dispose(); u.label.material.dispose(); }
       u.label = makeLabelSprite(lbl); u.labelText = text; av.add(u.label);
     }
-    if (d.finishMs != null && !announcedFinish.has(id)) { announcedFinish.add(id); showToast('🏁 ' + String(d.username || 'Pemain') + ' berhasil finish!'); }
+    if (d.finishMs != null && !announcedFinish.has(id + ':' + d.finishMs)) { announcedFinish.add(id + ':' + d.finishMs); showToast('🏁 ' + String(d.username || 'Pemain') + ' berhasil finish!'); }
   });
   for (const id of [...remotePlayers.keys()]) if (!alive.has(id)) disposeAvatar(id);
   if (gameState === 'LOBBY' && remotePlayers.size !== lastLobbyCount && camera) { // zoom out otomatis supaya semua pemain kelihatan
@@ -2784,6 +2797,7 @@ function animateRemotePlayers(delta) {
   const blend = 1 - Math.exp(-delta * 12), now = performance.now() / 1000, inGame = !!roomStartAt;
   for (const av of remotePlayers.values()) {
     const u = av.userData, d = u.d || {};
+    { const away = inGame && String(d.status || '').toUpperCase() === 'LOBBY'; av.visible = !away && !u.deadAt; if (away) continue; }
     let rot;
     if (inGame && d.status === 'PLAYING' && d.x != null) { tmpV.set(Number(d.x) || 0, Number(d.y) || 0, Number(d.z) || 0); rot = Number(d.rot) || 0; }
     else if (inGame) { tmpV.set(u.spawn[0], 0.25, u.spawn[1]); rot = 0; }
@@ -3285,7 +3299,7 @@ async function sendGameInvite(targetKey, targetName) {
     showToast('Hanya pembuat room yang bisa mengundang teman.');
     return;
   }
-  if (roomCode && (roomStarted || roomMeta?.startAt)) {
+  if (roomCode && (roomStarted || roomRoundBusy())) {
     showToast('Permainan sudah dimulai. Selesaikan dulu sebelum mengundang.');
     return;
   }
@@ -3593,7 +3607,6 @@ function applyIncomingPushes() {
     let dx = character.position.x - Number(d.x), dz = character.position.z - Number(d.z);
     const len = Math.hypot(dx, dz) || 1; dx /= len; dz /= len;
     knock.set(dx * PUSH_FORCE, dz * PUSH_FORCE); physics.velocityY = 7; physics.isGrounded = false; sq.v = -4;
-    showToast('🫸 ' + String(d.username || 'Teman') + ' mendorongmu!', 1000);
   }
 }
 function buildPushButton() {
@@ -3612,7 +3625,7 @@ function updateRoomUI() {
   const inLobby = gameState === 'LOBBY';
   const startButton = document.getElementById('btn-start-game');
   if (startButton && inLobby) {
-    const hostCanStart = !!roomCode && !!roomMeta && roomMeta.host === mpUid && !roomMeta.startAt;
+    const hostCanStart = !!roomCode && !!roomMeta && roomMeta.host === mpUid && !roomRoundBusy();
     startButton.style.display = roomCode ? (hostCanStart ? 'flex' : 'none') : 'flex';
     startButton.title = roomCode ? (hostCanStart ? 'Mulai permainan bersama teman di lobby' : 'Menunggu pembuat room') : 'Mulai permainan solo';
   }
