@@ -1,126 +1,189 @@
-// honey.js — Map "Honey Drop" (gaya Stumble Guys)
-// Tile sarang lebah: diinjak -> oranye -> jatuh/hilang. Bertahan sampai lapisan paling bawah.
-// Pakai: const honey = buildHoneyWorld(THREE, scene, api);
-//        di loop game: honey.update(dt, player.position);  (player = mesh/objek posisi pemain)
+// honey.js — Map "Honey Drop" (gaya Stumble Guys), khusus multiplayer.
+// Tile madu yang diinjak hilang 1 detik kemudian. Yang jatuh duluan kalah.
+//
+// Dipakai main.js:
+//   honeyWorld = buildHoneyWorld(THREE, scene, { onTileStep: (i) => ... });
+//   honeyWorld.platforms  -> dipakai collision game (checkGroundCollision / checkWallCollision)
+//   honeyWorld.update(dt, character.position)   tiap frame saat PLAYING
+//   honeyWorld.syncRemote(players, myUid, serverNow, startAt)  dari snapshot room
+//   honeyWorld.reset()    saat ronde baru
 
 export function buildHoneyWorld(THREE, scene, api = {}) {
-  const SIZE = 1.6;          // jari-jari tile
-  const GAP = 0.93;          // celah antar tile
-  const LAYERS = [ { y: 0, R: 8 }, { y: -14, R: 8 }, { y: -28, R: 7 } ];
-  const WARN_TIME = 0.55;    // detik oranye sebelum jatuh
-  const FALL_TIME = 0.6;     // durasi animasi jatuh/mengecil
-  const FIN_Y = -45;         // di bawah ini = jatuh (samakan dengan FIN_Y game kamu)
+  const SIZE = 1.6;            // jari-jari tile (sudut ke pusat)
+  const VISUAL = 0.93;         // skala visual tile (celah kecil antar tile)
+  const THICK = 0.7;           // tebal tile
+  const HH = THICK / 2;        // setengah tebal -> dipakai collision (p.hh)
+  const RADIUS = 8;            // ukuran arena (jumlah cincin hex)
+  const VANISH_DELAY = 1.0;    // detik dari diinjak sampai tile hilang
+  const SINK_TIME = 0.35;      // animasi tenggelam setelah hilang (hanya visual)
+  const FALL_Y = -8;           // lebih rendah dari ini = jatuh = kalah (dipakai main.js)
 
-  // ---------- langit & cahaya ----------
-  scene.background = new THREE.Color(0x58b8f0);
-  scene.fog = new THREE.Fog(0x9fd8ff, 60, 160);
-  const hemi = new THREE.HemisphereLight(0xffffff, 0xffd27a, 0.9);
-  const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-  sun.position.set(30, 60, 20);
-  scene.add(hemi, sun);
-
-  // ---------- material & geometri (dipakai bersama, ringan untuk HP) ----------
-  const geo = new THREE.CylinderGeometry(SIZE * GAP, SIZE * GAP, 0.7, 6);
-  const matA = new THREE.MeshLambertMaterial({ color: 0xffc53a });
-  const matB = new THREE.MeshLambertMaterial({ color: 0xffb020 });
-  const matWarn = new THREE.MeshLambertMaterial({ color: 0xff6a1a });
-
-  const tiles = [];
   const group = new THREE.Group();
+  group.name = 'HONEY_DROP';
   scene.add(group);
 
-  // ---------- bangun grid hexagon ----------
-  LAYERS.forEach((L, li) => {
-    for (let q = -L.R; q <= L.R; q++) {
-      for (let r = -L.R; r <= L.R; r++) {
-        if (Math.abs(q + r) > L.R) continue;
-        // lubang acak kecil supaya mirip gambar
-        if (li > 0 && Math.random() < 0.06) continue;
-        const x = SIZE * Math.sqrt(3) * (q + r / 2);
-        const z = SIZE * 1.5 * r;
-        const base = (q + r) % 2 === 0 ? matA : matB;
-        const m = new THREE.Mesh(geo, base);
-        m.position.set(x, L.y + (Math.random() < 0.15 ? 0.25 : 0), z);
-        group.add(m);
-        tiles.push({ mesh: m, base, state: 0, t: 0, x, z, top: m.position.y + 0.35, y0: m.position.y,
-          width: SIZE * 1.72, depth: SIZE * 1.72, hh: 0.35, r: SIZE * 0.9,
-          type: 'honey', isFallen: false });
-      }
+  // ---------- cahaya & langit (di dalam group, jadi ikut tersembunyi di map lain) ----------
+  group.add(new THREE.HemisphereLight(0xffffff, 0xffd27a, 1.0));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  sun.position.set(30, 60, 20);
+  group.add(sun);
+
+  // ---------- grid hexagon (pointy-top) ----------
+  const W = Math.sqrt(3) * SIZE;                         // jarak antar pusat tile
+  const hexXZ = (q, r) => [W * (q + r / 2), SIZE * 1.5 * r];
+  const coords = [];
+  for (let q = -RADIUS; q <= RADIUS; q++) {
+    for (let r = -RADIUS; r <= RADIUS; r++) {
+      if (Math.abs(q + r) > RADIUS) continue;
+      coords.push([q, r]);
     }
+  }
+  const N = coords.length;
+  const indexOf = new Map(coords.map(([q, r], i) => [q + ',' + r, i]));
+
+  // Satu InstancedMesh = 1 draw call untuk semua tile (ringan di HP).
+  const geo = new THREE.CylinderGeometry(SIZE * VISUAL, SIZE * VISUAL, THICK, 6);
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const inst = new THREE.InstancedMesh(geo, mat, N);
+  inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  inst.frustumCulled = false;
+  group.add(inst);
+
+  const C_A = new THREE.Color(0xffc53a), C_B = new THREE.Color(0xffb020), C_WARN = new THREE.Color(0xff5a14);
+  const dummy = new THREE.Object3D();
+
+  // Tile: y selalu SAMA untuk semua (rata) supaya karakter tidak nyangkut di undakan.
+  // platforms = bentuk yang dipahami collision main.js (mesh.position, r, hh).
+  const tiles = coords.map(([q, r], i) => {
+    const [x, z] = hexXZ(q, r);
+    const pos = new THREE.Vector3(x, 0, z);
+    return {
+      i, x, z, state: 0, t: 0,
+      base: (q + r) % 2 === 0 ? C_A : C_B,
+      // r = SIZE (lingkaran luar hex) supaya TIDAK ada retakan di antara tile yang bikin kaki jatuh/nyangkut.
+      platform: { mesh: { position: pos, visible: true }, width: SIZE * 2, depth: SIZE * 2, r: SIZE, hh: HH, type: 'honey', isFallen: false, revealTimer: 0, dx: 0 },
+    };
+  });
+  const platforms = tiles.map(t => t.platform);
+
+  function drawTile(t, yOff, scale, shake) {
+    dummy.position.set(t.x + shake, yOff, t.z);
+    dummy.scale.setScalar(scale);
+    dummy.updateMatrix();
+    inst.setMatrixAt(t.i, dummy.matrix);
+  }
+  function paintAll() {
+    tiles.forEach(t => { drawTile(t, 0, 1, 0); inst.setColorAt(t.i, t.base); });
+    inst.instanceMatrix.needsUpdate = true;
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  }
+  paintAll();
+
+  // ---------- dekorasi: lapisan sarang di bawah (tidak bisa diinjak) ----------
+  const decoMat = new THREE.MeshLambertMaterial({ color: 0xe8a020 });
+  [-14, -28].forEach((y, k) => {
+    const rad = 7 - k, list = [];
+    for (let q = -rad; q <= rad; q++) for (let r = -rad; r <= rad; r++) if (Math.abs(q + r) <= rad) list.push(hexXZ(q, r));
+    const d = new THREE.InstancedMesh(geo, decoMat, list.length);
+    list.forEach(([x, z], i) => { dummy.position.set(x, y, z); dummy.scale.setScalar(1); dummy.updateMatrix(); d.setMatrixAt(i, dummy.matrix); });
+    d.frustumCulled = false;
+    group.add(d);
   });
 
-  // ---------- pohon/ranting penyangga (dekorasi) ----------
+  // ---------- ranting penyangga & awan (dekorasi) ----------
   const branchMat = new THREE.MeshLambertMaterial({ color: 0x8a5a36 });
-  const bGeo = new THREE.CylinderGeometry(0.35, 0.5, 40, 6);
-  [[-11, -9], [11, -8], [-10, 10], [10, 11]].forEach(([x, z]) => {
+  const bGeo = new THREE.CylinderGeometry(0.35, 0.5, 44, 6);
+  [[-15, -10], [15, -9], [-14, 11], [15, 12]].forEach(([x, z]) => {
     const b = new THREE.Mesh(bGeo, branchMat);
-    b.position.set(x, -12, z);
+    b.position.set(x, -14, z);
     group.add(b);
   });
-
-  // ---------- awan dekorasi ----------
   const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const cGeo = new THREE.SphereGeometry(1, 8, 6);
   const clouds = [];
-  for (let i = 0; i < 10; i++) {
+  for (let k = 0; k < 8; k++) {
     const c = new THREE.Group();
-    for (let k = 0; k < 3; k++) {
-      const s = new THREE.Mesh(cGeo, cloudMat);
-      s.scale.set(4 + k, 2, 3);
-      s.position.set(k * 3, 0, 0);
-      c.add(s);
-    }
-    c.position.set((Math.random() - 0.5) * 140, -35 + Math.random() * 50, -40 - Math.random() * 60);
-    group.add(c);
-    clouds.push(c);
+    for (let j = 0; j < 3; j++) { const s = new THREE.Mesh(cGeo, cloudMat); s.scale.set(4 + j, 2, 3); s.position.set(j * 3, 0, 0); c.add(s); }
+    c.position.set((Math.random() - 0.5) * 150, -30 + Math.random() * 45, -45 - Math.random() * 60);
+    group.add(c); clouds.push(c);
   }
 
-  // ---------- titik spawn & finish ----------
-  const spawn = new THREE.Vector3(0, 2, 0);
-  const fin = new THREE.Mesh(
-    new THREE.CylinderGeometry(6, 6, 0.8, 24),
-    new THREE.MeshLambertMaterial({ color: 0x3a8dff })
-  );
-  fin.position.set(0, -38, 0);
-  group.add(fin);
+  // ---------- logika tile ----------
+  function trigger(t, elapsed) {            // elapsed = detik yang sudah lewat sejak diinjak
+    if (t.state !== 0) return;
+    t.state = 1; t.t = Math.max(0, elapsed || 0);
+    inst.setColorAt(t.i, C_WARN);
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  }
 
-  // daftarkan collider jika game kamu menyediakannya
-  const reg = api.addCollider || api.addPlatform || null;
-  if (reg) { tiles.forEach(t => reg(t.mesh)); reg(fin); }
+  // Tile di bawah kaki: dihitung langsung dari koordinat (tanpa loop semua tile).
+  function tileAt(x, z) {
+    const fr = (2 / 3 * z) / SIZE;                                  // r pecahan
+    const fq = (x / W) - fr / 2;                                    // q pecahan
+    let q = Math.round(fq), r = Math.round(fr), s = Math.round(-fq - fr);
+    const dq = Math.abs(q - fq), dr = Math.abs(r - fr), ds = Math.abs(s + fq + fr);
+    if (dq > dr && dq > ds) q = -r - s; else if (dr > ds) r = -q - s;
+    const idx = indexOf.get(q + ',' + r);
+    return idx === undefined ? null : tiles[idx];
+  }
 
-  // ---------- update (panggil tiap frame) ----------
+  let dirty = false;
   function update(dt, p) {
-    clouds.forEach(c => { c.position.x += dt * 0.8; if (c.position.x > 90) c.position.x = -90; });
+    clouds.forEach(c => { c.position.x += dt * 0.8; if (c.position.x > 100) c.position.x = -100; });
+
+    // Pemain menginjak tile? (kaki di permukaan, bukan sedang melompat tinggi)
+    if (p) {
+      const t = tileAt(p.x, p.z);
+      if (t && t.state === 0 && p.y <= HH + 0.35 && p.y >= HH - 0.4) {
+        trigger(t, 0);
+        if (api.onTileStep) { try { api.onTileStep(t.i); } catch (e) { /* abaikan */ } }
+      }
+    }
 
     for (const t of tiles) {
-      if (t.state === 0 && p) {
-        // pemain berdiri di atas tile ini?
-        const dx = p.x - t.x, dz = p.z - t.z;
-        if (dx * dx + dz * dz < (SIZE * 0.85) ** 2 && p.y >= t.top - 0.3 && p.y <= t.top + 2.2) {
-          t.state = 1; t.t = 0; t.mesh.material = matWarn;
-        }
-      } else if (t.state === 1) {
+      if (t.state === 1) {
         t.t += dt;
-        t.mesh.position.y = t.y0 + Math.sin(t.t * 40) * 0.04; // bergetar
-        if (t.t >= WARN_TIME) { t.state = 2; t.t = 0; }
+        drawTile(t, 0, 1, Math.sin(t.t * 45) * 0.04);                // getar (hanya visual)
+        dirty = true;
+        if (t.t >= VANISH_DELAY) { t.state = 2; t.t = 0; t.platform.isFallen = true; }   // collision mati tepat 1 detik
       } else if (t.state === 2) {
         t.t += dt;
-        const k = Math.min(t.t / FALL_TIME, 1);
-        t.mesh.position.y = t.y0 - k * k * 6;
-        t.mesh.scale.setScalar(1 - k);
-        if (k >= 1) { t.state = 3; t.isFallen = true; t.mesh.visible = false; t.mesh.position.y = -999; }
+        const k = Math.min(t.t / SINK_TIME, 1);
+        drawTile(t, -k * 3, 1 - k, 0);
+        dirty = true;
+        if (k >= 1) { t.state = 3; drawTile(t, -999, 0.0001, 0); }
+      }
+    }
+    if (dirty) { inst.instanceMatrix.needsUpdate = true; dirty = false; }
+  }
+
+  // Tile yang diinjak pemain LAIN (dibaca dari data room: players[id].ht = { t<index>: waktuServer }).
+  function syncRemote(players, myUid, nowMs, startAt) {
+    if (!players) return;
+    for (const id in players) {
+      if (id === myUid) continue;
+      const ht = players[id] && players[id].ht;
+      if (!ht) continue;
+      for (const key in ht) {
+        const ts = Number(ht[key]);
+        if (!ts || (startAt && ts < startAt - 500)) continue;        // abaikan sisa ronde lama
+        const t = tiles[Number(String(key).slice(1))];
+        if (t && t.state === 0) trigger(t, (nowMs - ts) / 1000);
       }
     }
   }
 
   function reset() {
-    tiles.forEach(t => {
-      t.state = 0; t.t = 0; t.isFallen = false; t.mesh.visible = true;
-      t.mesh.material = t.base; t.mesh.scale.setScalar(1); t.mesh.position.y = t.y0;
-    });
+    tiles.forEach(t => { t.state = 0; t.t = 0; t.platform.isFallen = false; });
+    paintAll();
   }
 
-  const platforms = tiles;
-  const WIN = { x: 0, y: -38, z: 0 };
-  return { update, reset, spawn, FIN_Y, WIN, tiles, platforms, group };
+  // Titik muncul: di atas tile tengah.
+  const spawn = new THREE.Vector3(0, HH + 1.5, 0);
+
+  return {
+    group, platforms, hazards: [], guards: [], laserBeam: null,
+    FIN_Y: FALL_Y, WIN: { x: 0, y: FALL_Y, z: 0 }, MAZE_H: 0, MAZE_Z: 0,
+    spawn, tiles, update, reset, syncRemote,
+  };
 }

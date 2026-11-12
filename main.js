@@ -555,6 +555,7 @@ async function returnToLobby() {
   const fc = document.getElementById('fly-ctrl'); if (fc) fc.style.display = 'none';
   const adFly = document.getElementById('ad-fly'); if (adFly) { adFly.classList.remove('on'); adFly.textContent = '✈️ Terbang: OFF (F)'; }
   finishMs = null; deathFrozenMs = null; roomRunReset = 0; honeyRoundEnded = false; honeyWinAwarded = false; soloStart = 0;
+  { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = ''; }
   try { guards.forEach(gd => gd.reset()); } catch (e) {}
   if (character) { character.visible = true; character.position.set(0, 0.25, 0); character.rotation.y = 0; }
   if (physics) physics.velocityY = 0;
@@ -1668,7 +1669,7 @@ function init3DGame() {
   try { const builtSnow = buildSnowWorld(THREE, scene, { runElapsedMs, insidePlat, showToast }); snowWorld = builtSnow.world; snowWorldGroup = builtSnow.group; snowController = builtSnow.controller; } catch (e) { console.error('Map Salju gagal dibuat, hanya Lava yang aktif:', e); snowWorld = null; snowController = null; if (snowWorldGroup) { scene.remove(snowWorldGroup); snowWorldGroup = null; } }
   try { const builtAngkasa = buildAngkasaWorld(THREE, scene, { showToast }); angkasaWorld = builtAngkasa.world; angkasaWorldGroup = builtAngkasa.group; angkasaController = builtAngkasa.controller; } catch (e) { console.error('Map Angkasa gagal dibuat:', e); angkasaWorld = null; angkasaController = null; if (angkasaWorldGroup) { scene.remove(angkasaWorldGroup); angkasaWorldGroup = null; } }
   try { const builtMountain = buildMountainWorld(THREE, scene, { showToast }); mountainWorld = builtMountain.world; mountainWorldGroup = builtMountain.group; } catch (e) { console.error('Map Gunung gagal dibuat:', e); mountainWorld = null; if (mountainWorldGroup) { scene.remove(mountainWorldGroup); mountainWorldGroup = null; } }
-  try { honeyWorld = buildHoneyWorld(THREE, scene); honeyWorldGroup = honeyWorld.group; honeyWorldGroup.visible = false; }
+  try { honeyWorld = buildHoneyWorld(THREE, scene, { onTileStep: (i) => { if (myRef) update(myRef, { ['ht/t' + i]: serverNow() }).catch(() => {}); } }); honeyWorldGroup = honeyWorld.group; honeyWorldGroup.visible = false; }
   catch (e) { console.error('Map Honey gagal dibuat:', e); honeyWorld = null; }
 
   lobbyWorldGroup = new THREE.Group();
@@ -2505,6 +2506,7 @@ function onRoomSnapshot(sn) {
     if (ids[0] === mpUid) update(ref(multiplayerDb, `rooms/${roomCode}/meta`), { host: mpUid, hostName: String(playerData.username).slice(0, 18) }).catch(() => {});
   }
   updateRoomUI(); updateRemoteAvatars();
+  if (currentMap === 'honey' && honeyWorld && roomStartAt) honeyWorld.syncRemote(roomPlayers, mpUid, serverNow(), roomStartAt);
   if (currentMap === 'honey' && roomMeta.startAt) checkHoneyLastPlayer();
   if (roomMeta.startAt && !roomStarted) { // host menekan MULAI (atau kamu gabung saat game sudah jalan)
     roomStarted = true; roomStartAt = roomMeta.startAt;
@@ -2518,7 +2520,7 @@ async function hostStart() {
     showToast('Tunggu teman menerima undangan dan masuk lobby dulu.');
     return;
   }
-  await update(ref(multiplayerDb, `rooms/${roomCode}/meta`), { startAt: serverNow() + 4500, map: rollMap() });
+  await update(ref(multiplayerDb, `rooms/${roomCode}/meta`), { startAt: serverNow() + 4500, map: rollMap(true) });
 }
 
 async function leaveRoom(silent) {
@@ -2571,6 +2573,7 @@ function onGameBegin() {
   }
   const rp = document.getElementById('room-panel'); if (rp) rp.style.display = 'none';
   finishMs = null; deathFrozenMs = null; roomRunReset = 0; honeyRoundEnded = false; honeyWinAwarded = false;
+  { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = ''; }
   personalRunScore = 0;
   activatedCheckpoints = new WeakSet();
   // Reset warna/status checkpoint hanya saat putaran baru dimulai. Respawn tidak meresetnya.
@@ -2582,7 +2585,7 @@ function onGameBegin() {
     const idx = Math.max(0, sortedIds().indexOf(mpUid)), sp = SPAWN[idx % SPAWN.length];
     if (currentMap === 'honey') character.position.set(sp[0], honeyWorld.spawn.y, sp[1]); else character.position.set(sp[0], 0.25, sp[1]); checkpoint.x = character.position.x; checkpoint.z = character.position.z;
     gameState = serverNow() < roomStartAt ? 'COUNTDOWN' : 'PLAYING';
-    update(myRef, { status: 'PLAYING', deadAt: null }).catch(() => {});
+    update(myRef, { status: 'PLAYING', deadAt: null, ht: null }).catch(() => {});
   } else {
     soloStart = performance.now(); gameState = 'PLAYING'; if (currentMap === 'honey') character.position.copy(honeyWorld.spawn); else character.position.set(0, 0.25, 0); checkpoint.x = character.position.x; checkpoint.z = character.position.z;
     restoreSavedCheckpoint();
@@ -2650,6 +2653,8 @@ function honeyEliminateLocal() {
   honeyRoundEnded = true; gameState = 'GAMEOVER'; shatterLocal();
   if (myRef) update(myRef, { status: 'ELIMINATED', eliminatedAt: serverNow() }).catch(() => {});
   showOverlay('YOU LOSE', 'Kamu jatuh lebih dulu! 🍯', '#ff4242');
+  { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = 'none'; } // tanpa tombol coba lagi
+  setTimeout(() => { if (gameState === 'GAMEOVER' && currentMap === 'honey') returnToLobby(); }, 1800);
 }
 function honeyDeclareWin() {
   if (honeyWinAwarded || honeyRoundEnded) return;
@@ -2657,6 +2662,8 @@ function honeyDeclareWin() {
   if (myRef) update(myRef, { status: 'WIN', wonAt: serverNow() }).catch(() => {});
   awardWinCrown().catch(e => { console.warn('Gagal memberi mahkota:', e); showToast('⚠️ Mahkota gagal disimpan'); });
   showOverlay('YOU WIN! 👑', 'Kamu pemain terakhir yang bertahan! +1 mahkota', '#ffd700');
+  { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = 'none'; }
+  setTimeout(() => { if (gameState === 'WIN' && currentMap === 'honey') returnToLobby(); }, 3500);
 }
 function checkHoneyLastPlayer() {
   if (!roomCode || !roomPlayers || honeyRoundEnded || gameState !== 'PLAYING') return;
@@ -3638,7 +3645,7 @@ window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() =>
 const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' }, angkasa: { icon: '🚀', name: 'MAP ANGKASA', color: '#a78bfa' }, mountain: { icon: '🏔️', name: 'MAP GUNUNG', color: '#65c987' }, honey: { icon: '🍯', name: 'HONEY DROP', color: '#ffc53a' } };
 
 // Gacha: hanya memilih map yang benar-benar tersedia.
-function rollMap() { const available = ['lava']; if (snowWorld) available.push('snow'); if (angkasaWorld) available.push('angkasa'); if (mountainWorld) available.push('mountain'); if (honeyWorld) available.push('honey'); return available[Math.floor(Math.random() * available.length)]; }
+function rollMap(multi) { const available = ['lava']; if (snowWorld) available.push('snow'); if (angkasaWorld) available.push('angkasa'); if (mountainWorld) available.push('mountain'); if (honeyWorld && multi) available.push('honey'); /* Honey Drop: hanya room 2+ pemain */ return available[Math.floor(Math.random() * available.length)]; }
 
 // Animasi gacha horizontal: kartu map bergeser dari kanan ke kiri lalu berhenti tepat di hasil.
 function playMapGacha(result, spinMs, done) {
@@ -3658,7 +3665,7 @@ function playMapGacha(result, spinMs, done) {
     if (angkasaWorld) keys.push('angkasa');
     if (mountainWorld) keys.push('mountain');
     // Honey harus ikut daftar kartu roulette, bukan hanya daftar rollMap().
-    if (honeyWorld) keys.push('honey');
+    if (honeyWorld && roomCode) keys.push('honey'); // kartu Honey hanya muncul di room multiplayer
     const chosen = keys.includes(result) ? result : 'lava';
     const winnerIndex = 30;
 
