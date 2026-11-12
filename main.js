@@ -2807,6 +2807,12 @@ function animateRemotePlayers(delta) {
       const br = Math.sin(now * 2.2 + u.ph);
       bob = br * 0.008; lA = Math.sin(now * 1.3 + u.ph) * 0.04; rA = -lA; armZ = 0.1 + br * 0.015; lE = rE = -0.12; headY = Math.sin(now * 0.5 + u.ph) * 0.35;
     }
+    { // teman lain terlihat mendorong: dibaca dari data push di node pemain
+      const pu = d.push;
+      if (pu && pu.seq !== u.pushSeen) { u.pushSeen = pu.seq; if (Math.abs(Date.now() - (Number(pu.t) || 0)) < 3000) u.pushStart = now; }
+      if (u.pushStart != null) { const pp = (now - u.pushStart) / (PUSH_ANIM_MS / 1000);
+        if (pp >= 0 && pp < 1) { const Q = pushPose(pp); lA = rA = Q.arm; lE = rE = Q.el; armZ = Q.armZ; lean = Q.lean; bob = Q.bob; } }
+    }
     const dm = (o, key, v) => { if (o) o[key] += (v - o[key]) * k; };
     dm(P.legL.rotation, 'x', lH); dm(P.legR.rotation, 'x', rH); dm(P.knL.rotation, 'x', lK); dm(P.knR.rotation, 'x', rK);
     dm(P.armL.rotation, 'x', lA); dm(P.armR.rotation, 'x', rA); dm(P.elL.rotation, 'x', lE); dm(P.elR.rotation, 'x', rE);
@@ -2988,7 +2994,7 @@ function updateLobbyLeaderboard() {
   x.font = '900 76px sans-serif'; x.fillStyle = '#ffffff';
   x.fillText('LEADERBOARD', 512, 82);
   x.font = 'bold 30px sans-serif'; x.fillStyle = '#42d9ff';
-  x.fillText(roomCode ? `ROOM ${roomCode}  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : `JUMLAH MAHKOTA • MIN. ${leaderboardMinCrowns} 👑`, 512, 142);
+  x.fillText(roomCode ? `GRUP TEMAN  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : `JUMLAH MAHKOTA • MIN. ${leaderboardMinCrowns} 👑`, 512, 142);
   x.strokeStyle = 'rgba(66,217,255,.55)'; x.lineWidth = 3;
   x.beginPath(); x.moveTo(55, 188); x.lineTo(969, 188); x.stroke();
 
@@ -3421,7 +3427,7 @@ function showGameInvite(inviteKey, invite) {
   if (!overlay || !invite || invite.status !== 'pending') return;
   activeInviteKey = inviteKey;
   document.getElementById('social-invite-name').textContent = `${invite.fromName || inviteKey} mengundangmu bermain!`;
-  document.getElementById('social-invite-room').textContent = `ROOM ${invite.roomCode || '-----'}`;
+  { const rEl = document.getElementById('social-invite-room'); if (rEl) { rEl.textContent = ''; rEl.style.display = 'none'; } } // kode room disembunyikan (tetap tersimpan di dataset untuk gabung)
   overlay.style.display = 'flex';
   overlay.dataset.inviter = inviteKey;
   overlay.dataset.room = String(invite.roomCode || '');
@@ -3543,6 +3549,15 @@ function startPresenceSystem() {
 // Dorongan dikirim lewat node pemain sendiri (rooms/<kode>/players/<uid>/push), lalu korban
 // yang membaca dan menerapkan hentakan di sisinya (memakai vektor 'knock' yang sudah ada).
 const PUSH_RANGE = 3.2, PUSH_COOLDOWN = 1500, PUSH_FORCE = 30;
+// Animasi dorong: tangan ditarik ke belakang (ancang-ancang), lalu dihentakkan lurus ke depan.
+const PUSH_ANIM_MS = 520;
+let pushAnimStart = -1e9;
+function pushPose(p) { // p = 0..1 progres animasi
+  const ease = (x) => x * x * (3 - 2 * x);
+  if (p < 0.25) { const w = ease(p / 0.25); return { arm: 0.7 * w, el: -1.3 * w, armZ: 0.12, lean: -0.1 * w, bob: -0.02 * w }; }
+  const w = ease(Math.min(1, (p - 0.25) / 0.3));
+  return { arm: 0.7 - 2.3 * w, el: -1.3 + 1.25 * w, armZ: 0.12, lean: -0.1 + 0.52 * w, bob: 0.03 * w };
+}
 let pushSeq = 0, lastPushAt = 0;
 const handledPush = new Map(); // uid pendorong -> seq terakhir
 const hasPushPass = () => playerData.inventory.includes('gp_dorong');
@@ -3560,6 +3575,9 @@ function tryPushNearestFriend() {
   }
   if (!best) { showToast('Tidak ada teman di dekatmu', 1000); return; }
   lastPushAt = now; pushSeq++;
+  { const tav = remotePlayers.get(best); // hadap ke teman lalu mainkan animasi dorong
+    if (tav) character.rotation.y = Math.atan2(tav.position.x - character.position.x, tav.position.z - character.position.z);
+    pushAnimStart = performance.now(); }
   const btn = document.getElementById('btn-push'); if (btn) { btn.classList.add('cd'); setTimeout(() => btn.classList.remove('cd'), PUSH_COOLDOWN); }
   update(myRef, { push: { target: best, seq: pushSeq, t: Date.now() } }).catch(() => {});
   showToast('🫸 Dorong ' + String(roomPlayers[best]?.username || 'teman') + '!', 1000);
@@ -3603,11 +3621,11 @@ function updateRoomUI() {
   panel.classList.toggle('rp-collapsed', rpCollapsed);
   document.getElementById('rp-min').textContent = rpCollapsed ? '▢' : '—';
   document.getElementById('rp-qstart').style.display = (rpCollapsed && roomCode && roomMeta && roomMeta.host === mpUid && !roomMeta.startAt) ? 'block' : 'none';
-  document.getElementById('rp-title').textContent = roomCode ? '🎮 Room ' + roomCode + ' · ' + Object.keys(roomPlayers).length + ' pemain' : '🎮 Mabar';
+  document.getElementById('rp-title').textContent = roomCode ? '🎮 Grup · ' + Object.keys(roomPlayers).length + ' pemain' : '🎮 Mabar';
   document.getElementById('rp-menu').style.display = roomCode ? 'none' : 'flex';
   document.getElementById('rp-room').style.display = roomCode ? 'flex' : 'none';
   if (!roomCode) return;
-  document.getElementById('rp-codetext').textContent = roomCode;
+  { const ce = document.getElementById('rp-codetext'); if (ce) ce.textContent = ''; }
   const list = document.getElementById('rp-list'); list.innerHTML = '';
   const ids = sortedIds();
   ids.forEach(id => {
@@ -3619,7 +3637,25 @@ function updateRoomUI() {
   const st = document.getElementById('rp-start'); st.style.display = isHost ? 'block' : 'none'; st.textContent = '▶ MULAI (' + ids.length + ' pemain)';
   document.getElementById('rp-wait').style.display = isHost ? 'none' : 'flex';
 }
+function buildLeaveGroupButton() {
+  if (document.getElementById('btn-leave-group')) return;
+  const st = document.createElement('style');
+  st.textContent = '#btn-leave-group{position:fixed;top:100px;right:16px;z-index:59;width:34px;height:34px;border:1px solid rgba(255,90,90,.85);border-radius:50%;background:rgba(32,10,10,.92);color:#ff8a8a;font-size:16px;box-shadow:0 3px 12px #0008;display:none;align-items:center;justify-content:center;padding:0}#btn-leave-group:active{transform:scale(.92)}';
+  document.head.appendChild(st);
+  const b = document.createElement('button'); b.id = 'btn-leave-group'; b.type = 'button'; b.textContent = '🚪'; b.title = 'Keluar dari grup';
+  let busy = false;
+  b.addEventListener('click', async () => {
+    if (busy || !roomCode) return; busy = true;
+    try { await leaveRoom(false); showToast('Kamu keluar dari grup'); }
+    catch (e) { showToast('Gagal keluar grup: ' + (e && e.message || e)); }
+    busy = false;
+  });
+  document.body.appendChild(b);
+  // Tampil hanya saat berada di grup, di lobby, dan permainan belum dimulai.
+  setInterval(() => { b.style.display = (roomCode && gameState === 'LOBBY' && !roomStartAt) ? 'flex' : 'none'; }, 250);
+}
 function buildRoomUI() {
+  buildLeaveGroupButton();
   // UI room/mabar disembunyikan. Room dibuat otomatis saat pemain mengundang teman.
   buildPlayerSearchUI();
   if (document.getElementById('countdown')) return;
@@ -4070,6 +4106,8 @@ function animate() {
     bob = br * 0.008; lA = Math.sin(t * 1.3) * 0.04; rA = -lA; armZ = 0.1 + br * 0.015;
     lE = rE = -0.12; sway = Math.sin(t * 0.8) * 0.015; headY = Math.sin(t * 0.5) * 0.35;
   }
+  { const pp = (performance.now() - pushAnimStart) / PUSH_ANIM_MS; // animasi dorong (menimpa pose jalan/idle)
+    if (pp >= 0 && pp < 1) { const Q = pushPose(pp); lA = rA = Q.arm; lE = rE = Q.el; armZ = Q.armZ; lean = Q.lean; bob = Q.bob; } }
   damp(leftLegPivot.rotation, 'x', lH); damp(rightLegPivot.rotation, 'x', rH);
   damp(leftKnee.rotation, 'x', lK); damp(rightKnee.rotation, 'x', rK);
   damp(leftArmPivot.rotation, 'x', lA); damp(rightArmPivot.rotation, 'x', rA);
