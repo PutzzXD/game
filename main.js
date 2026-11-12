@@ -156,7 +156,7 @@ document.addEventListener('keydown', startBackgroundMusic, { capture: true });
 
 // ============ 1. KONFIGURASI FIREBASE ============
 const FIREBASE_URL = "https://game3d-66134-default-rtdb.asia-southeast1.firebasedatabase.app/";
-const DEV_USERNAME = "developer";
+const DEV_USERNAME = "putzzdev";
 const ADMIN_PLAYER_ID = "123456";
 // Nilai mahkota akun admin dibuat konsisten antara profil dan leaderboard.
 const ADMIN_FIXED_CROWNS = 9999999;
