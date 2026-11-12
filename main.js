@@ -220,6 +220,7 @@ const SHOP_ITEMS = {
     { id: 'baju_godzilla', name: 'Kostum Godzilla', price: 5000, color: 0x315b42, godzilla: true },
     { id: 'baju_ramenraider', name: 'Kostum Ramen Raider', price: 4000, color: 0xd98a32, ramen: true },
     { id: 'baju_saitama', name: 'Kostum Saitama — One Punch Man', price: 12000, color: 0xffd21a, saitama: true },
+    { id: 'baju_greenlantern', name: 'Kostum Green Lantern', price: 6500, color: 0x087d3b, greenlantern: true },
     { id: 'baju_developer', name: 'DEVELOPER — Eksklusif Admin', price: 0, color: 0x101b35, dev: true, suit: 'mail' }
   ],
   celana: [
@@ -950,14 +951,14 @@ function applyItemMat(m, it) {
 function pickCostume(eq) {
   const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
   const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor, hulk = !!baju.hulk;
-  const pac = !!baju.pac, saitama = !!baju.saitama;
-  const celana = saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
-  const sepatu = saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
-  return { baju, celana, sepatu, iron, thor, hulk, saitama };
+  const pac = !!baju.pac, saitama = !!baju.saitama, greenlantern = !!baju.greenlantern;
+  const celana = greenlantern ? { color: 0x10151a } : saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
+  const sepatu = greenlantern ? { color: 0x087d3b } : saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
+  return { baju, celana, sepatu, iron, thor, hulk, saitama, greenlantern };
 }
-const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [] };
+const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [], greenlantern: [] };
 function setCostumeVis(baju, get) {
-  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac };
+  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac, greenlantern: !!baju.greenlantern };
   for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
 }
 
@@ -1005,6 +1006,7 @@ function itemIcon(cat, it) {
     if (it.bat && cat === 'baju') inner += '<rect x="19" y="47" width="26" height="4" fill="#f5c400"/><ellipse cx="32" cy="30" rx="8" ry="5" fill="#f5c400" stroke="#111"/><path d="M32 26L33 25L33.5 26.5Q38 26 40 28Q38 28.5 37 31Q35 30 34 31L32 33L30 31Q29 30 27 31Q26 28.5 24 28Q26 26 30.5 26.5L31 25Z" fill="#111"/>';
     if (it.ultra && cat === 'baju') inner += '<path d="M20 8L32 18L44 8L39 56H25Z" fill="#d52c3a"/><circle cx="32" cy="34" r="5" fill="#5cecff" stroke="#fff" stroke-width="2"/>';
     if (it.godzilla && cat === 'baju') inner += '<path d="M32 8L24 20L29 19L22 31L29 28L25 44L39 44L35 28L42 31L35 19L40 20Z" fill="#a8d96a" stroke="#183d2b" stroke-width="1.5"/>';
+    if (it.greenlantern && cat === 'baju') inner += '<path d="M32 15L43 20V31Q43 42 32 49Q21 42 21 31V20Z" fill="#062a19" stroke="#7dffad" stroke-width="2"/><circle cx="32" cy="31" r="9" fill="#eafff1" stroke="#19b85a" stroke-width="3"/><path d="M24 31H40M27 27H37M27 35H37" stroke="#087d3b" stroke-width="2"/>';
     if (it.pac && cat === 'baju') inner += '<circle cx="32" cy="32" r="11" fill="#111"/><path d="M32 32L42 27.5A11 11 0 1 0 42 36.5Z" fill="#ffd800"/><circle cx="34" cy="26.5" r="1.5" fill="#111"/><circle cx="46" cy="32" r="1.6" fill="#ffd800"/>';
     if (it.ramen && cat === 'baju') inner += '<path d="M17 25Q32 34 47 25L43 48Q32 55 21 48Z" fill="#f2c56c" stroke="#7d3c1c" stroke-width="2"/><path d="M19 24Q32 14 45 24" fill="none" stroke="#fff0bd" stroke-width="3"/><path d="M25 20L37 11M29 21L41 12" stroke="#8b5528" stroke-width="2"/>';
     if (it.web && cat === 'baju') inner += '<g stroke="#111" stroke-width="1.6" fill="#111" stroke-linecap="round"><ellipse cx="32" cy="35" rx="2.6" ry="5"/><circle cx="32" cy="28.5" r="1.8"/><path fill="none" d="M32 33L24 28M32 35L23 35M32 37L24 42M32 38L25 46M32 33L40 28M32 35L41 35M32 37L40 42M32 38L39 46"/></g>';
@@ -2170,6 +2172,85 @@ function init3DGame() {
   capeMesh.position.z = -0.035; saitamaCape.add(capeMesh);
   mk(new THREE.SphereGeometry(0.11, 16, 12), saitamaWhite, -0.25, -0.02, 0.02, saitamaCape);
   mk(new THREE.SphereGeometry(0.11, 16, 12), saitamaWhite, 0.25, -0.02, 0.02, saitamaCape);
+
+
+  // ===== GREEN LANTERN: kostum superhero hijau-hitam, topeng, logo, sarung tangan & sepatu bot =====
+  const glGreen = accMat(0x087d3b, { roughness: 0.42, metalness: 0.18, envMap: envTex, envMapIntensity: 0.65 });
+  const glBright = accMat(0x21d66b, { roughness: 0.34, metalness: 0.12, emissive: 0x087d3b, emissiveIntensity: 0.32 });
+  const glDark = accMat(0x10151a, { roughness: 0.48, metalness: 0.22, envMap: envTex, envMapIntensity: 0.55 });
+  const glWhite = accMat(0xeafff1, { roughness: 0.28, metalness: 0.08, emissive: 0x75ffad, emissiveIntensity: 0.22 });
+  const glParts = costumeParts.greenlantern;
+
+  // Topeng hijau menutup area mata; rambut dan bentuk kepala avatar tetap terlihat.
+  const glMask = grp(headGroup, glParts);
+  const maskBand = mk(new THREE.SphereGeometry(0.345, 40, 24), glGreen, 0, 0.045, 0.012, glMask);
+  maskBand.scale.set(1.04, 0.43, 1.015);
+  const maskFront = mk(new THREE.BoxGeometry(0.49, 0.105, 0.035), glGreen, 0, 0.045, 0.319, glMask);
+  maskFront.scale.set(1, 1, 0.65);
+  for (const sd of [-1, 1]) {
+    const lens = mk(new THREE.SphereGeometry(0.083, 24, 16), glDark, sd * 0.115, 0.045, 0.337, glMask);
+    lens.scale.set(1.28, 0.55, 0.3);
+    const lensGlow = mk(new THREE.SphereGeometry(0.054, 20, 12), glWhite, sd * 0.115, 0.048, 0.35, glMask);
+    lensGlow.scale.set(1.2, 0.42, 0.22);
+  }
+  const maskBridge = mk(new THREE.BoxGeometry(0.09, 0.075, 0.035), glGreen, 0, 0.05, 0.338, glMask);
+
+  // Panel dada hijau berbentuk armor dan emblem Green Lantern yang jelas terlihat.
+  const glChest = grp(rig, glParts);
+  const chestPanel = mk(new THREE.SphereGeometry(0.355, 40, 28), glGreen, 0, 1.66, 0.02, glChest);
+  chestPanel.scale.set(1.02, 0.86, 0.82);
+  const upperPanel = mk(new THREE.BoxGeometry(0.57, 0.18, 0.045), glGreen, 0, 1.91, 0.205, glChest);
+  upperPanel.scale.set(1, 1, 0.7);
+  const centerBadge = mk(new THREE.CylinderGeometry(0.145, 0.145, 0.045, 48), glWhite, 0, 1.68, 0.315, glChest);
+  centerBadge.rotation.x = Math.PI / 2;
+  const badgeRing = mk(new THREE.TorusGeometry(0.145, 0.024, 10, 48), glBright, 0, 1.68, 0.344, glChest);
+  badgeRing.rotation.x = Math.PI / 2;
+  // Simbol lentera sederhana di tengah emblem.
+  mk(new THREE.BoxGeometry(0.12, 0.055, 0.018), glGreen, 0, 1.68, 0.352, glChest);
+  mk(new THREE.BoxGeometry(0.075, 0.105, 0.018), glGreen, 0, 1.68, 0.354, glChest);
+  mk(new THREE.BoxGeometry(0.15, 0.018, 0.018), glGreen, 0, 1.735, 0.354, glChest);
+  mk(new THREE.BoxGeometry(0.15, 0.018, 0.018), glGreen, 0, 1.625, 0.354, glChest);
+
+  // Panel perut hijau bersegmen di atas undersuit hitam.
+  const abdomen = mk(new THREE.SphereGeometry(0.255, 32, 22), glGreen, 0, 1.34, 0.06, glChest);
+  abdomen.scale.set(1.03, 0.92, 0.77);
+  for (let row = 0; row < 3; row++) {
+    const seam = mk(new THREE.BoxGeometry(0.34 - row * 0.025, 0.018, 0.012), glDark, 0, 1.49 - row * 0.105, 0.258, glChest);
+    seam.scale.z = 0.7;
+  }
+  // Garis panel bahu hijau dan sisi dada hitam.
+  for (const sd of [-1, 1]) {
+    const shoulder = mk(new THREE.SphereGeometry(0.17, 28, 18), glGreen, sd * 0.405, 1.9, 0.005, glChest);
+    shoulder.scale.set(1.18, 0.7, 0.9);
+    const sideStripe = mk(new THREE.BoxGeometry(0.095, 0.55, 0.025), glDark, sd * 0.285, 1.57, 0.235, glChest);
+    sideStripe.rotation.z = -sd * 0.12;
+  }
+
+  // Sarung tangan hijau metalik mengikuti pivot lengan dan pergelangan.
+  for (const arm of [leftElbow, rightElbow]) {
+    const glove = grp(arm, glParts);
+    mk(new THREE.CylinderGeometry(0.105, 0.095, 0.29, 28), glGreen, 0, -0.235, 0, glove);
+    mk(new THREE.TorusGeometry(0.098, 0.018, 8, 28), glBright, 0, -0.09, 0, glove).rotation.x = Math.PI / 2;
+    const fist = mk(new THREE.SphereGeometry(0.105, 24, 16), glGreen, 0, -0.43, 0.035, glove);
+    fist.scale.set(1.08, 0.82, 1.12);
+    mk(new THREE.BoxGeometry(0.105, 0.035, 0.035), glWhite, 0, -0.43, 0.132, glove);
+  }
+
+  // Sepatu bot hijau tinggi dengan sol dan garis armor.
+  for (const leg of [leftKnee, rightKnee]) {
+    const boot = grp(leg, glParts);
+    const shaft = mk(new THREE.CylinderGeometry(0.135, 0.15, 0.43, 32), glGreen, 0, -0.29, 0.015, boot);
+    shaft.scale.set(1.02, 1, 0.9);
+    mk(new THREE.TorusGeometry(0.132, 0.018, 8, 28), glBright, 0, -0.075, 0.015, boot).rotation.x = Math.PI / 2;
+    const toe = mk(new THREE.SphereGeometry(0.14, 24, 16), glGreen, 0, -0.49, 0.11, boot);
+    toe.scale.set(1.15, 0.55, 1.35);
+    mk(new THREE.BoxGeometry(0.22, 0.035, 0.29), glDark, 0, -0.56, 0.09, boot);
+  }
+
+  // Sabuk hitam-hijau sebagai pemisah armor dada dan celana.
+  const glBelt = grp(rig, glParts);
+  mk(new THREE.BoxGeometry(0.49, 0.075, 0.48), glDark, 0, 1.12, 0, glBelt);
+  mk(new THREE.BoxGeometry(0.105, 0.085, 0.035), glBright, 0, 1.12, 0.25, glBelt);
 
   updateCharacterVisuals();
 
