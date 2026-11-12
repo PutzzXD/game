@@ -3657,6 +3657,8 @@ function playMapGacha(result, spinMs, done) {
     if (snowWorld) keys.push('snow');
     if (angkasaWorld) keys.push('angkasa');
     if (mountainWorld) keys.push('mountain');
+    // Honey harus ikut daftar kartu roulette, bukan hanya daftar rollMap().
+    if (honeyWorld) keys.push('honey');
     const chosen = keys.includes(result) ? result : 'lava';
     const winnerIndex = 30;
 
@@ -3717,7 +3719,8 @@ function playMapGacha(result, spinMs, done) {
     const loading = el.querySelector('#gc-loading');
     const cardHTML = (key, index) => {
       const m = MAP_LABELS[key] || MAP_LABELS.lava;
-      return `<div class="gc-card" data-map="${key}" data-index="${index}" style="--map-color:${m.color}"><div class="gc-card-icon">${m.icon}</div><div class="gc-card-name">${m.name}</div><div class="gc-card-tag">PARKOUR WORLD</div></div>`;
+      const tag = key === 'honey' ? '🍯 HONEY PARKOUR' : 'PARKOUR WORLD';
+      return `<div class="gc-card" data-map="${key}" data-index="${index}" style="--map-color:${m.color}"><div class="gc-card-icon">${m.icon}</div><div class="gc-card-name">${m.name}</div><div class="gc-card-tag">${tag}</div></div>`;
     };
 
     // Buat deretan kartu panjang; kartu pemenang ditaruh jauh di kanan.
