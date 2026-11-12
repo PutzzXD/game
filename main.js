@@ -156,7 +156,7 @@ document.addEventListener('keydown', startBackgroundMusic, { capture: true });
 
 // ============ 1. KONFIGURASI FIREBASE ============
 const FIREBASE_URL = "https://game3d-66134-default-rtdb.asia-southeast1.firebasedatabase.app/";
-const DEV_USERNAME = "putzzdev";
+const DEV_USERNAME = "developer";
 const ADMIN_PLAYER_ID = "123456";
 // Nilai mahkota akun admin dibuat konsisten antara profil dan leaderboard.
 const ADMIN_FIXED_CROWNS = 9999999;
@@ -213,7 +213,7 @@ const SHOP_ITEMS = {
     { id: 'baju_emas', name: 'Baju Emas', price: 300, color: 0xffd700 },
     { id: 'baju_spiderman', name: 'Kostum Spiderman', price: 1500, color: 0xd91e2b, web: true },
     { id: 'baju_batman', name: 'Kostum Batman', price: 1600, color: 0x2b2f3a, bat: true, suit: 'bat' },
-    { id: 'baju_ironman', name: 'Kostum Ironman', price: 4000, color: 0xb01020, iron: true },
+    { id: 'baju_ironman', name: 'Kostum Ironman', price: 8000, color: 0xb01020, iron: true },
     { id: 'baju_thor', name: 'Kostum Thor', price: 3000, color: 0x3b4252, thor: true, suit: 'mail' },
     { id: 'baju_hulk', name: 'Kostum Hulk', price: 3500, color: 0x57b84a, hulk: true },
     { id: 'baju_ultraman', name: 'Kostum Ultraman', price: 4500, color: 0xd9e0e8, ultra: true, suit: 'mail' },
