@@ -174,10 +174,11 @@ export function buildMountainWorld(THREE, scene, api = {}) {
     const p = {
       mesh, width: w, depth: round ? w : d, type, hh: h / 2,
       startX: mesh.position.x, startY: mesh.position.y, startZ: mesh.position.z,
-      range: o.range ?? 2.2, speed: o.speed ?? 1.3,
+      baseX: mesh.position.x, baseY: mesh.position.y, baseZ: mesh.position.z,
+      range: o.range ?? 0.0, speed: o.speed ?? 1.0,
       phase: (P.length * 2.39996) % (Math.PI * 2),
       isFallen: false, tell: 0, revealTimer: 0, dx: 0, r: round ? w / 2 : 0,
-      grip: [0.85, 0.8], kind: o.kind
+      grip: [0.95, 0.95], kind: o.kind, solid: true, isPlatform: true
     };
     if (o.cp) {
       p.checkpoint = true; p.checkpointActivated = false; p.checkpointReadyMaterial = cpMat; cpList.push(p);
@@ -196,6 +197,19 @@ export function buildMountainWorld(THREE, scene, api = {}) {
     if (o.kind === 'grass' && !o.cp && type === 'static') grassPlats.push(p);
     P.push(p); return p;
   }
+  // Animasi platform bergerak; collider membaca posisi mesh yang sama.
+  anim.push(t => {
+    for (const p of P) {
+      if (p.type === 'moving_x') {
+        p.mesh.position.x = p.baseX + Math.sin(t * p.speed + p.phase) * p.range;
+        p.startX = p.mesh.position.x;
+      } else if (p.type === 'moving_y') {
+        p.mesh.position.y = p.baseY + Math.sin(t * p.speed + p.phase) * p.range;
+        p.startY = p.mesh.position.y;
+      }
+    }
+  });
+
   const top = p => p.mesh.position.y + p.hh;
   const checkpointPlatform = (x, y, z, w, d) => plat(x, y, z, w, d, { kind: 'grass', cp: true, route: 1 });
   function plinth(cx, cz, topY, rt, rb, m) {
@@ -249,10 +263,12 @@ export function buildMountainWorld(THREE, scene, api = {}) {
   // ====================================================================
   // ZONA 2 — Lereng, Jembatan, Longsoran
   // ====================================================================
+  // Jalur batu awal: pijakan diperbesar dan jarak lompatan dirapatkan.
   plat(0, 1.2, -64, 7, 7, { kind: 'stone', route: 1 });
-  plat(4.7, 2.2, -70, 3.4, 3.4, { kind: 'stone', type: 'moving_y', range: 0.8, speed: 1.2, route: 1 });
-  plat(9.2, 3.1, -75, 3.2, 3.2, { kind: 'stone', type: 'moving_x', range: 1.7, speed: 1.1, route: 1 });
-  plat(13.8, 4.0, -80, 3.2, 3.2, { kind: 'stone', type: 'moving_y', range: 0.9, speed: 1.4, route: 1 });
+  plat(3.4, 1.9, -68.5, 4.4, 4.4, { kind: 'stone', type: 'moving_y', range: 0.35, speed: 0.85, route: 1 });
+  plat(7.2, 2.7, -73, 4.4, 4.4, { kind: 'stone', type: 'moving_x', range: 0.65, speed: 0.8, route: 1 });
+  plat(11.2, 3.5, -77.5, 4.4, 4.4, { kind: 'stone', route: 1 });
+  plat(15.2, 4.2, -82, 4.6, 4.6, { kind: 'stone', route: 1 });
   plat(17.8, 4.6, -85, 5, 5, { kind: 'stone', route: 1 });
   sign('JEMBATAN\nGANTUNG', 20.1, 4.85, -83.6, -0.3);
   plat(17.8, 4.6, -89.6, 1.3, 3.4, { log: true, kind: 'wood', route: 1 });
@@ -261,7 +277,7 @@ export function buildMountainWorld(THREE, scene, api = {}) {
     const x = 17.8 + (i - 3) * 1.75;
     const plank = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.22, 2.8), woodMat);
     plank.position.set(x, 4.85, -93); plank.castShadow = true; grp.add(plank);
-    swingPlanks.push({ mesh: plank, speed: 1.1 + i * 0.06, phase: i * 0.72 });
+    // Jembatan stabil: mesh visual dan collider memakai posisi yang sama.
     plat(x, 4.7, -93, 1.62, 2.8, { kind: 'wood', route: 1, h: 0.3 }); 
   }
   plat(12, 4.9, -96.7, 1.3, 4.2, { log: true, kind: 'wood', route: 1 });
@@ -316,15 +332,17 @@ export function buildMountainWorld(THREE, scene, api = {}) {
   // ====================================================================
   // ZONA 3 — Tebing & Badai
   // ====================================================================
-  plat(4, 6.7, -117, 1.6, 3.2, { log: true, kind: 'wood', route: 1 });
-  plat(4, 7.2, -121, 4.2, 4.2, { kind: 'stone', route: 1 });
-  plat(0, 8.8, -128, 2.5, 2.5, { kind: 'stone', route: 1 });
-  plat(-5, 10.5, -135, 2.3, 2.3, { kind: 'stone', route: 1 });
-  plat(-3, 11.4, -138.5, 1.6, 3.4, { kind: 'stone', route: 1 });
-  plat(-1, 12.3, -142, 2.2, 2.2, { kind: 'stone', type: 'moving_x', range: 1.3, speed: 1.25, route: 1 });
-  plat(5, 14.1, -149, 2.2, 2.2, { kind: 'stone', route: 1 });
-  plat(7.5, 15.0, -152.5, 1.8, 2, { kind: 'stone', route: 1 });
-  plat(10, 16, -156, 2.1, 2.1, { kind: 'stone', type: 'moving_y', range: 0.75, speed: 1.4, route: 1 });
+  // Tebing dibuat bertahap: semua pijakan punya area injak yang lebih lebar.
+  plat(4, 6.7, -117, 3.2, 4.0, { kind: 'wood', route: 1 });
+  plat(4, 7.2, -121, 4.6, 4.6, { kind: 'stone', route: 1 });
+  plat(1.5, 8.1, -125.5, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(-2, 9.1, -130, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(-4.2, 10.1, -134.5, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(-2.5, 11.0, -139, 4.2, 4.2, { kind: 'stone', type: 'moving_x', range: 0.55, speed: 0.8, route: 1 });
+  plat(1, 12.0, -143.5, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(5, 13.2, -148, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(9, 14.5, -152.5, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(12, 15.8, -157, 4.4, 4.4, { kind: 'stone', type: 'moving_y', range: 0.35, speed: 0.85, route: 1 });
   const cp3 = checkpointPlatform(14, 17.2, -164, 8, 8); // CP 3
   plat(14, 17.9, -171, 1.4, 5.2, { log: true, kind: 'wood', route: 1 });
   
@@ -354,9 +372,9 @@ export function buildMountainWorld(THREE, scene, api = {}) {
   // ZONA 4 — Tanjakan Awal (Menuju Jalan Santai 1)
   // ====================================================================
   plat(14, 18.5, -176, 4, 4, { kind: 'stone', route: 1 });
-  const ledge = plat(9, 20.2, -183, 2.4, 2.4, { kind: 'stone', route: 1 });
-  const ledge2 = plat(4, 22, -190, 2.3, 2.3, { kind: 'snow', route: 1 });
-  plat(-1, 23.8, -197, 2.3, 2.3, { kind: 'snow', type: 'moving_x', range: 1.1, speed: 1.0, route: 1 });
+  const ledge = plat(9, 20.2, -183, 4.2, 4.2, { kind: 'stone', route: 1 });
+  const ledge2 = plat(4.5, 21.8, -189, 4.2, 4.2, { kind: 'snow', route: 1 });
+  plat(0, 23.3, -195, 4.2, 4.2, { kind: 'snow', type: 'moving_x', range: 0.55, speed: 0.75, route: 1 });
   rockfall(9, -183, top(ledge), 4.6, 0.0, 15);
   rockfall(4, -190, top(ledge2), 4.6, 2.3, 15);
   checkpointPlatform(-6, 25.5, -204, 12, 12); // CP 4
@@ -376,11 +394,15 @@ export function buildMountainWorld(THREE, scene, api = {}) {
   // ====================================================================
   // ZONA RINTANGAN 2 (Tebing Curam 2)
   // ====================================================================
-  plat(6, 30, -285, 2.5, 2.5, { kind: 'stone', type: 'moving_y', range: 1.5, speed: 1.2, route: 1 });
-  plat(10, 32, -295, 2, 2, { kind: 'stone', route: 1 });
-  plat(14, 34, -305, 2, 2, { kind: 'stone', type: 'moving_x', range: 2, speed: 1.5, route: 1 });
-  plat(12, 36.5, -315, 2.5, 2.5, { kind: 'stone', route: 1 });
-  plat(6, 39, -325, 2, 2, { kind: 'stone', type: 'moving_y', range: 1.8, speed: 1.4, route: 1 });
+  plat(6, 30, -285, 4.2, 4.2, { kind: 'stone', type: 'moving_y', range: 0.4, speed: 0.8, route: 1 });
+  plat(8, 31.2, -290, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(10, 32.4, -295, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(12, 33.6, -300, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(14, 34.8, -305, 4.2, 4.2, { kind: 'stone', type: 'moving_x', range: 0.6, speed: 0.8, route: 1 });
+  plat(12, 36.0, -310, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(9, 37.2, -315, 4.2, 4.2, { kind: 'stone', route: 1 });
+  plat(6, 38.4, -320, 4.2, 4.2, { kind: 'stone', type: 'moving_y', range: 0.4, speed: 0.8, route: 1 });
+  plat(2, 40.0, -328, 4.5, 4.5, { kind: 'stone', route: 1 });
   const cp6 = checkpointPlatform(-2, 41.5, -335, 8, 8); // CP 6
 
   // ====================================================================
@@ -397,11 +419,14 @@ export function buildMountainWorld(THREE, scene, api = {}) {
   // ZONA RINTANGAN 3 (Puncak Es)
   // ====================================================================
   sign('AWAS!\nPUNCAK ES', 4, 44.75, -402, 0);
-  plat(8, 46, -408, 1.8, 1.8, { kind: 'snow', route: 1 });
-  plat(12, 48, -415, 1.5, 1.5, { kind: 'snow', type: 'moving_x', range: 2.5, speed: 1.6, route: 1 });
-  plat(16, 50.5, -420, 1.5, 1.5, { kind: 'snow', route: 1 });
-  plat(14, 53, -430, 1.5, 1.5, { kind: 'snow', type: 'moving_y', range: 2, speed: 1.8, route: 1 });
-  plat(6, 55.5, -440, 1.8, 1.8, { kind: 'snow', route: 1 });
+  plat(8, 46, -408, 4.0, 4.0, { kind: 'snow', route: 1 });
+  plat(10, 47.0, -412, 4.0, 4.0, { kind: 'snow', type: 'moving_x', range: 0.55, speed: 0.75, route: 1 });
+  plat(12, 48.0, -416, 4.0, 4.0, { kind: 'snow', route: 1 });
+  plat(15, 49.2, -420, 4.0, 4.0, { kind: 'snow', route: 1 });
+  plat(15, 50.4, -424, 4.0, 4.0, { kind: 'snow', type: 'moving_y', range: 0.35, speed: 0.8, route: 1 });
+  plat(12, 51.6, -428, 4.0, 4.0, { kind: 'snow', route: 1 });
+  plat(8, 53.0, -434, 4.0, 4.0, { kind: 'snow', route: 1 });
+  plat(3, 55.0, -441, 4.2, 4.2, { kind: 'snow', route: 1 });
   checkpointPlatform(-2, 58, -450, 10, 10); // CP 8
 
   // ====================================================================
