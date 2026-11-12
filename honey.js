@@ -16,7 +16,8 @@ export function buildHoneyWorld(THREE, scene, api = {}) {
   const RADIUS = 8;            // ukuran arena (jumlah cincin hex)
   const VANISH_DELAY = 1.0;    // detik dari diinjak sampai tile hilang
   const SINK_TIME = 0.35;      // animasi tenggelam setelah hilang (hanya visual)
-  const FALL_Y = -8;           // lebih rendah dari ini = jatuh = kalah (dipakai main.js)
+  const LAYER_Y = [0, -9, -18]; // 3 lapis madu (atas -> bawah), semuanya bisa diinjak
+  const FALL_Y = LAYER_Y[LAYER_Y.length - 1] - 6;  // kalah HANYA kalau jatuh lewat lapis paling bawah
 
   const group = new THREE.Group();
   group.name = 'HONEY_DROP';
@@ -38,13 +39,14 @@ export function buildHoneyWorld(THREE, scene, api = {}) {
       coords.push([q, r]);
     }
   }
-  const N = coords.length;
+  const N = coords.length;               // tile per lapis
+  const LN = LAYER_Y.length;
   const indexOf = new Map(coords.map(([q, r], i) => [q + ',' + r, i]));
 
   // Satu InstancedMesh = 1 draw call untuk semua tile (ringan di HP).
   const geo = new THREE.CylinderGeometry(SIZE * VISUAL, SIZE * VISUAL, THICK, 6);
   const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-  const inst = new THREE.InstancedMesh(geo, mat, N);
+  const inst = new THREE.InstancedMesh(geo, mat, N * LN);
   inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   inst.frustumCulled = false;
   group.add(inst);
@@ -54,20 +56,21 @@ export function buildHoneyWorld(THREE, scene, api = {}) {
 
   // Tile: y selalu SAMA untuk semua (rata) supaya karakter tidak nyangkut di undakan.
   // platforms = bentuk yang dipahami collision main.js (mesh.position, r, hh).
-  const tiles = coords.map(([q, r], i) => {
+  const tiles = LAYER_Y.flatMap((ly, li) => coords.map(([q, r], k) => {
+    const i = li * N + k;
     const [x, z] = hexXZ(q, r);
-    const pos = new THREE.Vector3(x, 0, z);
+    const pos = new THREE.Vector3(x, ly, z);
     return {
-      i, x, z, state: 0, t: 0,
+      i, k, y: ly, x, z, state: 0, t: 0,
       base: (q + r) % 2 === 0 ? C_A : C_B,
       // r = SIZE (lingkaran luar hex) supaya TIDAK ada retakan di antara tile yang bikin kaki jatuh/nyangkut.
       platform: { mesh: { position: pos, visible: true }, width: SIZE * 2, depth: SIZE * 2, r: SIZE, hh: HH, type: 'honey', isFallen: false, revealTimer: 0, dx: 0 },
     };
-  });
+  }));
   const platforms = tiles.map(t => t.platform);
 
   function drawTile(t, yOff, scale, shake) {
-    dummy.position.set(t.x + shake, yOff, t.z);
+    dummy.position.set(t.x + shake, t.y + yOff, t.z);
     dummy.scale.setScalar(scale);
     dummy.updateMatrix();
     inst.setMatrixAt(t.i, dummy.matrix);
@@ -79,23 +82,12 @@ export function buildHoneyWorld(THREE, scene, api = {}) {
   }
   paintAll();
 
-  // ---------- dekorasi: lapisan sarang di bawah (tidak bisa diinjak) ----------
-  const decoMat = new THREE.MeshLambertMaterial({ color: 0xe8a020 });
-  [-14, -28].forEach((y, k) => {
-    const rad = 7 - k, list = [];
-    for (let q = -rad; q <= rad; q++) for (let r = -rad; r <= rad; r++) if (Math.abs(q + r) <= rad) list.push(hexXZ(q, r));
-    const d = new THREE.InstancedMesh(geo, decoMat, list.length);
-    list.forEach(([x, z], i) => { dummy.position.set(x, y, z); dummy.scale.setScalar(1); dummy.updateMatrix(); d.setMatrixAt(i, dummy.matrix); });
-    d.frustumCulled = false;
-    group.add(d);
-  });
-
   // ---------- ranting penyangga & awan (dekorasi) ----------
   const branchMat = new THREE.MeshLambertMaterial({ color: 0x8a5a36 });
   const bGeo = new THREE.CylinderGeometry(0.35, 0.5, 44, 6);
   [[-15, -10], [15, -9], [-14, 11], [15, 12]].forEach(([x, z]) => {
     const b = new THREE.Mesh(bGeo, branchMat);
-    b.position.set(x, -14, z);
+    b.position.set(x, -9, z);
     group.add(b);
   });
   const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
@@ -123,8 +115,8 @@ export function buildHoneyWorld(THREE, scene, api = {}) {
     let q = Math.round(fq), r = Math.round(fr), s = Math.round(-fq - fr);
     const dq = Math.abs(q - fq), dr = Math.abs(r - fr), ds = Math.abs(s + fq + fr);
     if (dq > dr && dq > ds) q = -r - s; else if (dr > ds) r = -q - s;
-    const idx = indexOf.get(q + ',' + r);
-    return idx === undefined ? null : tiles[idx];
+    const k = indexOf.get(q + ',' + r);
+    return k === undefined ? null : k;
   }
 
   let dirty = false;
@@ -133,10 +125,16 @@ export function buildHoneyWorld(THREE, scene, api = {}) {
 
     // Pemain menginjak tile? (kaki di permukaan, bukan sedang melompat tinggi)
     if (p) {
-      const t = tileAt(p.x, p.z);
-      if (t && t.state === 0 && p.y <= HH + 0.35 && p.y >= HH - 0.4) {
-        trigger(t, 0);
-        if (api.onTileStep) { try { api.onTileStep(t.i); } catch (e) { /* abaikan */ } }
+      const k = tileAt(p.x, p.z);
+      if (k !== null) {
+        for (let li = 0; li < LN; li++) {            // cari lapis yang sedang diinjak (sesuai tinggi kaki)
+          const t = tiles[li * N + k];
+          if (t.state === 0 && p.y <= t.y + HH + 0.35 && p.y >= t.y + HH - 0.4) {
+            trigger(t, 0);
+            if (api.onTileStep) { try { api.onTileStep(t.i); } catch (e) { /* abaikan */ } }
+            break;
+          }
+        }
       }
     }
 
@@ -178,8 +176,8 @@ export function buildHoneyWorld(THREE, scene, api = {}) {
     paintAll();
   }
 
-  // Titik muncul: di atas tile tengah.
-  const spawn = new THREE.Vector3(0, HH + 1.5, 0);
+  // Titik muncul: di atas tile tengah lapis paling atas.
+  const spawn = new THREE.Vector3(0, LAYER_Y[0] + HH + 1.5, 0);
 
   return {
     group, platforms, hazards: [], guards: [], laserBeam: null,
