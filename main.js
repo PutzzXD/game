@@ -225,6 +225,7 @@ const SHOP_ITEMS = {
     { id: 'baju_sonic', name: 'Kostum Sonic', price: 7500, color: 0x1d5fd1, sonic: true },
     { id: 'baju_venom', name: 'Kostum Venom', price: 10000, color: 0x0a0c14, venom: true },
     { id: 'baju_flash', name: 'Kostum The Flash', price: 10000, color: 0xc1121f, flash: true },
+    { id: 'baju_ghost', name: 'Kostum Ghost Rider', price: 25000, color: 0x131318, ghost: true, suit: 'leather' },
     { id: 'baju_developer', name: 'DEVELOPER — Eksklusif Admin', price: 0, color: 0x101b35, dev: true, suit: 'mail' }
   ],
   celana: [
@@ -942,6 +943,10 @@ function getSuitTex(kind, hex) {
       x.strokeStyle = 'rgba(0,0,0,.5)'; x.lineWidth = 2.5; x.beginPath(); x.arc(i + 7, j + 7, 6, 0, Math.PI * 2); x.stroke();
       x.strokeStyle = 'rgba(255,255,255,.18)'; x.lineWidth = 1; x.beginPath(); x.arc(i + 6, j + 6, 5, Math.PI, Math.PI * 1.6); x.stroke();
     }
+  } else if (kind === 'leather') { // kulit hitam: butiran halus + lipatan
+    for (let n = 0; n < 5200; n++) { x.fillStyle = Math.random() < 0.5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.18)'; x.fillRect(Math.random() * S, Math.random() * S, 1.6, 1.6); }
+    x.lineWidth = 1.6;
+    for (let n = 0; n < 34; n++) { const y0 = Math.random() * S; x.strokeStyle = Math.random() < 0.5 ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.28)'; x.beginPath(); x.moveTo(0, y0); x.bezierCurveTo(S * 0.3, y0 + Math.random() * 30 - 15, S * 0.7, y0 + Math.random() * 30 - 15, S, y0 + Math.random() * 24 - 12); x.stroke(); }
   } else { // jahitan otot ala armor kain
     x.strokeStyle = 'rgba(0,0,0,.55)'; x.lineWidth = 3;
     for (let j = 0; j < S; j += 56) { x.beginPath(); x.moveTo(0, j); x.quadraticCurveTo(S / 2, j + 16, S, j); x.stroke(); }
@@ -958,21 +963,134 @@ function applyItemMat(m, it) {
   const metal = it.dev ? 0.82 : it.iron ? 0.75 : it.thor ? 0.55 : 0;
   m.map = tex; m.color.setHex(tex ? 0xffffff : it.color);
   m.bumpMap = tex; m.bumpScale = 0.6;
-  m.metalness = metal; m.roughness = it.iron ? 0.28 : it.thor ? 0.4 : (tex ? 0.55 : 0.7);
-  m.envMap = (metal || tex) && envTex ? envTex : null; m.envMapIntensity = it.iron ? 1.1 : it.thor ? 0.9 : 0.3;
+  m.metalness = metal; m.roughness = it.iron ? 0.28 : it.thor ? 0.4 : (it.suit === 'leather' ? 0.38 : (tex ? 0.55 : 0.7));
+  m.envMap = (metal || tex) && envTex ? envTex : null; m.envMapIntensity = it.iron ? 1.1 : it.thor ? 0.9 : (it.suit === 'leather' ? 0.55 : 0.3);
   m.needsUpdate = true;
 }
 function pickCostume(eq) {
   const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
   const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor, hulk = !!baju.hulk;
-  const pac = !!baju.pac, saitama = !!baju.saitama, greenlantern = !!baju.greenlantern, sonic = !!baju.sonic, venom = !!baju.venom, flash = !!baju.flash;
-  const celana = flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0x1d5fd1 } : greenlantern ? { color: 0x10151a } : saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
-  const sepatu = flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0xd7263d } : greenlantern ? { color: 0x087d3b } : saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
-  return { baju, celana, sepatu, iron, thor, hulk, saitama, greenlantern, sonic, venom, flash };
+  const pac = !!baju.pac, saitama = !!baju.saitama, greenlantern = !!baju.greenlantern, sonic = !!baju.sonic, venom = !!baju.venom, flash = !!baju.flash, ghost = !!baju.ghost;
+  const celana = ghost ? { color: 0x101014, suit: 'leather' } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0x1d5fd1 } : greenlantern ? { color: 0x10151a } : saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
+  const sepatu = ghost ? { color: 0x14110f } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0xd7263d } : greenlantern ? { color: 0x087d3b } : saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
+  return { baju, celana, sepatu, iron, thor, hulk, saitama, greenlantern, sonic, venom, flash, ghost };
 }
-const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [], greenlantern: [], sonic: [], venom: [], flash: [] };
+const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [], greenlantern: [], sonic: [], venom: [], flash: [], ghost: [] };
+// ===== KOSTUM GHOST RIDER: helper api kepala (dianimasikan lewat userData.fire, jadi ikut ke semua klon avatar) =====
+let localFire = [];
+let ghostFireAssets = null;
+function getGhostFireAssets() {
+  if (ghostFireAssets) return ghostFireAssets;
+  const mkGeo = (cols) => {
+    const prof = [[0, 0], [0.09, 0.015], [0.145, 0.1], [0.152, 0.22], [0.125, 0.38], [0.085, 0.55], [0.045, 0.72], [0.018, 0.87], [0, 1]];
+    const g = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 12);
+    const pos = g.attributes.position, n = pos.count, col = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      const y = pos.getY(i);
+      pos.setX(i, pos.getX(i) + 0.2 * y * y); // ujung api melengkung
+      const lo = y < 0.5, a = lo ? cols[0] : cols[1], b = lo ? cols[1] : cols[2], k = lo ? y / 0.5 : (y - 0.5) / 0.5;
+      for (let c = 0; c < 4; c++) col[i * 4 + c] = a[c] + (b[c] - a[c]) * k;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    return g;
+  };
+  // Empat lapis dari luar ke dalam: merah-oranye, oranye, kuning, putih-kuning (alpha memudar ke ujung).
+  const layers = [
+    { cols: [[1.0, 0.25, 0.02, 0.92], [1.0, 0.36, 0.03, 0.80], [0.95, 0.10, 0.0, 0.0]], wS: 1.0, hS: 1.0, ring: 10, center: 3, rad: 0.20 },
+    { cols: [[1.0, 0.55, 0.05, 0.95], [1.0, 0.60, 0.08, 0.88], [1.0, 0.38, 0.03, 0.0]], wS: 0.74, hS: 0.80, ring: 7, center: 3, rad: 0.17 },
+    { cols: [[1.0, 0.90, 0.35, 1.0], [1.0, 0.84, 0.25, 0.92], [1.0, 0.58, 0.10, 0.0]], wS: 0.50, hS: 0.60, ring: 5, center: 2, rad: 0.13 },
+    { cols: [[1.0, 1.0, 0.86, 1.0], [1.0, 0.96, 0.58, 0.90], [1.0, 0.78, 0.20, 0.0]], wS: 0.30, hS: 0.40, ring: 0, center: 2, rad: 0.08 }
+  ];
+  layers.forEach(l => {
+    l.geo = mkGeo(l.cols);
+    l.mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false, toneMapped: false });
+  });
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  const gr = x.createRadialGradient(64, 64, 4, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,190,70,0.95)'); gr.addColorStop(0.35, 'rgba(255,100,10,0.45)'); gr.addColorStop(1, 'rgba(255,60,0,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+  ghostFireAssets = {
+    layers,
+    glowTex: new THREE.CanvasTexture(c),
+    emberGeo: new THREE.SphereGeometry(0.022, 6, 5),
+    emberMat: new THREE.MeshBasicMaterial({ color: 0xffb020, fog: false, toneMapped: false })
+  };
+  return ghostFireAssets;
+}
+function buildGhostFire(parent) {
+  const A = getGhostFireAssets();
+  const rnd = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+  const root = new THREE.Group(); root.position.set(0, 0.12, 0); parent.add(root);
+
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: A.glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: 0.8 }));
+  glow.position.set(0, 0.45, 0); glow.scale.set(1.9, 1.9, 1); glow.renderOrder = 19;
+  glow.userData.fire = { k: 'g', w: 1.9, p: 0 };
+  root.add(glow);
+
+  A.layers.forEach((L, li) => {
+    const tongue = (px, py, pz, yaw, h, w, lean, seed) => {
+      const pivot = new THREE.Group(); pivot.position.set(px, py, pz); pivot.rotation.y = yaw; root.add(pivot);
+      const m = new THREE.Mesh(L.geo, L.mat);
+      m.renderOrder = 20 + li; m.frustumCulled = false;
+      const d = { k: 't', w, h, lx: lean, lz: 0, p: rnd(seed * 7 + 1) * 6.283, s: 7 + 5 * rnd(seed + 3) };
+      m.userData.fire = d;
+      m.scale.set(w, h, w); m.rotation.x = lean;
+      pivot.add(m);
+    };
+    for (let i = 0; i < L.ring; i++) {
+      const a = (i / L.ring) * Math.PI * 2 + li * 0.4, sd = i + li * 17;
+      const back = Math.cos(a) < 0 ? 0.14 : 0;            // api bagian belakang lebih miring (tertiup)
+      tongue(Math.sin(a) * L.rad, 0.18 - li * 0.02, Math.cos(a) * L.rad, a,
+        (0.55 + 0.4 * rnd(sd)) * L.hS, (0.75 + 0.45 * rnd(sd * 3)) * L.wS, 0.22 + 0.2 * rnd(sd + 5) + back, sd);
+    }
+    for (let k = 0; k < L.center; k++) {
+      const a = (k / L.center) * Math.PI * 2 + li, sd = 50 + k + li * 9;
+      tongue(Math.sin(a) * L.rad * 0.35, 0.2 - li * 0.02, Math.cos(a) * L.rad * 0.35, a,
+        (0.92 + 0.2 * rnd(sd)) * L.hS, (0.85 + 0.3 * rnd(sd * 2)) * L.wS, 0.06 + 0.1 * rnd(sd + 2), sd);
+    }
+  });
+
+  for (let i = 0; i < 9; i++) {
+    const m = new THREE.Mesh(A.emberGeo, A.emberMat); m.renderOrder = 30; m.frustumCulled = false;
+    const d = { k: 'e', x: (rnd(i + 90) - 0.5) * 0.35, y: 0.3, z: (rnd(i + 120) - 0.5) * 0.3, v: 0.35 + 0.3 * rnd(i + 5), p: rnd(i + 33), r: 1.3, z0: 0.6 + 0.9 * rnd(i + 60) };
+    m.userData.fire = d; m.position.set(d.x, d.y, d.z);
+    root.add(m);
+  }
+  return root;
+}
+function collectFire(root) {
+  const out = [];
+  root.traverse(o => { if (o.userData && o.userData.fire) out.push(o); });
+  return out;
+}
+function animateFireList(list, t) {
+  for (const f of list) {
+    const d = f.userData.fire; if (!d) continue;
+    if (d.k === 't') {
+      const fl = 0.82 + 0.18 * Math.sin(t * d.s + d.p) + 0.07 * Math.sin(t * d.s * 2.3 + d.p * 1.7);
+      const wd = 0.94 + 0.10 * Math.sin(t * d.s * 0.8 + d.p * 2.1);
+      f.scale.set(d.w * wd, d.h * fl, d.w * wd);
+      f.rotation.z = d.lz + 0.09 * Math.sin(t * 2.6 + d.p * 3);
+      f.rotation.x = d.lx + 0.07 * Math.sin(t * 2.1 + d.p * 5);
+    } else if (d.k === 'e') {
+      const life = (t * d.v + d.p) % 1;
+      f.position.set(d.x + Math.sin(t * 2.2 + d.p * 9) * 0.05, d.y + life * d.r, d.z + Math.cos(t * 1.9 + d.p * 7) * 0.04);
+      f.scale.setScalar(Math.max(0.001, (1 - life) * d.z0));
+    } else if (d.k === 'g') {
+      const k = 1 + 0.08 * Math.sin(t * 5 + d.p);
+      f.scale.set(d.w * k, d.w * k, 1);
+    }
+  }
+}
+function tickGhostFire() {
+  const t = performance.now() / 1000;
+  if (localFire.length) animateFireList(localFire, t);
+  remotePlayers.forEach(g => { const l = g.userData && g.userData.fire; if (l && l.length) animateFireList(l, t); });
+  lobbyLeaderboardAvatars.forEach(a => { const l = a.userData && a.userData.fire; if (l && l.length) animateFireList(l, t); });
+}
+
 function setCostumeVis(baju, get) {
-  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac, greenlantern: !!baju.greenlantern, sonic: !!baju.sonic, venom: !!baju.venom, flash: !!baju.flash };
+  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac, greenlantern: !!baju.greenlantern, sonic: !!baju.sonic, venom: !!baju.venom, flash: !!baju.flash, ghost: !!baju.ghost };
   for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
 }
 
@@ -1021,6 +1139,7 @@ function itemIcon(cat, it) {
     if (it.ultra && cat === 'baju') inner += '<path d="M20 8L32 18L44 8L39 56H25Z" fill="#d52c3a"/><circle cx="32" cy="34" r="5" fill="#5cecff" stroke="#fff" stroke-width="2"/>';
     if (it.godzilla && cat === 'baju') inner += '<path d="M32 8L24 20L29 19L22 31L29 28L25 44L39 44L35 28L42 31L35 19L40 20Z" fill="#a8d96a" stroke="#183d2b" stroke-width="1.5"/>';
     if (it.greenlantern && cat === 'baju') inner += '<path d="M32 15L43 20V31Q43 42 32 49Q21 42 21 31V20Z" fill="#062a19" stroke="#7dffad" stroke-width="2"/><circle cx="32" cy="31" r="9" fill="#eafff1" stroke="#19b85a" stroke-width="3"/><path d="M24 31H40M27 27H37M27 35H37" stroke="#087d3b" stroke-width="2"/>';
+    if (it.ghost && cat === 'baju') inner += '<path d="M32 14Q38 21 35 27Q41 25 40 31Q45 25 42 19Q50 29 43 36H21Q14 28 22 19Q22 25 27 27Q24 20 32 14Z" fill="#ff7a00"/><path d="M32 22Q36 27 34 31H29Q28 26 32 22Z" fill="#ffd23f"/><ellipse cx="32" cy="39" rx="7" ry="6.5" fill="#efe6cf"/><circle cx="29.3" cy="38" r="1.9" fill="#111"/><circle cx="34.7" cy="38" r="1.9" fill="#111"/><path d="M32 40.5L31 42.6H33Z" fill="#111"/><rect x="28" y="44" width="8" height="2.4" fill="#efe6cf"/>';
     if (it.flash && cat === 'baju') inner += '<circle cx="32" cy="31" r="10" fill="#fff" stroke="#f2b705" stroke-width="2"/><path d="M35 22L27 32.5H32L29 41L37 29.5H32.5Z" fill="#f2b705"/><rect x="19" y="47" width="26" height="4" fill="#f2b705"/>';
     if (it.venom && cat === 'baju') inner += '<path d="M32 18Q38 24 36 32Q40 40 32 50Q24 40 28 32Q26 24 32 18Z" fill="#fff"/><path d="M31 24L12 14M31 28L10 28M31 32L12 44M33 24L52 14M33 28L54 28M33 32L52 44" stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none"/>';
     if (it.sonic && cat === 'baju') inner += '<ellipse cx="32" cy="35" rx="9" ry="12" fill="#f5c9a0"/><circle cx="11" cy="27" r="5" fill="#fff"/><circle cx="53" cy="27" r="5" fill="#fff"/><rect x="19" y="47" width="26" height="5" fill="#d7263d"/><rect x="19" y="47" width="26" height="1.6" fill="#fff"/>';
@@ -1043,7 +1162,8 @@ function updateCharacterVisuals() {
     if (child.userData.type === 'sepatu') ap(child, sepatuV);
   });
   setCostumeVis(baju, o => o);
-  character.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash); });
+  localFire = baju.ghost ? collectFire(character) : [];
+  character.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash || baju.ghost); });
   applyBodyType(character, { armL: leftArmPivot, armR: rightArmPivot, legL: leftLegPivot, legR: rightLegPivot }, baju.hulk, baju.sonic ? 0x1d5fd1 : baju.venom ? 0x0b0d16 : 0);
   const a = playerData.equipped.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => { acc[id].visible = !(iron || thor) && id === a; });
@@ -2438,6 +2558,93 @@ function init3DGame() {
     }
   }
 
+  // ===== KOSTUM GHOST RIDER: tengkorak berapi, jaket kulit hitam berpaku dengan duri di bahu, sabuk, sarung tangan & bot kulit =====
+  {
+    const ghLeather = accMat(0x16161b, { roughness: 0.38, metalness: 0.12, envMap: envTex, envMapIntensity: 0.55 });
+    const ghLeatherLt = accMat(0x24242b, { roughness: 0.34, metalness: 0.15, envMap: envTex, envMapIntensity: 0.6 });
+    const ghBootMat = accMat(0x14110f, { roughness: 0.45, metalness: 0.1, envMap: envTex, envMapIntensity: 0.45 });
+    const ghSole = accMat(0x070707, { roughness: 0.8 });
+    const ghSteel = accMat(0xd3d9e2, { roughness: 0.2, metalness: 0.95, envMap: envTex, envMapIntensity: 1.2 });
+    const ghBone = accMat(0xeae0c8, { roughness: 0.55 });
+    const ghVoid = accMat(0x070303, { roughness: 0.9, side: THREE.DoubleSide });
+    const ghEmber = new THREE.MeshBasicMaterial({ color: 0xff6a10, fog: false });
+    const ghParts = costumeParts.ghost;
+    const inst = (geo, mat, parent, items) => {
+      const im = new THREE.InstancedMesh(geo, mat, items.length), d = new THREE.Object3D();
+      items.forEach((it, i) => {
+        d.position.set(...it.p); d.rotation.set(...(it.r || [0, 0, 0]));
+        const s = it.s == null ? 1 : it.s; if (Array.isArray(s)) d.scale.set(...s); else d.scale.setScalar(s);
+        d.updateMatrix(); im.setMatrixAt(i, d.matrix);
+      });
+      im.instanceMatrix.needsUpdate = true; im.castShadow = true; im.frustumCulled = false; parent.add(im); return im;
+    };
+
+    // Kepala: tengkorak tulang dengan rongga mata membara, hidung, gigi, dan api berlapis di atasnya.
+    const ghHead = grp(headGroup, ghParts);
+    const skull = mk(new THREE.SphereGeometry(0.345, 30, 22), ghBone, 0, 0.04, -0.01, ghHead); skull.scale.set(1.0, 1.08, 1.02);
+    mk(new THREE.CylinderGeometry(0.12, 0.15, 0.2, 18), ghLeather, 0, -0.3, 0, ghHead);                       // leher hitam
+    for (const sd of [-1, 1]) {
+      const sock = mk(new THREE.SphereGeometry(0.09, 18, 14), ghVoid, sd * 0.125, 0.085, 0.285, ghHead); sock.scale.set(1.0, 1.15, 0.55);
+      mk(new THREE.SphereGeometry(0.026, 12, 10), ghEmber, sd * 0.125, 0.075, 0.322, ghHead);                  // bara di mata
+      const cheek = mk(new THREE.SphereGeometry(0.06, 14, 10), ghBone, sd * 0.2, -0.07, 0.25, ghHead); cheek.scale.set(1, 0.8, 0.8);
+    }
+    const noseShape = new THREE.Shape(); noseShape.moveTo(-0.04, 0.03); noseShape.lineTo(0.04, 0.03); noseShape.lineTo(0, -0.045); noseShape.closePath();
+    mk(new THREE.ShapeGeometry(noseShape), ghVoid, 0, -0.03, 0.338, ghHead);
+    const jaw = mk(new THREE.SphereGeometry(0.21, 22, 14), ghBone, 0, -0.24, 0.07, ghHead); jaw.scale.set(1.02, 0.55, 0.95);
+    for (let i = 0; i < 9; i++) {
+      const a = -0.8 + (i / 8) * 1.6, px = 0.215 * Math.sin(a), pz = 0.085 + 0.215 * Math.cos(a);
+      const up = mk(new THREE.BoxGeometry(0.034, 0.055, 0.03), ghBone, px, -0.165, pz, ghHead); up.rotation.y = a;
+      const lo = mk(new THREE.BoxGeometry(0.032, 0.05, 0.03), ghBone, px, -0.235, pz, ghHead); lo.rotation.y = a;
+    }
+    buildGhostFire(ghHead);
+
+    // Badan: kerah, ritsleting, paku, sabuk, dan duri baja di kedua bahu.
+    const ghBody = grp(rig, ghParts);
+    for (const sd of [-1, 1]) {
+      const lap = mk(new THREE.BoxGeometry(0.17, 0.26, 0.045), ghLeatherLt, sd * 0.105, 1.9, 0.275, ghBody); lap.rotation.set(0.2, 0, -sd * 0.45);
+      const pad = mk(new THREE.SphereGeometry(0.19, 22, 16), ghLeatherLt, sd * 0.4, 1.95, 0.005, ghBody); pad.scale.set(1.2, 0.55, 1.0);
+    }
+    const zip = mk(new THREE.BoxGeometry(0.022, 0.62, 0.018), ghSteel, 0.04, 1.45, 0.31, ghBody); zip.rotation.z = -0.12;
+    const pocket = mk(new THREE.BoxGeometry(0.14, 0.016, 0.016), ghSteel, 0.13, 1.74, 0.31, ghBody); pocket.rotation.z = 0.35;
+    const spikes = [], studs = [];
+    for (const sd of [-1, 1]) {
+      for (let row = 0; row < 2; row++) for (let i = 0; i < 4; i++) {
+        const h = (0.24 - 0.025 * i) * (row ? 0.8 : 1);
+        spikes.push({ p: [sd * (0.3 + i * 0.07), 2.045 + h * 0.4, row ? -0.08 : 0.07], r: [0, 0, -sd * (0.25 + 0.14 * i)], s: [1 - i * 0.12, h / 0.2, 1 - i * 0.12] });
+      }
+      for (let i = 0; i < 7; i++) studs.push({ p: [sd * (0.09 + 0.03 * i), 1.82 - 0.075 * i, 0.31] });
+    }
+    for (let i = 0; i < 12; i++) studs.push({ p: [-0.2 + i * 0.036, 1.155, 0.252] });
+    inst(new THREE.ConeGeometry(0.035, 0.2, 8), ghSteel, ghBody, spikes);
+    inst(new THREE.SphereGeometry(0.013, 8, 6), ghSteel, ghBody, studs);
+    const belt = grp(rig, ghParts);
+    mk(new THREE.BoxGeometry(0.52, 0.085, 0.5), ghLeather, 0, 1.12, 0, belt);
+    mk(new THREE.BoxGeometry(0.11, 0.075, 0.03), ghSteel, 0, 1.12, 0.262, belt);
+    mk(new THREE.BoxGeometry(0.06, 0.04, 0.034), ghLeather, 0, 1.12, 0.264, belt);
+
+    // Sarung tangan kulit dengan manset berpaku.
+    for (const arm of [leftElbow, rightElbow]) {
+      const glove = grp(arm, ghParts);
+      mk(new THREE.CylinderGeometry(0.108, 0.098, 0.15, 20), ghLeather, 0, -0.33, 0, glove);
+      mk(new THREE.TorusGeometry(0.105, 0.016, 8, 24), ghLeatherLt, 0, -0.26, 0, glove).rotation.x = Math.PI / 2;
+      const fist = mk(new THREE.SphereGeometry(0.115, 20, 14), ghLeather, 0, -0.43, 0.03, glove); fist.scale.set(1.05, 0.9, 1.08);
+      const ring = []; for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2; ring.push({ p: [Math.sin(a) * 0.109, -0.285, Math.cos(a) * 0.109] }); }
+      inst(new THREE.SphereGeometry(0.012, 8, 6), ghSteel, glove, ring);
+    }
+    // Bot kulit hitam dengan tali & gesper.
+    for (const leg of [leftKnee, rightKnee]) {
+      const boot = grp(leg, ghParts);
+      mk(new THREE.CylinderGeometry(0.138, 0.152, 0.45, 28), ghBootMat, 0, -0.29, 0.015, boot);
+      mk(new THREE.TorusGeometry(0.142, 0.022, 8, 28), ghLeatherLt, 0, -0.07, 0.015, boot).rotation.x = Math.PI / 2;
+      const toe = mk(new THREE.SphereGeometry(0.145, 22, 14), ghBootMat, 0, -0.49, 0.11, boot); toe.scale.set(1.15, 0.55, 1.35);
+      mk(new THREE.BoxGeometry(0.23, 0.04, 0.31), ghSole, 0, -0.565, 0.09, boot);
+      mk(new THREE.TorusGeometry(0.152, 0.018, 8, 28), ghLeatherLt, 0, -0.4, 0.015, boot).rotation.x = Math.PI / 2;
+      mk(new THREE.BoxGeometry(0.06, 0.05, 0.02), ghSteel, 0, -0.4, 0.168, boot);
+      mk(new THREE.TorusGeometry(0.144, 0.016, 8, 28), ghLeatherLt, 0, -0.17, 0.015, boot).rotation.x = Math.PI / 2;
+      mk(new THREE.BoxGeometry(0.05, 0.045, 0.02), ghSteel, 0, -0.17, 0.162, boot);
+    }
+  }
+
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -2917,10 +3124,11 @@ function applyRemoteCostume(u, eq) {
   });
   const vis = (orig, v) => { const c = u.map.get(orig); if (c) c.visible = v; };
   setCostumeVis(baju, o => u.map.get(o));
-  u.model.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash); });
+  u.model.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash || baju.ghost); });
   applyBodyType(u.model, u.parts, baju.hulk, baju.sonic ? 0x1d5fd1 : baju.venom ? 0x0b0d16 : 0);
   const a = eq.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => vis(acc[id], !(iron || thor) && id === a));
+  u.fire = baju.ghost ? collectFire(u.model) : null;
   u.costumeName = baju.name;
 }
 function makeRemotePlayer(uid, data) {
@@ -3573,6 +3781,7 @@ function showProfilePreview(equipped) {
     if (!overlay || overlay.style.display === 'none') { stopProfilePreview(); return; }
     const dt = Math.min(clock.getDelta(), 0.05);
     if (!dragging) pivot.rotation.y += dt * 0.6;
+    if (holder.userData.fire) animateFireList(holder.userData.fire, performance.now() / 1000);
     renderer.render(sc, cam);
     ppPreview.raf = requestAnimationFrame(loop);
   };
@@ -4256,6 +4465,7 @@ function animate() {
   tickMultiplayer();
   if (snowController) snowController.updateHud({ currentMap, gameState });
   animateRemotePlayers(delta);
+  tickGhostFire();
   missionTick(delta);
   if (lobbyAccentRing && gameState === 'LOBBY') lobbyAccentRing.rotation.z += delta * 0.12;
   if (scene && camera) renderer.render(scene, camera);
