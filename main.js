@@ -261,8 +261,8 @@ const SHOP_ITEMS = {
     { id: 'aks_jubah', name: 'Jubah Merah', price: 350 }
   ],
   gamepass: [
-    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 10000000, gamepass: true, desc: 'Dorong teman saat balapan (tombol 🫸 / tombol E)' },
-    { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 150000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 5 detik. Cooldown 20 detik (tombol 🧊 / tombol Q)' }
+    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 850000, gamepass: true, desc: 'Dorong teman saat balapan (tombol🫸' },
+    { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 150000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 5 detik. Cooldown 20 detik' }
   ]
 };
 
