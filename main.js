@@ -225,7 +225,11 @@ const SHOP_ITEMS = {
     { id: 'baju_sonic', name: 'Kostum Sonic', price: 7500, color: 0x1d5fd1, sonic: true },
     { id: 'baju_venom', name: 'Kostum Venom', price: 10000, color: 0x0a0c14, venom: true },
     { id: 'baju_flash', name: 'Kostum The Flash', price: 10000, color: 0xc1121f, flash: true },
-    { id: 'baju_ghost', name: 'Kostum Ghost Rider', price: 25000, color: 0x131318, ghost: true, suit: 'leather' },
+     { id: 'baju_ghost', name: 'Kostum Ghost Rider', price: 25000, color: 0x131318, ghost: true, suit: 'leather' },
+    { id: 'baju_gojo', name: 'Satoru Gojo — Limitless', price: 85000, color: 0x252d42, gojo: true, suit: 'mail' },
+    { id: 'baju_yuji', name: 'Yuji Itadori — Sukuna Vessel', price: 65000, color: 0x20263b, yuji: true, suit: 'mail' },
+    { id: 'baju_naruto', name: 'Naruto Uzumaki — Hokage', price: 95000, color: 0xe47b28, naruto: true },
+    { id: 'baju_luffy', name: 'Monkey D. Luffy — Straw Hat', price: 100000, color: 0xc51f2c, luffy: true },
     { id: 'baju_developer', name: 'DEVELOPER — Eksklusif Admin', price: 0, color: 0x101b35, dev: true, suit: 'mail' }
   ],
   celana: [
@@ -971,11 +975,13 @@ function pickCostume(eq) {
   const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
   const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor, hulk = !!baju.hulk;
   const pac = !!baju.pac, saitama = !!baju.saitama, greenlantern = !!baju.greenlantern, sonic = !!baju.sonic, venom = !!baju.venom, flash = !!baju.flash, ghost = !!baju.ghost;
-  const celana = ghost ? { color: 0x101014, suit: 'leather' } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0x1d5fd1 } : greenlantern ? { color: 0x10151a } : saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
-  const sepatu = ghost ? { color: 0x14110f } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0xd7263d } : greenlantern ? { color: 0x087d3b } : saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
+  let celana = ghost ? { color: 0x101014, suit: 'leather' } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0x1d5fd1 } : greenlantern ? { color: 0x10151a } : saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
+  let sepatu = ghost ? { color: 0x14110f } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0xd7263d } : greenlantern ? { color: 0x087d3b } : saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
+  const celana = baju.gojo || baju.yuji ? { color: 0x202638 } : baju.naruto ? { color: 0xe47b28 } : baju.luffy ? { color: 0x2457b8 } : celana;
+  const sepatu = baju.gojo ? { color: 0x10131c } : baju.yuji ? { color: 0xa92d32 } : baju.naruto ? { color: 0x292b30 } : baju.luffy ? { color: 0x25252b } : sepatu;
   return { baju, celana, sepatu, iron, thor, hulk, saitama, greenlantern, sonic, venom, flash, ghost };
 }
-const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [], greenlantern: [], sonic: [], venom: [], flash: [], ghost: [] };
+const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [], greenlantern: [], sonic: [], venom: [], flash: [], ghost: [], gojo: [], yuji: [], naruto: [], luffy: [] };
 // ===== KOSTUM GHOST RIDER: helper api kepala (dianimasikan lewat userData.fire, jadi ikut ke semua klon avatar) =====
 let localFire = [];
 let ghostFireAssets = null;
@@ -1090,7 +1096,7 @@ function tickGhostFire() {
 }
 
 function setCostumeVis(baju, get) {
-  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac, greenlantern: !!baju.greenlantern, sonic: !!baju.sonic, venom: !!baju.venom, flash: !!baju.flash, ghost: !!baju.ghost };
+  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac, greenlantern: !!baju.greenlantern, sonic: !!baju.sonic, venom: !!baju.venom, flash: !!baju.flash, ghost: !!baju.ghost, gojo: !!baju.gojo, yuji: !!baju.yuji, naruto: !!baju.naruto, luffy: !!baju.luffy };
   for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
 }
 
@@ -1163,7 +1169,7 @@ function updateCharacterVisuals() {
   });
   setCostumeVis(baju, o => o);
   localFire = baju.ghost ? collectFire(character) : [];
-  character.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash || baju.ghost); });
+  character.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash || baju.ghost || baju.gojo || baju.yuji || baju.naruto || baju.luffy); });
   applyBodyType(character, { armL: leftArmPivot, armR: rightArmPivot, legL: leftLegPivot, legR: rightLegPivot }, baju.hulk, baju.sonic ? 0x1d5fd1 : baju.venom ? 0x0b0d16 : 0);
   const a = playerData.equipped.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => { acc[id].visible = !(iron || thor) && id === a; });
@@ -2645,6 +2651,77 @@ function init3DGame() {
     }
   }
 
+
+  // ===== EMPAT KOSTUM ANIME PREMIUM: Gojo, Yuji, Naruto & Luffy =====
+  // Semua bagian ditempel pada rig/head/limb sehingga ikut bergerak dan tersalin ke avatar multiplayer.
+  {
+    const mat = (hex, extra={}) => accMat(hex, { roughness: 0.55, ...extra });
+    const add = (parent, geo, material, x, y, z, list, scale=null) => {
+      const m = mk(geo, material, x, y, z, parent);
+      if (scale) m.scale.set(...scale);
+      list.push(m); return m;
+    };
+    const sphere = (parent, material, x,y,z,sx,sy,sz,list) =>
+      add(parent,new THREE.SphereGeometry(1,20,14),material,x,y,z,list,[sx,sy,sz]);
+
+    // GOJO: seragam gelap berkerah tinggi, rambut putih berduri dan kacamata biru.
+    {
+      const L=costumeParts.gojo, navy=mat(0x20283b), white=mat(0xe8e9f0), blue=mat(0x244b9b,{metalness:.25}), black=mat(0x10131d);
+      const torso=add(rig,new THREE.CylinderGeometry(.29,.32,.72,24),navy,0,1.62,0,L,[1.04,1,.82]);
+      add(rig,new THREE.CylinderGeometry(.205,.22,.18,24),black,0,2.02,0,L);
+      add(rig,new THREE.BoxGeometry(.035,.46,.018),black,.04,1.62,.26,L);
+      add(rig,new THREE.SphereGeometry(.035,12,8),mat(0xd5b54a,{metalness:.6}),.21,1.86,.25,L);
+      const hg=grp(headGroup,L);
+      for(let i=0;i<13;i++){const a=(i/12)*Math.PI*2, x=Math.cos(a)*.22,z=Math.sin(a)*.16;
+        const spike=add(hg,new THREE.ConeGeometry(.055,.28+(i%3)*.035,7),white,x,.23+(i%2)*.04,z,L);
+        spike.rotation.z=-Math.cos(a)*.65; spike.rotation.x=Math.sin(a)*.55;}
+      for(const sd of [-1,1]) add(hg,new THREE.SphereGeometry(.105,18,12),blue,sd*.115,.02,.29,L,[1,.72,.32]);
+      add(hg,new THREE.BoxGeometry(.12,.025,.025),black,0,.02,.31,L);
+      for(const arm of [leftElbow,rightElbow]) add(arm,new THREE.CylinderGeometry(.105,.11,.11,18),black,0,-.34,0,L);
+    }
+    // YUJI: jaket navy, hood merah, manset merah dan rambut merah muda.
+    {
+      const L=costumeParts.yuji, navy=mat(0x20263b), red=mat(0xb8333c), pink=mat(0xd98f91), gold=mat(0xb99a3b,{metalness:.55});
+      add(rig,new THREE.CylinderGeometry(.30,.32,.7,24),navy,0,1.62,0,L,[1.05,1,.84]);
+      add(rig,new THREE.TorusGeometry(.23,.075,10,28),red,0,1.98,0,L).rotation.x=Math.PI/2;
+      add(rig,new THREE.BoxGeometry(.22,.06,.035),red,0,1.91,.25,L);
+      for(const sd of [-1,1]) add(rig,new THREE.SphereGeometry(.035,12,8),gold,sd*.07,1.84,.27,L);
+      const hg=grp(headGroup,L);
+      for(let i=0;i<12;i++){const a=i/12*Math.PI*2,x=Math.cos(a)*.22,z=Math.sin(a)*.17;
+        const sp=add(hg,new THREE.ConeGeometry(.06,.18+(i%3)*.04,7),pink,x,.24,z,L); sp.rotation.z=-Math.cos(a)*.45;}
+      for(const arm of [leftElbow,rightElbow]) add(arm,new THREE.CylinderGeometry(.105,.11,.1,18),red,0,-.33,0,L);
+    }
+    // NARUTO: jaket oranye-hitam, pelindung dahi, rambut kuning runcing.
+    {
+      const L=costumeParts.naruto, orange=mat(0xe47b28), dark=mat(0x292d3a), yellow=mat(0xf2cf35), steel=mat(0x9da8b8,{metalness:.8});
+      add(rig,new THREE.CylinderGeometry(.30,.32,.72,24),orange,0,1.62,0,L,[1.05,1,.84]);
+      add(rig,new THREE.BoxGeometry(.62,.2,.04),dark,0,1.88,.22,L);
+      add(rig,new THREE.BoxGeometry(.04,.68,.025),dark,0,1.57,.27,L);
+      const hg=grp(headGroup,L);
+      for(let i=0;i<11;i++){const a=i/10*Math.PI*2,x=Math.cos(a)*.22,z=Math.sin(a)*.16;
+        const sp=add(hg,new THREE.ConeGeometry(.07,.25+(i%3)*.035,7),yellow,x,.22,z,L); sp.rotation.z=-Math.cos(a)*.55;}
+      add(hg,new THREE.BoxGeometry(.48,.11,.06),dark,0,.18,.28,L);
+      add(hg,new THREE.BoxGeometry(.29,.07,.025),steel,0,.18,.32,L);
+      // Simbol spiral sederhana pada pelat dahi.
+      add(hg,new THREE.TorusGeometry(.035,.009,6,16),dark,.02,.18,.34,L);
+      for(const sd of [-1,1]) for(let i=0;i<3;i++) add(hg,new THREE.BoxGeometry(.07,.018,.012),dark,sd*.23,.0-i*.045,.25,L);
+    }
+    // LUFFY: rompi merah, selempang kuning, celana biru, topi jerami lebar.
+    {
+      const L=costumeParts.luffy, red=mat(0xc51f2c), yellow=mat(0xf0c52e), straw=mat(0xdcae45), brown=mat(0x754a25);
+      add(rig,new THREE.CylinderGeometry(.30,.32,.7,24),red,0,1.62,0,L,[1.05,1,.84]);
+      add(rig,new THREE.BoxGeometry(.035,.58,.02),mat(0x7d1721),0,1.61,.27,L);
+      add(rig,new THREE.TorusGeometry(.30,.055,10,32),yellow,0,1.27,0,L).rotation.x=Math.PI/2;
+      const hg=grp(headGroup,L);
+      add(hg,new THREE.CylinderGeometry(.18,.18,.06,32),straw,0,.29,0,L,[2.1,1,.95]);
+      add(hg,new THREE.SphereGeometry(.19,24,16),straw,0,.34,-.01,L,[1,.55,1]);
+      add(hg,new THREE.TorusGeometry(.19,.025,8,28),brown,0,.32,0,L);
+      add(hg,new THREE.BoxGeometry(.39,.07,.03),red,0,.28,.18,L);
+      for(const sd of [-1,1]) add(hg,new THREE.SphereGeometry(.018,10,8),brown,sd*.12,.31,.205,L);
+      for(const arm of [leftElbow,rightElbow]) add(arm,new THREE.SphereGeometry(.12,16,12),mat(0xf0c39c),0,-.43,.02,L,[1,.9,1]);
+    }
+  }
+
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -3124,7 +3201,7 @@ function applyRemoteCostume(u, eq) {
   });
   const vis = (orig, v) => { const c = u.map.get(orig); if (c) c.visible = v; };
   setCostumeVis(baju, o => u.map.get(o));
-  u.model.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash || baju.ghost); });
+  u.model.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash || baju.ghost || baju.gojo || baju.yuji || baju.naruto || baju.luffy); });
   applyBodyType(u.model, u.parts, baju.hulk, baju.sonic ? 0x1d5fd1 : baju.venom ? 0x0b0d16 : 0);
   const a = eq.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => vis(acc[id], !(iron || thor) && id === a));
