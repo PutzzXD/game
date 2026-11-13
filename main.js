@@ -885,7 +885,7 @@ async function updatePlayerFirebase() {
   const firebaseUrl = `${FIREBASE_URL}players/${userKey}.json`;
   await fetch(firebaseUrl, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ coins: playerData.coins, inventory: playerData.inventory, equipped: playerData.equipped, savedCheckpoint: playerData.savedCheckpoint || null, savedCheckpointSnow: playerData.savedCheckpointSnow || null, savedCheckpointMountain: playerData.savedCheckpointMountain || null })
+    body: JSON.stringify({ coins: playerData.coins, inventory: playerData.inventory, equipped: playerData.equipped, savedCheckpoint: playerData.savedCheckpoint || null, savedCheckpointSnow: playerData.savedCheckpointSnow || null, savedCheckpointMountain: playerData.savedCheckpointMountain || null, dailyMissions: playerData.dailyMissions || null })
   });
 }
 
@@ -2823,6 +2823,7 @@ function onFinish() {
   if (finishMs != null) return;
   finishMs = rawElapsedMs();
   personalRunScore = scoreFromTime(finishMs);
+  missionBeatAdminCheck();
   if (myRef) update(myRef, { finishMs: Math.round(finishMs), score: personalRunScore }).catch(() => {});
   awardWinCrown().catch(e => { console.warn('Mahkota kemenangan gagal disimpan:', e); showToast('⚠️ Mahkota gagal disimpan ke Firebase'); });
   if (currentMap === 'lava') savePersonalBest(personalRunScore, finishMs).catch(e => console.warn('Simpan rekor gagal:', e)); // leaderboard lama khusus map Lava
@@ -2844,6 +2845,7 @@ function honeyEliminateLocal() {
 function honeyDeclareWin() {
   if (honeyWinAwarded || honeyRoundEnded) return;
   honeyWinAwarded = true; honeyRoundEnded = true; gameState = 'WIN';
+  missionBeatAdminHoney();
   if (myRef) update(myRef, { status: 'WIN', wonAt: serverNow() }).catch(() => {});
   awardWinCrown().catch(e => { console.warn('Gagal memberi mahkota:', e); showToast('⚠️ Mahkota gagal disimpan'); });
   showOverlay('YOU WIN! 👑', 'Kamu pemain terakhir yang bertahan! +1 mahkota', '#ffd700');
@@ -3842,6 +3844,7 @@ function buildLeaveGroupButton() {
 }
 function buildRoomUI() {
   buildLeaveGroupButton();
+  buildMissionsUI();
   // UI room/mabar disembunyikan. Room dibuat otomatis saat pemain mengundang teman.
   buildPlayerSearchUI();
   if (document.getElementById('countdown')) return;
@@ -4062,6 +4065,115 @@ function applyMap(id) {
 const clock = new THREE.Clock();
 let walkTime = 0;
 
+// ===== MISI HARIAN (reset setiap pukul 00.00 sesuai jam perangkat) =====
+const DAILY_MISSIONS = [
+  { id: 'match',  icon: '🎮', title: 'Bermain 1 match',        desc: 'Main minimal 15 detik di satu match',          reward: 200,    goal: 1 },
+  { id: 'friend', icon: '👥', title: 'Bermain bersama teman',  desc: 'Main match di grup bersama minimal 1 teman',   reward: 300,    goal: 1 },
+  { id: 'time',   icon: '⏱️', title: 'Bermain selama 30 menit', desc: 'Total waktu bermain aktif hari ini',            reward: 1000,   goal: 1800 },
+  { id: 'admin',  icon: '👑', title: 'Kalahkan Admin',          desc: 'Menangkan balapan melawan admin di room',      reward: 999999, goal: 1 },
+];
+const MISSION_MIN_ROUND_SEC = 15;
+let missionRoundSec = 0, missionLastPos = null, missionLastMoveAt = 0, missionDirty = false, missionSaveAt = 0;
+
+function missionDayKey() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function ensureMissions() {
+  if (!playerData || !playerData.username) return null;
+  const day = missionDayKey();
+  let m = playerData.dailyMissions;
+  if (!m || m.day !== day) { m = playerData.dailyMissions = { day, prog: {}, done: {} }; missionDirty = true; }   // hari baru -> reset
+  if (!m.prog) m.prog = {}; if (!m.done) m.done = {};
+  return m;
+}
+function missionFlush() { missionDirty = false; missionSaveAt = performance.now(); updatePlayerFirebase().catch(e => console.warn('Gagal menyimpan misi:', e)); }
+function completeMission(id) {
+  const m = ensureMissions(), def = DAILY_MISSIONS.find(x => x.id === id);
+  if (!m || !def || m.done[id]) return;
+  m.done[id] = true; m.prog[id] = def.goal;
+  playerData.coins = Math.floor(Number(playerData.coins) || 0) + def.reward;
+  const ce = document.getElementById('coin-amount'); if (ce) ce.textContent = playerData.coins;
+  missionFlush();
+  showToast('🎯 Misi selesai: ' + def.title + '  +' + def.reward.toLocaleString('id-ID') + ' 🪙', 3500);
+  refreshMissionsModal();
+}
+function missionAdd(id, amount) {
+  const m = ensureMissions(), def = DAILY_MISSIONS.find(x => x.id === id);
+  if (!m || !def || m.done[id]) return;
+  if (id === 'admin' && isAdminUser()) return;           // akun admin tidak bisa mengalahkan dirinya sendiri
+  m.prog[id] = Math.min(def.goal, (Number(m.prog[id]) || 0) + amount); missionDirty = true;
+  if (m.prog[id] >= def.goal) completeMission(id);
+}
+function missionTick(dt) {
+  const m = ensureMissions(); if (!m || !character) return;
+  if (gameState === 'LOBBY') { missionRoundSec = 0; missionLastPos = null; if (missionDirty) missionFlush(); return; }
+  if (gameState !== 'PLAYING' || document.hidden) return;
+  const now = performance.now(), p = character.position;
+  if (!missionLastPos || Math.hypot(p.x - missionLastPos.x, p.y - missionLastPos.y, p.z - missionLastPos.z) > 0.05) { missionLastMoveAt = now; missionLastPos = p.clone(); }
+  if (now - missionLastMoveAt > 15000) return;            // diam/AFK lebih dari 15 detik tidak dihitung
+  missionRoundSec += dt;
+  missionAdd('time', dt);
+  if (missionRoundSec >= MISSION_MIN_ROUND_SEC) {
+    missionAdd('match', 1);
+    if (roomCode && roomStartAt && Object.keys(roomPlayers || {}).length >= 2) missionAdd('friend', 1);
+  }
+  if (missionDirty && now - missionSaveAt > 30000) missionFlush();   // simpan berkala
+}
+// Balapan: admin kalah jika belum finish, atau finish lebih lambat dari kamu.
+function missionBeatAdminCheck() {
+  if (!roomCode || isAdminUser() || finishMs == null) return;
+  const adminP = Object.entries(roomPlayers || {}).find(([id, p]) => id !== mpUid && p && p.isDev && String(p.status || '').toUpperCase() !== 'LOBBY');
+  if (!adminP) return;
+  const af = adminP[1].finishMs;
+  if (af == null || Number(af) > finishMs) missionAdd('admin', 1);
+}
+// Honey Drop: kamu bertahan paling akhir, jadi admin yang ada di ronde itu otomatis kalah.
+function missionBeatAdminHoney() {
+  if (!roomCode || isAdminUser()) return;
+  if (Object.entries(roomPlayers || {}).some(([id, p]) => id !== mpUid && p && p.isDev)) missionAdd('admin', 1);
+}
+
+function missionResetText() {
+  const n = new Date(), next = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1), ms = Math.max(0, next - n);
+  const h = Math.floor(ms / 3600000), mi = Math.floor(ms / 60000) % 60, se = Math.floor(ms / 1000) % 60;
+  return 'Reset dalam ' + String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0') + ':' + String(se).padStart(2, '0');
+}
+function refreshMissionsModal() {
+  const box = document.getElementById('missions-modal'); if (!box || box.style.display === 'none') return;
+  const m = ensureMissions(); if (!m) return;
+  document.getElementById('missions-reset').textContent = missionResetText();
+  const list = document.getElementById('missions-list'); list.innerHTML = '';
+  for (const def of DAILY_MISSIONS) {
+    const done = !!m.done[def.id], prog = done ? def.goal : Math.min(def.goal, Number(m.prog[def.id]) || 0), pct = Math.round(prog / def.goal * 100);
+    const txt = def.id === 'time' ? Math.floor(prog / 60) + ' / ' + Math.floor(def.goal / 60) + ' menit' : prog + ' / ' + def.goal;
+    const row = document.createElement('div'); row.className = 'mi-row' + (done ? ' mi-done' : '');
+    row.innerHTML = '<div class="mi-ic">' + def.icon + '</div><div class="mi-body"><b>' + def.title + '</b><small>' + def.desc + '</small>' +
+      '<div class="mi-bar"><i style="width:' + pct + '%"></i></div><small>' + (done ? '✅ Selesai' : txt) + '</small></div>' +
+      '<div class="mi-rw">+' + def.reward.toLocaleString('id-ID') + '<br>🪙</div>';
+    list.appendChild(row);
+  }
+}
+function buildMissionsUI() {
+  if (document.getElementById('btn-missions')) return;
+  const st = document.createElement('style');
+  st.textContent = '#btn-missions{position:fixed;top:142px;right:16px;z-index:59;width:34px;height:34px;border:1px solid rgba(120,255,160,.8);border-radius:50%;background:rgba(10,28,16,.92);color:#8dffb0;font-size:16px;box-shadow:0 3px 12px #0008;display:none;align-items:center;justify-content:center;padding:0}#btn-missions:active{transform:scale(.92)}' +
+    '#missions-modal{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}' +
+    '#missions-card{width:min(380px,calc(100vw - 24px));max-height:82vh;overflow:auto;padding:14px;border-radius:16px;background:rgba(9,16,31,.97);border:1px solid rgba(120,255,160,.6);color:#fff;font-family:sans-serif;box-shadow:0 10px 40px #000a}' +
+    '#missions-card h3{margin:0 0 2px;font-size:18px}#missions-reset{font-size:12px;color:#8dffb0;margin-bottom:10px}' +
+    '.mi-row{display:flex;gap:10px;align-items:center;padding:9px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06)}.mi-row.mi-done{opacity:.65}' +
+    '.mi-ic{font-size:24px;width:32px;text-align:center}.mi-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.mi-body small{color:#aab4c8;font-size:11px}' +
+    '.mi-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden;margin:3px 0}.mi-bar i{display:block;height:100%;background:linear-gradient(90deg,#34d17a,#8dffb0)}' +
+    '.mi-rw{font-weight:800;color:#ffd166;text-align:center;font-size:13px;line-height:1.2}#missions-close{width:100%;margin-top:4px;padding:10px;border:0;border-radius:10px;background:#1e2a44;color:#fff;font-weight:700}';
+  document.head.appendChild(st);
+  const b = document.createElement('button'); b.id = 'btn-missions'; b.type = 'button'; b.textContent = '🎯'; b.title = 'Misi Harian';
+  const box = document.createElement('div'); box.id = 'missions-modal';
+  box.innerHTML = '<div id="missions-card"><h3>🎯 Misi Harian</h3><div id="missions-reset"></div><div id="missions-list"></div><button id="missions-close" type="button">Tutup</button></div>';
+  const close = () => { box.style.display = 'none'; };
+  b.addEventListener('click', () => { box.style.display = 'flex'; refreshMissionsModal(); });
+  box.addEventListener('click', e => { if (e.target === box) close(); });
+  box.querySelector('#missions-close').addEventListener('click', close);
+  document.body.appendChild(b); document.body.appendChild(box);
+  setInterval(() => { b.style.display = (gameState === 'LOBBY' && playerData && playerData.username) ? 'flex' : 'none'; if (gameState !== 'LOBBY') close(); else refreshMissionsModal(); }, 1000);
+}
+
 function animate() {
   requestAnimationFrame(animate);
   if (!renderer) return;
@@ -4071,6 +4183,7 @@ function animate() {
   tickMultiplayer();
   if (snowController) snowController.updateHud({ currentMap, gameState });
   animateRemotePlayers(delta);
+  missionTick(delta);
   if (lobbyAccentRing && gameState === 'LOBBY') lobbyAccentRing.rotation.z += delta * 0.12;
   if (scene && camera) renderer.render(scene, camera);
 
