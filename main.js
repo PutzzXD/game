@@ -261,7 +261,8 @@ const SHOP_ITEMS = {
     { id: 'aks_jubah', name: 'Jubah Merah', price: 350 }
   ],
   gamepass: [
-    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 10000000, gamepass: true, desc: 'Dorong teman saat balapan (tombol 🫸 / tombol E)' }
+    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 10000000, gamepass: true, desc: 'Dorong teman saat balapan (tombol 🫸 / tombol E)' },
+    { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 150000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 5 detik. Cooldown 20 detik (tombol 🧊 / tombol Q)' }
   ]
 };
 
@@ -781,7 +782,7 @@ function renderShopTab(category) {
     SHOP_ITEMS.gamepass.forEach(item => {
       const owned = playerData.inventory.includes(item.id);
       const div = document.createElement('div'); div.className = 'shop-item';
-      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">🫸</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div><button class="shop-buy-btn" disabled>AKTIF</button>' : `<div class="item-price">🪙 ${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
+      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : '🫸'}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div><button class="shop-buy-btn" disabled>AKTIF</button>' : `<div class="item-price">🪙 ${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
       container.appendChild(div);
     });
     return;
@@ -1265,6 +1266,7 @@ let flyMode = false, godMode = false, flyUp = false, flyDown = false, flySpeed =
 
 function respawn() {
   resetRunTimer();
+  if (typeof clearLocalFreeze === 'function' && localFreezeUntil) clearLocalFreeze();
   reviveLocal();
   character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z);
   physics.velocityY = 0; moveVel.set(0, 0); knock.set(0, 0); guards.forEach(gd => gd.reset()); gameState = 'PLAYING';
@@ -2866,7 +2868,7 @@ function init3DGame() {
   // Sistem lompatan 2 tahap: satu lompatan dari tanah + satu lompatan di udara.
   // Hitungan tidak di-reset saat karakter masih naik, supaya double jump konsisten di HP maupun PC.
   const triggerPlayerJump = () => {
-    if (gameState !== 'PLAYING' || flyMode || !physics) return;
+    if (gameState !== 'PLAYING' || flyMode || !physics || isFrozenLocal()) return;
     const maxJumps = Math.max(2, Number(physics.maxJumps) || 2);
     let usedJumps = Math.max(0, Number(physics.jumpCount) || 0);
     if (physics.isGrounded) usedJumps = 0;
@@ -4180,6 +4182,7 @@ function startPresenceSystem() {
   presenceTick();
   window.addEventListener('pagehide', () => { try { fetch(socialUrl(`presence/${myPlayerKey()}`), { method: 'PATCH', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lastSeen: 0 }) }); } catch (e) {} });
   buildPushButton();
+  buildFreezeButton();
 }
 
 // ----- GAMEPASS DORONG TEMAN -----
@@ -4239,6 +4242,143 @@ function buildPushButton() {
   document.body.appendChild(b);
   window.addEventListener('keydown', (e) => { if (e.code === 'KeyE' && !e.repeat && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) tryPushNearestFriend(); });
   setInterval(() => { b.style.display = (hasPushPass() && roomCode && gameState === 'PLAYING') ? 'flex' : 'none'; applyIncomingPushes(); }, 120);
+}
+
+// ----- GAMEPASS FREEZE PLAYER -----
+// Pelempar menulis event ke node pemain sendiri (rooms/<kode>/players/<uid>/ice). Semua klien melihat
+// kubus es terbang dari pelempar ke target; hanya korban yang benar-benar membeku di sisinya, lalu
+// menulis frozenUntil agar semua orang melihat balok es di sekeliling korban.
+const FREEZE_DURATION = 5000, FREEZE_COOLDOWN = 20000, FREEZE_RANGE = 25, FREEZE_IMMUNE = 2000, ICE_FLIGHT_MS = 380;
+let lastIceAt = -1e9, localFreezeUntil = 0, freezeImmuneUntil = 0;
+const handledIce = new Map();   // uid pelempar -> seq terakhir yang sudah diproses
+const iceProjectiles = [];      // kubus es yang sedang terbang
+const iceBlocks = new Map();    // 'me' / uid -> balok es pembeku
+let iceAssets = null;
+const hasFreezePass = () => playerData.inventory.includes('gp_freeze');
+function isFrozenLocal() { return performance.now() < localFreezeUntil; }
+function getIceAssets() {
+  if (iceAssets) return iceAssets;
+  const blockGeo = new THREE.BoxGeometry(1.25, 2.8, 1.25);
+  iceAssets = {
+    blockGeo,
+    edgeGeo: new THREE.EdgesGeometry(blockGeo),
+    blockMat: new THREE.MeshStandardMaterial({ color: 0x9fe3ff, transparent: true, opacity: 0.5, roughness: 0.08, metalness: 0.1, emissive: 0x2a8fd0, emissiveIntensity: 0.35, depthWrite: false }),
+    edgeMat: new THREE.LineBasicMaterial({ color: 0xeafaff }),
+    cubeGeo: new THREE.BoxGeometry(0.46, 0.46, 0.46),
+    cubeMat: new THREE.MeshStandardMaterial({ color: 0xa9e8ff, transparent: true, opacity: 0.85, roughness: 0.1, emissive: 0x3aa8e8, emissiveIntensity: 0.6 })
+  };
+  return iceAssets;
+}
+function makeIceBlock() {
+  const A = getIceAssets(), g = new THREE.Group();
+  const body = new THREE.Mesh(A.blockGeo, A.blockMat); body.position.y = 1.3; g.add(body);
+  const edges = new THREE.LineSegments(A.edgeGeo, A.edgeMat); edges.position.y = 1.3; g.add(edges);
+  return g;
+}
+function iceShards(pos, n, size) { // pecahan es: memakai loop jumpParticles yang sudah ada
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshStandardMaterial({ color: 0xbdeeff, emissive: 0x3aa8e8, emissiveIntensity: 0.5, transparent: true, opacity: 1 }));
+    m.position.copy(pos); m.position.y += Math.random() * 1.6;
+    const a = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 3;
+    m.userData = { vx: Math.cos(a) * sp, vy: 1 + Math.random() * 3, vz: Math.sin(a) * sp };
+    scene.add(m); jumpParticles.push({ mesh: m, life: 0.9 });
+  }
+}
+function spawnIceProjectile(fromObj, toObj, onHit) {
+  if (!scene || !fromObj || !toObj) return;
+  const A = getIceAssets(), mesh = new THREE.Mesh(A.cubeGeo, A.cubeMat);
+  mesh.position.copy(fromObj.position); mesh.position.y += 1.6; scene.add(mesh);
+  iceProjectiles.push({ mesh, from: new THREE.Vector3(fromObj.position.x, fromObj.position.y + 1.6, fromObj.position.z), toObj, t0: performance.now(), onHit });
+}
+function applyLocalFreeze() {
+  if (!character || godMode || flyMode || gameState !== 'PLAYING') return;
+  const now = performance.now();
+  if (isFrozenLocal() || now < freezeImmuneUntil) return;
+  localFreezeUntil = now + FREEZE_DURATION; freezeImmuneUntil = localFreezeUntil + FREEZE_IMMUNE;
+  moveVel.set(0, 0); knock.set(0, 0); isRunning = false;
+  showToast('🧊 Kamu dibekukan 5 detik!', 1600);
+  if (myRef) update(myRef, { frozenUntil: serverNow() + FREEZE_DURATION }).catch(() => {});
+}
+function clearLocalFreeze() { localFreezeUntil = 0; if (myRef) update(myRef, { frozenUntil: null }).catch(() => {}); }
+function tryFreezeNearest() {
+  if (!hasFreezePass()) { showToast('🔒 Beli Gamepass Freeze Player di Shop dulu'); return; }
+  if (!roomCode || !myRef || gameState !== 'PLAYING' || isFrozenLocal()) return;
+  const now = performance.now(), left = FREEZE_COOLDOWN - (now - lastIceAt);
+  if (left > 0) { showToast('❄️ Cooldown ' + Math.ceil(left / 1000) + ' detik', 900); return; }
+  let best = null, bestD = FREEZE_RANGE;
+  for (const [id, av] of remotePlayers) {
+    const d = roomPlayers[id]; if (!d || d.deadAt || !av.visible) continue;
+    if (Number(d.frozenUntil) > serverNow()) continue; // sudah beku
+    const dist = Math.hypot(av.position.x - character.position.x, av.position.z - character.position.z);
+    if (dist < bestD && Math.abs(av.position.y - character.position.y) < 12) { best = id; bestD = dist; }
+  }
+  if (!best) { showToast('Tidak ada pemain di dekatmu', 1000); return; }
+  lastIceAt = now;
+  const tav = remotePlayers.get(best);
+  if (tav) { character.rotation.y = Math.atan2(tav.position.x - character.position.x, tav.position.z - character.position.z); pushAnimStart = performance.now(); } // animasi melempar
+  spawnIceProjectile(character, tav, null);
+  update(myRef, { ice: { target: best, seq: Date.now(), t: serverNow() } }).catch(() => {});
+  showToast('🧊 Lempar es ke ' + String(roomPlayers[best]?.username || 'pemain') + '!', 1000);
+}
+function applyIncomingIce() {
+  if (!roomCode || !character) return;
+  for (const [id, d] of Object.entries(roomPlayers)) {
+    if (id === mpUid || !d || !d.ice) continue;
+    if (handledIce.get(id) === d.ice.seq) continue;
+    handledIce.set(id, d.ice.seq);
+    if (Math.abs(serverNow() - (d.ice.t || 0)) > 4000) continue; // event basi diabaikan
+    const from = remotePlayers.get(id), toMe = d.ice.target === mpUid, to = toMe ? character : remotePlayers.get(d.ice.target);
+    if (!from || !to) continue;
+    spawnIceProjectile(from, to, toMe ? () => applyLocalFreeze() : null);
+  }
+}
+function updateFreezeVisuals(delta) {
+  if (!scene) return;
+  const now = performance.now();
+  // Kubus es terbang (melengkung) menuju target, lalu pecah saat tiba.
+  for (let i = iceProjectiles.length - 1; i >= 0; i--) {
+    const p = iceProjectiles[i], k = Math.min(1, (now - p.t0) / ICE_FLIGHT_MS), tp = p.toObj.position;
+    p.mesh.position.set(p.from.x + (tp.x - p.from.x) * k, p.from.y + (tp.y + 1.3 - p.from.y) * k + Math.sin(Math.PI * k) * 1.2, p.from.z + (tp.z - p.from.z) * k);
+    p.mesh.rotation.x += delta * 14; p.mesh.rotation.y += delta * 11;
+    if (Math.random() < 0.7) { // jejak serpihan es
+      const s = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshBasicMaterial({ color: 0xcdf3ff, transparent: true, opacity: 1 }));
+      s.position.copy(p.mesh.position); scene.add(s); trailParticles.push({ mesh: s, life: 0.4 });
+    }
+    if (k >= 1) { scene.remove(p.mesh); iceShards(p.mesh.position, 10, 0.14); iceProjectiles.splice(i, 1); if (p.onHit) p.onHit(); }
+  }
+  // Pembekuan: pulihkan otomatis, dan lepas jika permainan tidak berjalan.
+  if (localFreezeUntil && (now >= localFreezeUntil || gameState !== 'PLAYING')) clearLocalFreeze();
+  // Balok es di sekeliling pemain yang sedang beku (lokal & pemain lain).
+  const want = new Map();
+  if (character && isFrozenLocal() && gameState === 'PLAYING') want.set('me', character);
+  for (const [id, av] of remotePlayers) { const d = roomPlayers[id]; if (d && av.visible && Number(d.frozenUntil) > serverNow()) want.set(id, av); }
+  for (const [key, blk] of iceBlocks) {
+    if (!want.has(key)) { iceShards(blk.position, 14, 0.18); scene.remove(blk); iceBlocks.delete(key); }
+  }
+  for (const [key, obj] of want) {
+    let blk = iceBlocks.get(key);
+    if (!blk) { blk = makeIceBlock(); scene.add(blk); iceBlocks.set(key, blk); iceShards(obj.position, 8, 0.12); }
+    blk.position.set(obj.position.x, obj.position.y, obj.position.z);
+  }
+}
+function buildFreezeButton() {
+  if (document.getElementById('btn-freeze')) return;
+  const st = document.createElement('style');
+  st.textContent = '#btn-freeze{position:fixed;right:22px;bottom:222px;z-index:60;width:62px;height:62px;border-radius:50%;border:2px solid #7fd6ff;background:#0b1a2b center/cover no-repeat;color:#fff;font:900 24px sans-serif;text-shadow:0 0 6px #000,0 0 3px #000;display:none;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent;padding:0;box-shadow:0 0 14px #3aa8e8aa}#btn-freeze:active{transform:scale(.92)}#btn-freeze.cd{filter:brightness(.45) saturate(.6)}';
+  document.head.appendChild(st);
+  const b = document.createElement('button'); b.id = 'btn-freeze'; b.type = 'button'; b.title = 'Freeze Player (Q)';
+  const probe = new Image(); probe.onload = () => { b.style.backgroundImage = 'url(./ice_cube.jpg)'; }; probe.onerror = () => { b.textContent = '🧊'; }; probe.src = './ice_cube.jpg';
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); tryFreezeNearest(); });
+  document.body.appendChild(b);
+  window.addEventListener('keydown', (e) => { if (e.code === 'KeyQ' && !e.repeat && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) tryFreezeNearest(); });
+  setInterval(() => {
+    b.style.display = (hasFreezePass() && roomCode && gameState === 'PLAYING') ? 'flex' : 'none';
+    const rem = Math.max(0, FREEZE_COOLDOWN - (performance.now() - lastIceAt));
+    b.classList.toggle('cd', rem > 0);
+    const txt = rem > 0 ? String(Math.ceil(rem / 1000)) : '';
+    if (b.dataset.cdtxt !== txt) { b.dataset.cdtxt = txt; if (b.style.backgroundImage || txt) b.textContent = txt; }
+    applyIncomingIce();
+  }, 120);
 }
 
 // ----- UI room -----
@@ -4632,6 +4772,7 @@ function animate() {
   if (snowController) snowController.updateHud({ currentMap, gameState });
   animateRemotePlayers(delta);
   tickGhostFire();
+  updateFreezeVisuals(delta);
   missionTick(delta);
   if (lobbyAccentRing && gameState === 'LOBBY') lobbyAccentRing.rotation.z += delta * 0.12;
   if (scene && camera) renderer.render(scene, camera);
@@ -4720,7 +4861,7 @@ function animate() {
   const preVy = physics.velocityY;
   let nextX = character.position.x; let nextZ = character.position.z;
   let desX = 0, desZ = 0;
-  if (Math.abs(joystickVector.x) > 0.1 || Math.abs(joystickVector.y) > 0.1) {
+  if (!isFrozenLocal() && (Math.abs(joystickVector.x) > 0.1 || Math.abs(joystickVector.y) > 0.1)) {
     const moveX = forward.x * joystickVector.y + right.x * joystickVector.x;
     const moveZ = forward.z * joystickVector.y + right.z * joystickVector.x;
     const len = Math.sqrt(moveX*moveX + moveZ*moveZ);
@@ -4734,6 +4875,7 @@ function animate() {
   const gp = (currentMap === 'snow' && !flyMode && physics.isGrounded && curGroundPlat && curGroundPlat.grip) ? curGroundPlat.grip : null;
   const accel = 1 - Math.exp(-delta * ((desX || desZ) ? 11 * (gp ? gp[0] : 1) : 14 * (gp ? gp[1] : 1)));
   moveVel.x += (desX - moveVel.x) * accel; moveVel.y += (desZ - moveVel.y) * accel;
+  if (isFrozenLocal()) { moveVel.set(0, 0); knock.set(0, 0); }
   const hSpeed = moveVel.length();
   isMoving = hSpeed > 0.4;
   nextX += (moveVel.x + knock.x) * delta; nextZ += (moveVel.y + knock.y) * delta;
