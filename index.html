@@ -3,61 +3,108 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#1a1a24">
+  <meta name="theme-color" content="#0b0b10">
   <title>Parkour 3D - Akses</title>
   
   <link rel="manifest" href="./manifest.json">
   
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;700&display=swap');
 
     * { box-sizing: border-box; }
     body { 
-      margin: 0; padding: 0; background: #0d0d15; font-family: 'Rajdhani', sans-serif; 
+      margin: 0; padding: 0; background: #0b0b10; font-family: 'Rajdhani', sans-serif; 
       user-select: none; -webkit-user-select: none; color: white;
       display: flex; justify-content: center; align-items: center; 
       min-height: 100vh; overflow-y: auto; overflow-x: hidden;
-      background-image: radial-gradient(circle at 50% 0%, #2a1b41 0%, #0d0d15 70%);
     }
 
     /* --- UI LOGIN --- */
-    #auth-container { width: 90%; max-width: 400px; display: flex; flex-direction: column; align-items: center; z-index: 100; padding: 20px 0;}
-    .logo-area { text-align: center; margin-bottom: 20px; }
-    .logo-box { width: 70px; height: 70px; background: #9d4edd; border-radius: 20px; display: flex; justify-content: center; align-items: center; margin: 0 auto 10px auto; box-shadow: 0 0 20px rgba(157, 78, 221, 0.5); }
-    .logo-box svg { width: 40px; height: 40px; fill: white; }
-    .logo-area h1 { margin: 0; font-size: 28px; letter-spacing: 2px; color: #e0aaff; text-shadow: 0 0 10px #9d4edd; }
-    .logo-area p { margin: 5px 0 0 0; font-size: 12px; color: #888; letter-spacing: 1px; }
-    .logo-area p span { color: #e0aaff; font-weight: bold; }
+    :root {
+      --auth-bg: #0b0b10;
+      --auth-surface: #13131a;
+      --auth-field: #0f0f15;
+      --auth-border: #262632;
+      --auth-border-strong: #3a3a4a;
+      --auth-text: #ececf1;
+      --auth-muted: #8b8b9a;
+      --auth-accent: #8257e6;
+      --auth-accent-hover: #9368f0;
+      --auth-danger: #f87171;
+      --auth-ok: #4ade80;
+      --auth-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
 
-    .status-online { display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 255, 0, 0.1); border: 1px solid rgba(0, 255, 0, 0.3); padding: 5px 15px; border-radius: 20px; font-size: 12px; color: #00ff00; margin-top: 10px; font-weight: bold; }
-    .status-dot { width: 8px; height: 8px; background: #00ff00; border-radius: 50%; box-shadow: 0 0 10px #00ff00; }
+    #auth-container {
+      width: 100%; max-width: 400px; padding: 24px 20px; z-index: 100;
+      display: flex; flex-direction: column; align-items: stretch; gap: 22px;
+      font-family: var(--auth-font); color: var(--auth-text);
+    }
 
-    .tabs { display: flex; width: 100%; margin-bottom: 20px; position: relative; z-index: 999; }
-    .tabs input[type="radio"] { display: none; }
-    .tab-label { flex: 1; text-align: center; padding: 12px; background: #11111a; border: 1px solid #333; color: #888; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.3s; }
-    .tab-label:first-of-type { border-radius: 12px 0 0 12px; }
-    .tab-label:last-of-type { border-radius: 0 12px 12px 0; }
-    #tab1:checked ~ .tabs .tab-label[for="tab1"], #tab2:checked ~ .tabs .tab-label[for="tab2"] { background: #9d4edd; color: white; border-color: #9d4edd; box-shadow: 0 0 15px rgba(157, 78, 221, 0.4); }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .brand-mark { width: 46px; height: 46px; flex: none; border-radius: 12px; background: var(--auth-accent); display: flex; align-items: center; justify-content: center; }
+    .brand-mark svg { width: 26px; height: 26px; fill: #fff; }
+    .brand-text h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .02em; line-height: 1.2; color: var(--auth-text); }
+    .brand-text p { margin: 3px 0 0; font-size: 13px; color: var(--auth-muted); }
+
+    .auth-card { background: var(--auth-surface); border: 1px solid var(--auth-border); border-radius: 16px; padding: 22px; }
+    .auth-heading { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+    .auth-sub { margin: 0 0 18px; font-size: 13px; color: var(--auth-muted); line-height: 1.5; }
+
+    .tabs { position: relative; display: grid; grid-template-columns: 1fr 1fr; padding: 3px; margin-bottom: 20px; background: var(--auth-field); border: 1px solid var(--auth-border); border-radius: 10px; z-index: 999; }
+    .tabs input[type="radio"], #tab1, #tab2 { display: none; }
+    .tab-indicator { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); background: #22222d; border: 1px solid var(--auth-border-strong); border-radius: 7px; transition: transform .22s ease; }
+    .tab-label { position: relative; text-align: center; padding: 9px 0; font-size: 14px; font-weight: 600; color: var(--auth-muted); cursor: pointer; transition: color .2s; }
+    #tab1:checked ~ .auth-card .tab-label[for="tab1"], #tab2:checked ~ .auth-card .tab-label[for="tab2"] { color: var(--auth-text); }
+    #tab2:checked ~ .auth-card .tab-indicator { transform: translateX(100%); }
 
     .form-container { width: 100%; position: relative; z-index: 1; }
     .form-box { width: 100%; display: none; flex-direction: column; }
-    #tab1:checked ~ .form-container #form-login { display: flex; }
-    #tab2:checked ~ .form-container #form-register { display: flex; }
+    #tab1:checked ~ .auth-card .form-container #form-login { display: flex; }
+    #tab2:checked ~ .auth-card .form-container #form-register { display: flex; }
 
-    .input-group { margin-bottom: 12px; }
-    .input-group label { display: block; font-size: 12px; color: #9d4edd; font-weight: bold; margin-bottom: 5px; }
-    .input-wrapper { display: flex; align-items: center; background: #11111a; border: 1px solid #333; border-radius: 12px; padding: 0 15px; transition: 0.3s; }
-    .input-wrapper:focus-within { border-color: #9d4edd; }
-    .input-wrapper .icon { font-size: 18px; margin-right: 10px; }
-    .input-wrapper input { flex: 1; background: transparent; border: none; outline: none; color: white; font-family: 'Rajdhani', sans-serif; font-size: 16px; padding: 12px 0; }
-    
-    .btn-submit { width: 100%; padding: 14px; margin-top: 10px; border: none; border-radius: 12px; background: linear-gradient(90deg, #7b2cbf, #9d4edd); color: white; font-family: 'Rajdhani', sans-serif; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 5px 15px rgba(157, 78, 221, 0.4); transition: 0.2s; }
-    .btn-submit:active { transform: scale(0.97); }
-    .btn-submit:disabled { background: #333; box-shadow: none; cursor: not-allowed; }
-    
-    .msg { font-size: 14px; text-align: center; margin-top: 10px; height: 20px; font-weight: bold; }
-    .msg.error { color: #ff3333; }
-    .msg.success { color: #00ff00; }
+    .input-group { margin-bottom: 14px; }
+    .input-group label { display: block; font-size: 13px; font-weight: 500; color: #c4c4cf; margin-bottom: 6px; }
+    .input-wrapper { display: flex; align-items: center; gap: 10px; height: 46px; background: var(--auth-field); border: 1px solid var(--auth-border); border-radius: 10px; padding: 0 12px; transition: border-color .15s, box-shadow .15s; }
+    .input-wrapper:hover { border-color: var(--auth-border-strong); }
+    .input-wrapper:focus-within { border-color: var(--auth-accent); box-shadow: 0 0 0 3px rgba(130, 87, 230, .18); }
+    .input-wrapper .icon { width: 18px; height: 18px; flex: none; color: var(--auth-muted); transition: color .15s; }
+    .input-wrapper:focus-within .icon { color: var(--auth-accent-hover); }
+    .input-wrapper input { flex: 1; min-width: 0; height: 100%; background: transparent; border: none; outline: none; color: var(--auth-text); font-family: var(--auth-font); font-size: 15px; user-select: text; -webkit-user-select: text; }
+    .input-wrapper input::placeholder { color: #5b5b6a; }
+    .toggle-pw { flex: none; width: 30px; height: 30px; margin-right: -6px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: 6px; color: var(--auth-muted); cursor: pointer; }
+    .toggle-pw:hover { color: var(--auth-text); background: rgba(255,255,255,.05); }
+    .toggle-pw svg { width: 18px; height: 18px; }
+    .toggle-pw .eye-off { display: none; }
+    .toggle-pw.is-visible .eye { display: none; }
+    .toggle-pw.is-visible .eye-off { display: block; }
+    .field-hint { margin: 6px 0 0; font-size: 12px; color: var(--auth-muted); }
+
+    .btn-submit { width: 100%; height: 46px; margin-top: 6px; border: none; border-radius: 10px; background: var(--auth-accent); color: #fff; font-family: var(--auth-font); font-size: 15px; font-weight: 600; cursor: pointer; transition: background .15s, transform .1s; }
+    .btn-submit:hover { background: var(--auth-accent-hover); }
+    .btn-submit:active { transform: scale(0.98); }
+    .btn-submit:disabled { background: #2a2a35; color: #6b6b7a; cursor: not-allowed; transform: none; }
+
+    .msg { min-height: 20px; margin-top: 12px; font-size: 13px; line-height: 1.4; text-align: center; font-weight: 500; }
+    .msg.error { color: var(--auth-danger); }
+    .msg.success { color: var(--auth-ok); }
+
+    .auth-footer { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--auth-muted); padding: 0 4px; }
+    .status-online { display: inline-flex; align-items: center; gap: 7px; }
+    .status-dot { width: 7px; height: 7px; background: var(--auth-ok); border-radius: 50%; }
+
+    @media (max-height: 520px) and (orientation: landscape) and (min-width: 640px) {
+      #auth-container { max-width: 760px; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 28px; padding: 16px 24px; }
+      .brand { flex-direction: column; align-items: flex-start; }
+      .auth-footer { grid-column: 1; grid-row: 1; align-self: end; }
+      .brand { grid-column: 1; grid-row: 1; align-self: start; }
+      .auth-card { grid-column: 2; grid-row: 1 / span 2; padding: 18px; }
+      .auth-sub { display: none; }
+      .auth-heading { margin-bottom: 12px; }
+      .tabs { margin-bottom: 14px; }
+      .input-group { margin-bottom: 10px; }
+      .input-wrapper, .btn-submit { height: 42px; }
+    }
 
     /* --- UI LOBBY & GAME --- */
     #game-ui { display: none; width: 100%; height: 100%; position: absolute; top: 0; left: 0; pointer-events: none; }
@@ -223,38 +270,104 @@
 
   <!-- LAYAR LOGIN / DAFTAR -->
   <div id="auth-container">
-    <div class="logo-area">
-      <div class="logo-box"><svg viewBox="0 0 24 24"><path d="M13.5,5.5c1.1,0,2-0.9,2-2s-0.9-2-2-2s-2,0.9-2,2S12.4,5.5,13.5,5.5z M9.8,8.9L7,23h2.1l1.8-8l2.1,2v6h2v-7.5l-2.1-2l0.6-3C14.8,12,16.8,13,19,13v-2c-1.9,0-3.5-1-4.3-2.4l-1-1.6c-0.4-0.6-1-1-1.7-1c-0.3,0-0.5,0.1-0.8,0.1L6,8.3V13h2V9.6l1.8-0.7z"/></svg></div>
-      <h1>PARKOUR 3D</h1>
-      <p>DEVELOPED BY <span>PUTZZDEV</span></p>
-      <div class="status-online"><div class="status-dot"></div><span>Server Aktif</span></div>
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5,5.5c1.1,0,2-0.9,2-2s-0.9-2-2-2s-2,0.9-2,2S12.4,5.5,13.5,5.5z M9.8,8.9L7,23h2.1l1.8-8l2.1,2v6h2v-7.5l-2.1-2l0.6-3C14.8,12,16.8,13,19,13v-2c-1.9,0-3.5-1-4.3-2.4l-1-1.6c-0.4-0.6-1-1-1.7-1c-0.3,0-0.5,0.1-0.8,0.1L6,8.3V13h2V9.6l1.8-0.7z"/></svg></div>
+      <div class="brand-text">
+        <h1>Parkour 3D</h1>
+        <p>Dikembangkan oleh PutzzDev</p>
+      </div>
     </div>
 
     <input type="radio" name="tabs" id="tab1" checked>
     <input type="radio" name="tabs" id="tab2">
 
-    <div class="tabs">
-      <label class="tab-label" for="tab1">MASUK</label>
-      <label class="tab-label" for="tab2">DAFTAR</label>
+    <div class="auth-card">
+      <div class="tabs">
+        <span class="tab-indicator"></span>
+        <label class="tab-label" for="tab1">Masuk</label>
+        <label class="tab-label" for="tab2">Daftar</label>
+      </div>
+
+      <div class="form-container">
+        <!-- LOGIN -->
+        <div class="form-box" id="form-login">
+          <div class="input-group">
+            <label for="login-username">Username</label>
+            <div class="input-wrapper">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              <input type="text" id="login-username" placeholder="Masukkan username" maxlength="15" autocomplete="off" autocapitalize="none" spellcheck="false">
+            </div>
+          </div>
+          <div class="input-group">
+            <label for="login-pin">PIN</label>
+            <div class="input-wrapper">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
+              <input type="password" id="login-pin" placeholder="6 digit angka" maxlength="6" inputmode="numeric" autocomplete="off">
+              <button type="button" class="toggle-pw" data-target="login-pin" aria-label="Tampilkan PIN">
+                <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.3 4.2M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 4.3-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+              </button>
+            </div>
+          </div>
+          <button class="btn-submit" id="btn-login" type="button">Masuk ke Lobi</button>
+          <div class="msg" id="login-msg"></div>
+        </div>
+
+        <!-- DAFTAR -->
+        <div class="form-box" id="form-register">
+          <div class="input-group">
+            <label for="reg-username">Username</label>
+            <div class="input-wrapper">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              <input type="text" id="reg-username" placeholder="Pilih username" maxlength="15" autocomplete="off" autocapitalize="none" spellcheck="false">
+            </div>
+            <p class="field-hint">Maksimal 15 karakter</p>
+          </div>
+          <div class="input-group">
+            <label for="reg-pin">PIN</label>
+            <div class="input-wrapper">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>
+              <input type="password" id="reg-pin" placeholder="6 digit angka" maxlength="6" inputmode="numeric" autocomplete="off">
+              <button type="button" class="toggle-pw" data-target="reg-pin" aria-label="Tampilkan PIN">
+                <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.3 4.2M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 4.3-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="input-group">
+            <label for="reg-pin-confirm">Konfirmasi PIN</label>
+            <div class="input-wrapper">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+              <input type="password" id="reg-pin-confirm" placeholder="Ulangi PIN" maxlength="6" inputmode="numeric" autocomplete="off">
+              <button type="button" class="toggle-pw" data-target="reg-pin-confirm" aria-label="Tampilkan PIN">
+                <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.3 4.2M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 4.3-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+              </button>
+            </div>
+          </div>
+          <button class="btn-submit" id="btn-register" type="button">Buat Akun</button>
+          <div class="msg" id="reg-msg"></div>
+        </div>
+      </div>
     </div>
 
-    <div class="form-container">
-      <!-- LOGIN -->
-      <div class="form-box" id="form-login">
-        <div class="input-group"><label>👤 USERNAME</label><div class="input-wrapper"><span class="icon">👤</span><input type="text" id="login-username" placeholder="Username kamu..." maxlength="15" autocomplete="off"></div></div>
-        <div class="input-group"><label>🔒 PIN (6 ANGKA)</label><div class="input-wrapper"><span class="icon">🔑</span><input type="password" id="login-pin" placeholder="Masukkan PIN..." maxlength="6" inputmode="numeric" autocomplete="off"></div></div>
-        <button class="btn-submit" id="btn-login" type="button">MASUK LOBI</button>
-        <div class="msg" id="login-msg"></div>
-      </div>
-      <!-- DAFTAR -->
-      <div class="form-box" id="form-register">
-        <div class="input-group"><label>👤 USERNAME BARU</label><div class="input-wrapper"><span class="icon">👤</span><input type="text" id="reg-username" placeholder="Buat username..." maxlength="15" autocomplete="off"></div></div>
-        <div class="input-group"><label>🔒 BUAT PIN</label><div class="input-wrapper"><span class="icon">🔑</span><input type="password" id="reg-pin" placeholder="Buat PIN..." maxlength="6" inputmode="numeric" autocomplete="off"></div></div>
-        <div class="input-group"><label>🔒 KONFIRMASI PIN</label><div class="input-wrapper"><span class="icon">🔑</span><input type="password" id="reg-pin-confirm" placeholder="Ulangi PIN..." maxlength="6" inputmode="numeric" autocomplete="off"></div></div>
-        <button class="btn-submit" id="btn-register" type="button">DAFTAR AKUN</button>
-        <div class="msg" id="reg-msg"></div>
-      </div>
+    <div class="auth-footer">
+      <span class="status-online"><span class="status-dot"></span>Server aktif</span>
+      <span>v1.0</span>
     </div>
+
+    <script>
+      document.querySelectorAll('.toggle-pw').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var input = document.getElementById(btn.getAttribute('data-target'));
+          if (!input) return;
+          var show = input.type === 'password';
+          input.type = show ? 'text' : 'password';
+          btn.classList.toggle('is-visible', show);
+          btn.setAttribute('aria-label', show ? 'Sembunyikan PIN' : 'Tampilkan PIN');
+        });
+      });
+    </script>
   </div>
 
   <!-- LAYAR GAME 3D -->
