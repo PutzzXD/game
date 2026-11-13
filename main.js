@@ -601,36 +601,64 @@ window.addEventListener('DOMContentLoaded', () => {
 // ============ LOADING SCREEN (saat tekan MULAI) ============
 let loadingActive = false;
 function showLoadingScreen(done) {
-  if (loadingActive) return; loadingActive = true;
+  if (loadingActive) return;
+  loadingActive = true;
   let el = document.getElementById('loading-screen');
   if (!el) {
     const css = document.createElement('style');
     css.textContent = '#loading-screen{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:radial-gradient(circle at 50% 40%,#2a2f55,#0d0f1f);color:#fff;font-family:sans-serif;transition:opacity .35s}#ls-title{font:900 clamp(28px,8vw,52px) sans-serif;letter-spacing:2px;text-shadow:0 0 24px #3b6cf6}#ls-spin{width:54px;height:54px;border-radius:50%;border:6px solid rgba(255,255,255,.18);border-top-color:#00e0a0;animation:lsspin 0.9s linear infinite}@keyframes lsspin{to{transform:rotate(360deg)}}#ls-barwrap{width:min(78vw,420px);height:16px;border-radius:10px;background:rgba(255,255,255,.14);overflow:hidden}#ls-bar{height:100%;width:0;border-radius:10px;background:linear-gradient(90deg,#3b6cf6,#00e0a0);transition:width .1s linear}#ls-text{font-size:14px;opacity:.9}#ls-tip{max-width:80vw;text-align:center;font-size:13px;color:#ffd166;min-height:34px}';
     document.head.appendChild(css);
-    el = document.createElement('div'); el.id = 'loading-screen';
+    el = document.createElement('div');
+    el.id = 'loading-screen';
     el.innerHTML = '<div id="ls-title">🏃 PARKOUR 3D</div><div id="ls-spin"></div><div id="ls-barwrap"><div id="ls-bar"></div></div><div id="ls-text"></div><div id="ls-tip"></div>';
     document.body.appendChild(el);
   }
-  const bar = document.getElementById('ls-bar'), txt = document.getElementById('ls-text'), tip = document.getElementById('ls-tip');
+  const bar = document.getElementById('ls-bar');
+  const txt = document.getElementById('ls-text');
+  const tip = document.getElementById('ls-tip');
   const steps = ['Menyiapkan arena...', 'Memasang jebakan...', 'Mengunci laser & penjaga...', 'Membangun labirin...', 'Menyiapkan karakter...', 'Siap!'];
   const tips = ['💡 Kotak yang berkedip aneh biasanya palsu, jangan percaya!', '💡 Lompat dua kali untuk jarak lebih jauh.', '💡 Di labirin, salah lorong = ditembak NPC.', '💡 Checkpoint hijau menyimpan progresmu.', '💡 Jatuh ke lava? Badanmu hancur, semua pemain bisa lihat 😹'];
   tip.textContent = tips[Math.floor(Math.random() * tips.length)];
-  el.style.opacity = '1'; el.style.display = 'flex';
-  try { if (renderer && scene && camera) renderer.compile(scene, camera); } catch (e) { /* abaikan */ }
-  const t0 = performance.now(), DUR = 2200; let finished = false;
-  const tick = () => {
-    const f = Math.min(1, (performance.now() - t0) / DUR), e = 1 - Math.pow(1 - f, 2);
-    bar.style.width = (e * 100).toFixed(0) + '%';
-    txt.textContent = steps[Math.min(steps.length - 1, Math.floor(f * steps.length))] + ' ' + (e * 100).toFixed(0) + '%';
-    if (f < 1) { requestAnimationFrame(tick); return; }
-    if (finished) return; finished = true;
-    setTimeout(() => {
-      try { done(); }
-      catch (err) { console.error('Gagal memulai game:', err); }
-      finally { el.style.opacity = '0'; setTimeout(() => { el.style.display = 'none'; loadingActive = false; }, 380); }
-    }, 150);
+  el.style.opacity = '1';
+  el.style.display = 'flex';
+
+  // Hindari renderer.compile(): kompilasi paksa semua mesh dapat membekukan browser mobile.
+  const t0 = performance.now();
+  const DUR = 2200;
+  let finished = false;
+  let safetyTimer = null;
+  const finishLoading = () => {
+    if (finished) return;
+    finished = true;
+    if (safetyTimer) clearTimeout(safetyTimer);
+    try {
+      if (typeof done === 'function') done();
+    } catch (err) {
+      console.error('Gagal memulai game:', err);
+    } finally {
+      el.style.opacity = '0';
+      setTimeout(() => {
+        el.style.display = 'none';
+        loadingActive = false;
+      }, 380);
+    }
   };
-  tick();
+
+  // Pengaman jika animasi frame tidak berjalan normal.
+  safetyTimer = setTimeout(finishLoading, 9000);
+  const tick = () => {
+    if (finished) return;
+    const f = Math.min(1, (performance.now() - t0) / DUR);
+    const eased = 1 - Math.pow(1 - f, 2);
+    bar.style.width = (eased * 100).toFixed(0) + '%';
+    txt.textContent = steps[Math.min(steps.length - 1, Math.floor(f * steps.length))] + ' ' + (eased * 100).toFixed(0) + '%';
+    if (f < 1) {
+      requestAnimationFrame(tick);
+      return;
+    }
+    setTimeout(finishLoading, 150);
+  };
+  requestAnimationFrame(tick);
 }
 
 // Elemen profil, saldo, dan tombol zoom hanya tampil di lobby.
