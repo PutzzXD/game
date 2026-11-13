@@ -3498,9 +3498,10 @@ function ensurePublicProfileModal() {
   const css = document.createElement('style');
   css.id = 'public-player-profile-style';
   css.textContent = `#public-player-profile{position:fixed;inset:0;z-index:10030;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);font-family:sans-serif}#public-player-card{width:min(360px,100%);max-height:82vh;overflow:auto;padding:20px;border:1px solid rgba(66,217,255,.7);border-radius:18px;background:linear-gradient(145deg,#172a49,#080f20);box-shadow:0 12px 40px #0009;color:#fff}#pp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px}#pp-title{font-size:18px;font-weight:900;color:#42d9ff}#pp-close{border:0;border-radius:8px;background:#34435c;color:#fff;width:32px;height:32px;font-size:20px}#pp-avatar{width:64px;height:64px;margin:0 auto 10px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,#355b87,#141c30);border:2px solid #ffd76a;font-size:30px}#pp-name{text-align:center;font-size:21px;font-weight:900;overflow-wrap:anywhere}#pp-role{text-align:center;color:#a9c9ff;font-size:12px;margin:5px 0 15px}#pp-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}#pp-stats .pp-stat{padding:11px;border-radius:10px;background:rgba(255,255,255,.07);text-align:center}#pp-stats b{display:block;font-size:19px;color:#ffd76a}#pp-stats small{color:#aab9d0}#pp-outfit{margin-top:12px;padding:11px;border-radius:10px;background:rgba(255,255,255,.06);font-size:13px;line-height:1.7}#pp-status{text-align:center;margin-top:12px;color:#8fffc1;font-size:12px}`;
+  css.textContent += '#pp-avatar{width:100%;height:min(230px,38vh);margin:0 0 12px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:radial-gradient(circle at 50% 35%,#2b4a75 0%,#0d1526 78%);overflow:hidden}#pp-avatar canvas{display:block;width:100%;height:100%;cursor:grab}';
   document.head.appendChild(css);
   const overlay = document.createElement('div'); overlay.id = 'public-player-profile';
-  overlay.innerHTML = `<section id="public-player-card"><div id="pp-head"><span id="pp-title">👤 PROFIL PEMAIN</span><button id="pp-close" type="button">×</button></div><div id="pp-avatar">👤</div><div id="pp-name">Pemain</div><div id="pp-role">PLAYER</div><div id="pp-stats"><div class="pp-stat"><b id="pp-crowns">👑 0</b><small>Mahkota</small></div><div class="pp-stat"><b id="pp-coins">🪙 0</b><small>Koin</small></div><div class="pp-stat"><b id="pp-items">0</b><small>Item dimiliki</small></div><div class="pp-stat"><b id="pp-id">------</b><small>ID pemain</small></div></div><div id="pp-outfit">Kostum: -</div><div id="pp-status">Data profil publik</div></section>`;
+  overlay.innerHTML = `<section id="public-player-card"><div id="pp-head"><span id="pp-title">👤 PROFIL PEMAIN</span><button id="pp-close" type="button">×</button></div><div id="pp-avatar"></div><div id="pp-name">Pemain</div><div id="pp-role">PLAYER</div><div id="pp-stats"><div class="pp-stat"><b id="pp-crowns">👑 0</b><small>Mahkota</small></div><div class="pp-stat"><b id="pp-coins">🪙 0</b><small>Koin</small></div><div class="pp-stat"><b id="pp-items">0</b><small>Item dimiliki</small></div><div class="pp-stat"><b id="pp-id">------</b><small>ID pemain</small></div></div><div id="pp-outfit">Kostum: -</div><div id="pp-status">Data profil publik</div></section>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.style.display = 'none'; });
   document.getElementById('pp-close').onclick = () => { overlay.style.display = 'none'; };
@@ -3514,12 +3515,78 @@ function getEquippedPublicNames(profile) {
     return item ? item.name : (id ? String(id).replace(/^(baju|celana|sepatu|aks_)/,'').replaceAll('_',' ') : 'Default');
   }).join(' · ');
 }
+// ----- PRATINJAU KARAKTER 3D di profil pemain -----
+// Memakai model & kostum yang sama dengan avatar leaderboard, dirender di canvas kecil terpisah.
+let ppPreview = null;
+function stopProfilePreview() {
+  if (!ppPreview) return;
+  const p = ppPreview; ppPreview = null;
+  cancelAnimationFrame(p.raf);
+  (p.holder?.userData?.mats || []).forEach(m => m.dispose());
+  try { p.env && p.env.dispose(); } catch (e) {}
+  try { p.renderer.dispose(); p.renderer.forceContextLoss(); } catch (e) {}
+}
+function showProfilePreview(equipped) {
+  stopProfilePreview();
+  const host = document.getElementById('pp-avatar');
+  if (!host) return;
+  host.textContent = '';
+  if (!character) return;
+  const canvas = document.createElement('canvas');
+  host.appendChild(canvas);
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); } catch (e) { host.textContent = ''; return; }
+  const W = Math.max(120, host.clientWidth || 300), H = Math.max(120, host.clientHeight || 230);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(W, H, false);
+  const sc = new THREE.Scene();
+  let env = null;
+  try { const pm = new THREE.PMREMGenerator(renderer); env = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose(); } catch (e) {}
+  sc.add(new THREE.AmbientLight(0xffffff, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(3, 6, 5); sc.add(sun);
+
+  const holder = createLeaderboardAvatar({ equipped: equipped || {} });
+  holder.scale.setScalar(1);
+  // envMap milik renderer utama tidak bisa dipakai di renderer ini -> ganti dengan milik sendiri.
+  (holder.userData.mats || []).forEach(m => { if (m.envMap) { m.envMap = env; m.needsUpdate = true; } });
+  const pivot = new THREE.Group(); pivot.add(holder); sc.add(pivot);
+  pivot.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(pivot);
+  const size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+  const fov = 28, half = THREE.MathUtils.degToRad(fov / 2);
+  const cam = new THREE.PerspectiveCamera(fov, W / H, 0.1, 100);
+  const dist = Math.max((size.y / 2) / Math.tan(half), (Math.max(size.x, size.z) / 2) / (Math.tan(half) * (W / H))) * 1.2;
+  cam.position.set(ctr.x, ctr.y, ctr.z + dist); cam.lookAt(ctr);
+
+  let dragging = false, lastX = 0;
+  canvas.style.touchAction = 'pan-y';
+  canvas.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; try { canvas.setPointerCapture(e.pointerId); } catch (err) {} });
+  canvas.addEventListener('pointermove', (e) => { if (!dragging) return; pivot.rotation.y += (e.clientX - lastX) * 0.012; lastX = e.clientX; });
+  const endDrag = () => { dragging = false; };
+  canvas.addEventListener('pointerup', endDrag); canvas.addEventListener('pointercancel', endDrag);
+
+  ppPreview = { renderer, holder, env, raf: 0 };
+  const clock = new THREE.Clock();
+  const loop = () => {
+    if (!ppPreview) return;
+    const overlay = document.getElementById('public-player-profile');
+    if (!overlay || overlay.style.display === 'none') { stopProfilePreview(); return; }
+    const dt = Math.min(clock.getDelta(), 0.05);
+    if (!dragging) pivot.rotation.y += dt * 0.6;
+    renderer.render(sc, cam);
+    ppPreview.raf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+
 async function inspectPlayerAccount(playerKey, fallbackName = '') {
   const key = String(playerKey || '').trim().toLowerCase();
   if (!key || key === myPlayerKey()) { showToast('Itu akun kamu sendiri'); return; }
   ensurePublicProfileModal();
   const overlay = document.getElementById('public-player-profile');
   overlay.style.display = 'flex';
+  stopProfilePreview();
+  { const av = document.getElementById('pp-avatar'); if (av) av.textContent = ''; }
   document.getElementById('pp-name').textContent = fallbackName || key;
   document.getElementById('pp-role').textContent = 'Memuat profil…';
   document.getElementById('pp-status').textContent = 'Mengambil data publik dari Firebase…';
@@ -3537,6 +3604,7 @@ async function inspectPlayerAccount(playerKey, fallbackName = '') {
     document.getElementById('pp-items').textContent = String(inventory.length);
     document.getElementById('pp-id').textContent = String(profile.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------'));
     document.getElementById('pp-outfit').textContent = `Kostum dipakai: ${getEquippedPublicNames(profile)}`;
+    try { showProfilePreview(profile.equipped || {}); } catch (e) { console.warn('Pratinjau karakter gagal:', e); }
     document.getElementById('pp-status').textContent = 'Profil publik · PIN dan data login tidak ditampilkan';
   } catch (e) {
     document.getElementById('pp-role').textContent = 'PROFIL TIDAK TERSEDIA';
