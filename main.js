@@ -4213,14 +4213,13 @@ function tryPushNearestFriend() {
     const dist = Math.hypot(av.position.x - character.position.x, av.position.z - character.position.z);
     if (dist < bestD && Math.abs(av.position.y - character.position.y) < 2.5) { best = id; bestD = dist; }
   }
-  if (!best) { showToast('Tidak ada teman di dekatmu', 1000); return; }
+  if (!best) return;
   lastPushAt = now; pushSeq++;
   { const tav = remotePlayers.get(best); // hadap ke teman lalu mainkan animasi dorong
     if (tav) character.rotation.y = Math.atan2(tav.position.x - character.position.x, tav.position.z - character.position.z);
     pushAnimStart = performance.now(); }
   const btn = document.getElementById('btn-push'); if (btn) { btn.classList.add('cd'); setTimeout(() => btn.classList.remove('cd'), PUSH_COOLDOWN); }
   update(myRef, { push: { target: best, seq: pushSeq, t: Date.now() } }).catch(() => {});
-  showToast('🫸 Dorong ' + String(roomPlayers[best]?.username || 'teman') + '!', 1000);
 }
 function applyIncomingPushes() {
   if (!roomCode || !character || gameState !== 'PLAYING' || godMode || flyMode) return;
@@ -4237,7 +4236,7 @@ function applyIncomingPushes() {
 }
 function buildPushButton() {
   if (document.getElementById('btn-push')) return;
-  const b = document.createElement('button'); b.id = 'btn-push'; b.type = 'button'; b.textContent = '🫸'; b.title = 'Dorong teman (E)';
+  const b = document.createElement('button'); b.id = 'btn-push'; b.type = 'button'; b.textContent = '🫸'; b.title = 'Dorong teman';
   b.addEventListener('pointerdown', (e) => { e.preventDefault(); tryPushNearestFriend(); });
   document.body.appendChild(b);
   window.addEventListener('keydown', (e) => { if (e.code === 'KeyE' && !e.repeat && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) tryPushNearestFriend(); });
@@ -4248,7 +4247,7 @@ function buildPushButton() {
 // Pelempar menulis event ke node pemain sendiri (rooms/<kode>/players/<uid>/ice). Semua klien melihat
 // kubus es terbang dari pelempar ke target; hanya korban yang benar-benar membeku di sisinya, lalu
 // menulis frozenUntil agar semua orang melihat balok es di sekeliling korban.
-const FREEZE_DURATION = 5000, FREEZE_COOLDOWN = 20000, FREEZE_RANGE = 25, FREEZE_IMMUNE = 2000, ICE_FLIGHT_MS = 380;
+const FREEZE_DURATION = 10000, FREEZE_COOLDOWN = 2000, FREEZE_RANGE = 30, FREEZE_IMMUNE = 1000, ICE_FLIGHT_MS = 380;
 let lastIceAt = -1e9, localFreezeUntil = 0, freezeImmuneUntil = 0;
 const handledIce = new Map();   // uid pelempar -> seq terakhir yang sudah diproses
 const iceProjectiles = [];      // kubus es yang sedang terbang
@@ -4364,7 +4363,7 @@ function updateFreezeVisuals(delta) {
 function buildFreezeButton() {
   if (document.getElementById('btn-freeze')) return;
   const st = document.createElement('style');
-  st.textContent = '#btn-freeze{position:fixed;right:22px;bottom:222px;z-index:60;width:62px;height:62px;border-radius:50%;border:2px solid #7fd6ff;background:#0b1a2b center/cover no-repeat;color:#fff;font:900 24px sans-serif;text-shadow:0 0 6px #000,0 0 3px #000;display:none;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent;padding:0;box-shadow:0 0 14px #3aa8e8aa}#btn-freeze:active{transform:scale(.92)}#btn-freeze.cd{filter:brightness(.45) saturate(.6)}';
+  st.textContent = '#btn-freeze{position:fixed;right:22px;bottom:222px;z-index:60;width:62px;height:62px;border-radius:50%;border:2px solid #7fd6ff;background:#0b1a2b center/cover no-repeat;color:#fff;font:700 11px sans-serif;text-shadow:0 0 4px #000,0 0 2px #000;display:none;align-items:flex-start;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent;padding:3px 0 0;box-shadow:0 0 14px #3aa8e8aa}#btn-freeze:active{transform:scale(.92)}#btn-freeze.cd{filter:brightness(.45) saturate(.6)}';
   document.head.appendChild(st);
   const b = document.createElement('button'); b.id = 'btn-freeze'; b.type = 'button'; b.title = 'Freeze Player (Q)';
   const probe = new Image(); probe.onload = () => { b.style.backgroundImage = 'url(./ice_cube.jpg)'; }; probe.onerror = () => { b.textContent = '🧊'; }; probe.src = './ice_cube.jpg';
