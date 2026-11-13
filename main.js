@@ -223,6 +223,7 @@ const SHOP_ITEMS = {
     { id: 'baju_saitama', name: 'Kostum Saitama — One Punch Man', price: 12000, color: 0xffd21a, saitama: true },
     { id: 'baju_greenlantern', name: 'Kostum Green Lantern', price: 6500, color: 0x087d3b, greenlantern: true },
     { id: 'baju_sonic', name: 'Kostum Sonic', price: 7500, color: 0x1d5fd1, sonic: true },
+    { id: 'baju_venom', name: 'Kostum Venom', price: 10000, color: 0x0a0c14, venom: true },
     { id: 'baju_developer', name: 'DEVELOPER — Eksklusif Admin', price: 0, color: 0x101b35, dev: true, suit: 'mail' }
   ],
   celana: [
@@ -959,14 +960,14 @@ function applyItemMat(m, it) {
 function pickCostume(eq) {
   const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
   const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor, hulk = !!baju.hulk;
-  const pac = !!baju.pac, saitama = !!baju.saitama, greenlantern = !!baju.greenlantern, sonic = !!baju.sonic;
-  const celana = sonic ? { color: 0x1d5fd1 } : greenlantern ? { color: 0x10151a } : saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
-  const sepatu = sonic ? { color: 0xd7263d } : greenlantern ? { color: 0x087d3b } : saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
-  return { baju, celana, sepatu, iron, thor, hulk, saitama, greenlantern, sonic };
+  const pac = !!baju.pac, saitama = !!baju.saitama, greenlantern = !!baju.greenlantern, sonic = !!baju.sonic, venom = !!baju.venom;
+  const celana = venom ? { color: 0x0a0c14 } : sonic ? { color: 0x1d5fd1 } : greenlantern ? { color: 0x10151a } : saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
+  const sepatu = venom ? { color: 0x0a0c14 } : sonic ? { color: 0xd7263d } : greenlantern ? { color: 0x087d3b } : saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
+  return { baju, celana, sepatu, iron, thor, hulk, saitama, greenlantern, sonic, venom };
 }
-const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [], greenlantern: [], sonic: [] };
+const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [], greenlantern: [], sonic: [], venom: [] };
 function setCostumeVis(baju, get) {
-  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac, greenlantern: !!baju.greenlantern, sonic: !!baju.sonic };
+  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac, greenlantern: !!baju.greenlantern, sonic: !!baju.sonic, venom: !!baju.venom };
   for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
 }
 
@@ -1015,6 +1016,7 @@ function itemIcon(cat, it) {
     if (it.ultra && cat === 'baju') inner += '<path d="M20 8L32 18L44 8L39 56H25Z" fill="#d52c3a"/><circle cx="32" cy="34" r="5" fill="#5cecff" stroke="#fff" stroke-width="2"/>';
     if (it.godzilla && cat === 'baju') inner += '<path d="M32 8L24 20L29 19L22 31L29 28L25 44L39 44L35 28L42 31L35 19L40 20Z" fill="#a8d96a" stroke="#183d2b" stroke-width="1.5"/>';
     if (it.greenlantern && cat === 'baju') inner += '<path d="M32 15L43 20V31Q43 42 32 49Q21 42 21 31V20Z" fill="#062a19" stroke="#7dffad" stroke-width="2"/><circle cx="32" cy="31" r="9" fill="#eafff1" stroke="#19b85a" stroke-width="3"/><path d="M24 31H40M27 27H37M27 35H37" stroke="#087d3b" stroke-width="2"/>';
+    if (it.venom && cat === 'baju') inner += '<path d="M32 18Q38 24 36 32Q40 40 32 50Q24 40 28 32Q26 24 32 18Z" fill="#fff"/><path d="M31 24L12 14M31 28L10 28M31 32L12 44M33 24L52 14M33 28L54 28M33 32L52 44" stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none"/>';
     if (it.sonic && cat === 'baju') inner += '<ellipse cx="32" cy="35" rx="9" ry="12" fill="#f5c9a0"/><circle cx="11" cy="27" r="5" fill="#fff"/><circle cx="53" cy="27" r="5" fill="#fff"/><rect x="19" y="47" width="26" height="5" fill="#d7263d"/><rect x="19" y="47" width="26" height="1.6" fill="#fff"/>';
     if (it.pac && cat === 'baju') inner += '<circle cx="32" cy="32" r="11" fill="#111"/><path d="M32 32L42 27.5A11 11 0 1 0 42 36.5Z" fill="#ffd800"/><circle cx="34" cy="26.5" r="1.5" fill="#111"/><circle cx="46" cy="32" r="1.6" fill="#ffd800"/>';
     if (it.ramen && cat === 'baju') inner += '<path d="M17 25Q32 34 47 25L43 48Q32 55 21 48Z" fill="#f2c56c" stroke="#7d3c1c" stroke-width="2"/><path d="M19 24Q32 14 45 24" fill="none" stroke="#fff0bd" stroke-width="3"/><path d="M25 20L37 11M29 21L41 12" stroke="#8b5528" stroke-width="2"/>';
@@ -1035,8 +1037,8 @@ function updateCharacterVisuals() {
     if (child.userData.type === 'sepatu') ap(child, sepatuV);
   });
   setCostumeVis(baju, o => o);
-  character.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic); });
-  applyBodyType(character, { armL: leftArmPivot, armR: rightArmPivot, legL: leftLegPivot, legR: rightLegPivot }, baju.hulk, baju.sonic ? 0x1d5fd1 : 0);
+  character.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom); });
+  applyBodyType(character, { armL: leftArmPivot, armR: rightArmPivot, legL: leftLegPivot, legR: rightLegPivot }, baju.hulk, baju.sonic ? 0x1d5fd1 : baju.venom ? 0x0b0d16 : 0);
   const a = playerData.equipped.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => { acc[id].visible = !(iron || thor) && id === a; });
   if (nameSprite) updateCharacterNameSprite(playerData.username, playerData.isDev);
@@ -2320,6 +2322,59 @@ function init3DGame() {
     }
   }
 
+  // ===== KOSTUM VENOM: seluruh badan hitam mengkilap, mata putih miring, mulut penuh gigi, lidah & lambang laba-laba putih =====
+  {
+    const vnBlack = accMat(0x0a0c14, { roughness: 0.22, metalness: 0.25 });
+    const vnWhite = accMat(0xf4f4f4, { roughness: 0.35, side: THREE.DoubleSide });
+    const vnMouth = accMat(0x3a0a12, { roughness: 0.6, side: THREE.DoubleSide });
+    const vnTongue = accMat(0xc2283a, { roughness: 0.45 });
+    const vnClaw = accMat(0x1c1f2b, { roughness: 0.3, metalness: 0.4 });
+    const vnParts = costumeParts.venom;
+
+    // Kepala: cangkang hitam lebih besar menutup wajah asli, lalu mata, mulut, gigi & lidah.
+    const vnHead = grp(headGroup, vnParts);
+    const shell = mk(new THREE.SphereGeometry(0.36, 28, 20), vnBlack, 0, 0.0, 0.0, vnHead); shell.scale.set(1.05, 1.1, 1.0);
+    const eyeShape = new THREE.Shape();
+    eyeShape.moveTo(-0.14, 0.075); eyeShape.lineTo(-0.02, -0.05); eyeShape.lineTo(0.02, -0.02); eyeShape.lineTo(-0.065, 0.085); eyeShape.closePath();
+    for (const sd of [-1, 1]) {
+      const eye = mk(new THREE.ShapeGeometry(eyeShape), vnWhite, sd * 0.125, 0.115, 0.352, vnHead);
+      eye.scale.set(sd * 1.5, 1.5, 1);
+    }
+    // Mulut lebar menyeringai: separuh lingkaran merah gelap + deretan gigi runcing + lidah.
+    const mouthR = 0.15, mouthY = -0.03, mouthZ = 0.342;
+    const cav = mk(new THREE.CircleGeometry(mouthR, 28, Math.PI, Math.PI), vnMouth, 0, mouthY, mouthZ, vnHead);
+    for (let i = 0; i < 11; i++) {
+      const th = Math.PI + 0.22 + (i / 10) * (Math.PI - 0.44);       // posisi sepanjang busur bawah
+      const px = mouthR * Math.cos(th) * 0.93, py = mouthY + mouthR * Math.sin(th) * 0.93;
+      const big = i % 2 === 0;
+      const tooth = mk(new THREE.ConeGeometry(big ? 0.017 : 0.012, big ? 0.065 : 0.045, 4), vnWhite, px, py, mouthZ + 0.006, vnHead);
+      tooth.rotation.z = Math.atan2(Math.cos(th), -Math.sin(th));    // ujung gigi mengarah ke tengah mulut
+    }
+    const tongue = mk(new THREE.CylinderGeometry(0.02, 0.012, 0.2, 8), vnTongue, 0, -0.17, 0.352, vnHead); tongue.rotation.x = -0.25;
+
+    // Badan: lambang laba-laba putih di dada dengan kaki memanjang ke bahu.
+    const vnChest = grp(rig, vnParts);
+    const spBody = mk(new THREE.SphereGeometry(0.14, 20, 14), vnWhite, 0, 1.62, 0.3, vnChest); spBody.scale.set(0.85, 1.55, 0.3);
+    mk(new THREE.SphereGeometry(0.06, 14, 10), vnWhite, 0, 1.86, 0.29, vnChest).scale.set(1, 1, 0.4);
+    for (const sd of [-1, 1]) {
+      for (const ang of [0.55, 0.15, -0.35, -0.85]) {
+        const leg = new THREE.Group(); leg.position.set(sd * 0.04, 1.7, 0.305); leg.rotation.z = sd > 0 ? ang : Math.PI - ang; vnChest.add(leg);
+        mk(new THREE.BoxGeometry(0.34, 0.032, 0.02), vnWhite, 0.17, 0, 0, leg);
+      }
+      // bahu besar & lengan berotot
+      const shoulder = mk(new THREE.SphereGeometry(0.19, 22, 16), vnBlack, sd * 0.4, 1.9, 0.005, vnChest); shoulder.scale.set(1.15, 0.8, 0.95);
+    }
+
+    // Tangan hitam bercakar putih-gelap.
+    for (const arm of [leftElbow, rightElbow]) {
+      const hand = grp(arm, vnParts);
+      const fist = mk(new THREE.SphereGeometry(0.12, 18, 12), vnBlack, 0, -0.43, 0.03, hand); fist.scale.set(1.1, 1.0, 1.1);
+      for (const dx of [-0.05, 0, 0.05]) {
+        const claw = mk(new THREE.ConeGeometry(0.018, 0.14, 6), vnClaw, dx, -0.49, 0.13, hand); claw.rotation.x = Math.PI / 2 + 0.35;
+      }
+    }
+  }
+
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -2797,8 +2852,8 @@ function applyRemoteCostume(u, eq) {
   });
   const vis = (orig, v) => { const c = u.map.get(orig); if (c) c.visible = v; };
   setCostumeVis(baju, o => u.map.get(o));
-  u.model.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic); });
-  applyBodyType(u.model, u.parts, baju.hulk, baju.sonic ? 0x1d5fd1 : 0);
+  u.model.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom); });
+  applyBodyType(u.model, u.parts, baju.hulk, baju.sonic ? 0x1d5fd1 : baju.venom ? 0x0b0d16 : 0);
   const a = eq.aksesoris || 'aks_none';
   Object.keys(acc).forEach(id => vis(acc[id], !(iron || thor) && id === a));
   u.costumeName = baju.name;
