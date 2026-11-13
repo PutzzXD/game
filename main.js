@@ -643,6 +643,9 @@ function setLobbyOnlyHud(show) {
   const friendLaunch = document.getElementById('ps-launcher');
   const inviteLaunch = document.getElementById('ps-invite-launcher');
   if (friendLaunch) friendLaunch.style.display = show ? 'flex' : 'none';
+  const notifBell = document.getElementById('btn-notif');
+  if (notifBell) notifBell.style.display = show ? 'flex' : 'none';
+  if (!show) { const np = document.getElementById('notif-panel'); if (np) np.style.display = 'none'; }
   if (inviteLaunch) inviteLaunch.style.display = show ? 'flex' : 'none';
 }
 
@@ -749,6 +752,7 @@ function startLobby() {
   setElDisplay('btn-music', 'flex');
   document.getElementById('in-game-controls').style.display = 'none'; setLobbyOnlyHud(true);
   document.getElementById('chat-container').style.display = 'flex';
+  initNotificationCenter();
 
   fetchGlobalChat();
   setInterval(fetchGlobalChat, 3000);
@@ -1152,6 +1156,7 @@ function setupAdminPanel() {
   const fc = document.createElement('div'); fc.id = 'fly-ctrl';
   fc.innerHTML = '<button id="fly-up">▲</button><button id="fly-down">▼</button>';
   wrap.append(btn, panel); document.body.append(wrap, fc);
+  setupAdminAnnouncementComposer(panel);
 
   // Geser panel: tahan & seret tombol Admin atau judul panel
   let moved = false;
@@ -1217,7 +1222,7 @@ function setupAdminPanel() {
   };
   hold('fly-up', true); hold('fly-down', false);
   window.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT') return;
+    if (/INPUT|TEXTAREA/.test(e.target.tagName)) return;
     if (e.code === 'KeyF' && gameState === 'PLAYING') setFly(!flyMode);
     if (e.code === 'Space') flyUp = true;
     if (e.code.startsWith('Shift')) flyDown = true;
@@ -4448,3 +4453,335 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
   }
 });
+
+// ============ SISTEM NOTIFIKASI & INFORMASI ADMIN ============
+// Alur: admin mengetik informasi di Admin Panel -> disimpan di Firebase `announcements`.
+// Pemain melihatnya sebagai (1) banner di atas layar, (2) lonceng di kanan atas lobi,
+// (3) notifikasi sistem browser bila diizinkan dan tab sedang di latar belakang.
+// Catatan: tanpa server push (FCM), notifikasi sistem hanya muncul selama website masih terbuka.
+const NOTIF_POLL_MS = 8000;
+const NOTIF_MAX = 20;
+const NOTIF_BELL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 1 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>';
+let notifItems = [];
+let notifKnownIds = null;   // null = polling pertama belum selesai
+let notifSeenAt = 0;
+let notifPollBusy = false;
+let notifBannerQueue = [];
+let notifBannerBusy = false;
+let notifBannerTimer = null;
+const notifSeenKey = () => 'parkour_notif_seen_v1_' + (accountKey() || 'guest');
+const notifSupported = () => 'Notification' in window;
+
+function injectNotifStyles() {
+  if (document.getElementById('notif-css')) return;
+  const st = document.createElement('style'); st.id = 'notif-css';
+  st.textContent = `
+#btn-notif{position:fixed;top:16px;right:58px;z-index:59;width:34px;height:34px;padding:0;border:1px solid rgba(130,87,230,.85);border-radius:50%;background:rgba(19,19,26,.92);color:#d9ccff;box-shadow:0 3px 12px #0008;display:none;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation}
+#btn-notif svg{width:18px;height:18px}
+#btn-notif:active{transform:scale(.94)}
+#btn-notif.has-unread svg{animation:notifRing 1.6s ease 1;transform-origin:50% 10%}
+@keyframes notifRing{0%,100%{transform:rotate(0)}15%{transform:rotate(14deg)}30%{transform:rotate(-12deg)}45%{transform:rotate(8deg)}60%{transform:rotate(-5deg)}75%{transform:rotate(0)}}
+#notif-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:#ef4444;color:#fff;font:700 10px/17px -apple-system,'Segoe UI',Roboto,sans-serif;text-align:center;display:none;box-sizing:border-box}
+#notif-panel{position:fixed;top:58px;right:58px;z-index:60;width:min(320px,calc(100vw - 24px));max-height:min(70vh,420px);display:none;flex-direction:column;background:rgba(19,19,26,.97);border:1px solid #2a2a38;border-radius:14px;color:#ececf1;font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;box-shadow:0 12px 32px rgba(0,0,0,.5);overflow:hidden;user-select:text;-webkit-user-select:text}
+@media (max-width:420px){#notif-panel{right:12px;left:12px;width:auto}}
+#notif-panel .np-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #262632;font-size:14px;font-weight:600}
+#notif-panel .np-close{width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#8b8b9a;font-size:20px;line-height:1;cursor:pointer}
+#notif-panel .np-close:hover{background:rgba(255,255,255,.06);color:#ececf1}
+#np-perm{padding:10px 14px;border-bottom:1px solid #262632;font-size:12px;color:#8b8b9a;line-height:1.45;display:flex;align-items:center;justify-content:space-between;gap:10px}
+#np-perm:empty{display:none}
+#np-perm button{flex:none;padding:6px 12px;border:0;border-radius:8px;background:#8257e6;color:#fff;font:600 12px 'Inter',sans-serif;cursor:pointer}
+#np-list{overflow-y:auto;-webkit-overflow-scrolling:touch}
+.np-empty{padding:28px 14px;text-align:center;font-size:13px;color:#8b8b9a}
+.np-item{position:relative;padding:12px 14px 12px 16px;border-bottom:1px solid #20202a}
+.np-item:last-child{border-bottom:0}
+.np-item.unread::before{content:"";position:absolute;left:6px;top:18px;width:6px;height:6px;border-radius:50%;background:#8257e6}
+.np-title{font-size:13px;font-weight:600;margin-bottom:3px}
+.np-text{font-size:13px;line-height:1.5;color:#c9c9d4;white-space:pre-wrap;word-break:break-word}
+.np-meta{margin-top:6px;font-size:11px;color:#6f6f7e;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.np-del{padding:3px 8px;border:1px solid #3a2a2e;border-radius:6px;background:transparent;color:#f87171;font:500 11px 'Inter',sans-serif;cursor:pointer}
+#notif-banner{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;z-index:100000;width:min(440px,calc(100vw - 20px));display:flex;align-items:flex-start;gap:12px;padding:12px 8px 12px 14px;background:rgba(19,19,26,.97);border:1px solid #2f2f40;border-left:3px solid #8257e6;border-radius:12px;color:#ececf1;font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.45);transform:translate(-50%,-160%);opacity:0;pointer-events:none;transition:transform .32s cubic-bezier(.2,.8,.2,1),opacity .25s;cursor:pointer;box-sizing:border-box}
+#notif-banner.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+#notif-banner .nb-icon{flex:none;width:32px;height:32px;border-radius:8px;background:rgba(130,87,230,.18);color:#c8b6ff;display:flex;align-items:center;justify-content:center}
+#notif-banner .nb-icon svg{width:18px;height:18px}
+#notif-banner .nb-body{flex:1;min-width:0}
+#notif-banner .nb-title{font-size:13px;font-weight:600;margin-bottom:2px}
+#notif-banner .nb-text{font-size:13px;line-height:1.45;color:#c9c9d4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+#notif-banner .nb-close{flex:none;width:28px;height:28px;border:0;border-radius:6px;background:transparent;color:#8b8b9a;font-size:20px;line-height:1;cursor:pointer}
+#notif-permit{position:fixed;inset:0;z-index:100002;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif}
+#notif-permit .np-card{width:min(360px,calc(100vw - 32px));padding:22px;background:#13131a;border:1px solid #262632;border-radius:16px;color:#ececf1}
+#notif-permit h3{margin:0 0 6px;font-size:17px;font-weight:600}
+#notif-permit p{margin:0 0 18px;font-size:13px;line-height:1.55;color:#9a9aa8}
+#notif-permit .np-actions{display:flex;gap:10px}
+#notif-permit button{flex:1;height:42px;border-radius:10px;font:600 14px 'Inter',sans-serif;cursor:pointer}
+#notif-permit .np-allow{border:0;background:#8257e6;color:#fff}
+#notif-permit .np-later{border:1px solid #2f2f40;background:transparent;color:#c9c9d4}
+#admin-panel{max-height:calc(100vh - 70px);overflow-y:auto}
+`;
+  document.head.appendChild(st);
+}
+
+function notifTimeAgo(ts) {
+  if (!ts) return '';
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return 'baru saja';
+  if (s < 3600) return Math.floor(s / 60) + ' menit lalu';
+  if (s < 86400) return Math.floor(s / 3600) + ' jam lalu';
+  if (s < 7 * 86400) return Math.floor(s / 86400) + ' hari lalu';
+  return new Date(ts).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function playNotifTone() {
+  try {
+    ensureAudioContext();
+    const t = audioCtx.currentTime, osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.setValueAtTime(1175, t + 0.09);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.18, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(t); osc.stop(t + 0.3);
+  } catch (e) {}
+}
+
+// ----- Banner di atas layar -----
+function queueNotifBanner(item) {
+  notifBannerQueue.push(item);
+  if (!notifBannerBusy) showNextNotifBanner();
+}
+function showNextNotifBanner() {
+  const el = document.getElementById('notif-banner');
+  const item = notifBannerQueue.shift();
+  if (!el || !item) { notifBannerBusy = false; return; }
+  notifBannerBusy = true;
+  el.querySelector('.nb-title').textContent = item.title || 'Informasi dari admin';
+  el.querySelector('.nb-text').textContent = item.text;
+  el.classList.add('show');
+  playNotifTone();
+  clearTimeout(notifBannerTimer);
+  notifBannerTimer = setTimeout(hideNotifBanner, 6500);
+}
+function hideNotifBanner() {
+  clearTimeout(notifBannerTimer);
+  const el = document.getElementById('notif-banner');
+  if (el) el.classList.remove('show');
+  setTimeout(showNextNotifBanner, 380);
+}
+
+// ----- Notifikasi sistem browser -----
+async function showSystemNotification(item) {
+  if (!notifSupported() || Notification.permission !== 'granted') return;
+  const title = item.title || 'Parkour 3D';
+  const opts = { body: item.text, tag: 'parkour-info-' + item.id };
+  try {
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if (reg && reg.active && reg.showNotification) { await reg.showNotification(title, opts); return; }
+  } catch (e) {}
+  try { new Notification(title, opts); } catch (e) {}
+}
+async function requestNotifPermission() {
+  if (!notifSupported()) { showToast('Browser ini belum mendukung notifikasi sistem', 2800); return 'unsupported'; }
+  let result;
+  try { result = await Notification.requestPermission(); } catch (e) { result = Notification.permission; }
+  renderNotifPermRow();
+  if (result === 'granted') showToast('Notifikasi diaktifkan', 2200);
+  else if (result === 'denied') showToast('Notifikasi diblokir. Izinkan lewat pengaturan situs di browser.', 3800);
+  return result;
+}
+function maybeAskNotifPermission() {
+  if (!notifSupported() || Notification.permission !== 'default' || window.__notifAsked) return;
+  window.__notifAsked = true;
+  const d = document.getElementById('notif-permit');
+  if (d) d.style.display = 'flex';
+}
+function renderNotifPermRow() {
+  const row = document.getElementById('np-perm');
+  if (!row) return;
+  row.textContent = '';
+  if (!notifSupported()) { row.textContent = 'Browser ini belum mendukung notifikasi sistem. Informasi tetap muncul di dalam game.'; return; }
+  const p = Notification.permission;
+  if (p === 'granted') { row.textContent = 'Notifikasi sistem aktif.'; return; }
+  if (p === 'denied') { row.textContent = 'Notifikasi diblokir di browser. Buka pengaturan situs untuk mengizinkannya.'; return; }
+  const span = document.createElement('span'); span.textContent = 'Notifikasi sistem belum aktif.';
+  const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = 'Aktifkan';
+  btn.addEventListener('click', () => requestNotifPermission());
+  row.append(span, btn);
+}
+
+// ----- Panel lonceng -----
+function updateNotifBadge() {
+  const unread = notifItems.filter(i => i.createdAt > notifSeenAt).length;
+  const badge = document.getElementById('notif-badge'), bell = document.getElementById('btn-notif');
+  if (badge) { badge.textContent = unread > 9 ? '9+' : String(unread); badge.style.display = unread ? 'block' : 'none'; }
+  if (bell) {
+    const had = bell.classList.contains('has-unread');
+    bell.classList.toggle('has-unread', unread > 0);
+    if (unread > 0 && !had) { void bell.offsetWidth; }
+  }
+}
+function notifMarkRead() {
+  const latest = notifItems.reduce((m, i) => Math.max(m, i.createdAt || 0), 0);
+  if (latest > notifSeenAt) {
+    notifSeenAt = latest;
+    try { localStorage.setItem(notifSeenKey(), String(latest)); } catch (e) {}
+  }
+  updateNotifBadge();
+}
+function renderNotifList(prevSeenAt) {
+  const list = document.getElementById('np-list');
+  if (!list) return;
+  list.textContent = '';
+  if (!notifItems.length) {
+    const e = document.createElement('div'); e.className = 'np-empty'; e.textContent = 'Belum ada informasi.';
+    list.appendChild(e); return;
+  }
+  const admin = isAdminUser();
+  notifItems.forEach(it => {
+    const row = document.createElement('article');
+    row.className = 'np-item' + (it.createdAt > prevSeenAt ? ' unread' : '');
+    if (it.title) { const t = document.createElement('div'); t.className = 'np-title'; t.textContent = it.title; row.appendChild(t); }
+    const tx = document.createElement('div'); tx.className = 'np-text'; tx.textContent = it.text; row.appendChild(tx);
+    const meta = document.createElement('div'); meta.className = 'np-meta';
+    const who = document.createElement('span'); who.textContent = it.from + ' \u00b7 ' + notifTimeAgo(it.createdAt); meta.appendChild(who);
+    if (admin) {
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'np-del'; del.textContent = 'Hapus';
+      del.addEventListener('click', async () => {
+        del.disabled = true;
+        try {
+          const res = await fetch(`${FIREBASE_URL}announcements/${it.id}.json`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          notifItems = notifItems.filter(x => x.id !== it.id);
+          renderNotifList(notifSeenAt); updateNotifBadge();
+          showToast('Informasi dihapus', 1800);
+        } catch (e) { del.disabled = false; showToast('Gagal menghapus informasi', 2200); }
+      });
+      meta.appendChild(del);
+    }
+    row.appendChild(meta);
+    list.appendChild(row);
+  });
+}
+function toggleNotifPanel(force) {
+  const p = document.getElementById('notif-panel');
+  if (!p) return;
+  const open = typeof force === 'boolean' ? force : p.style.display !== 'flex';
+  if (open) {
+    const prev = notifSeenAt;
+    renderNotifPermRow(); renderNotifList(prev);
+    p.style.display = 'flex';
+    notifMarkRead();
+  } else p.style.display = 'none';
+}
+
+// ----- Ambil informasi dari Firebase -----
+async function pollAnnouncements() {
+  if (notifPollBusy || !accountKey()) return;
+  notifPollBusy = true;
+  try {
+    const res = await fetch(`${FIREBASE_URL}announcements.json?orderBy="$key"&limitToLast=${NOTIF_MAX}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json() || {};
+    const items = Object.entries(data)
+      .filter(([, v]) => v && typeof v.text === 'string' && v.text.trim())
+      .map(([id, v]) => ({ id, title: String(v.title || ''), text: String(v.text), from: String(v.from || 'Admin'), createdAt: Number(v.createdAt) || 0 }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+    const first = notifKnownIds === null;
+    if (first) {
+      let stored = null;
+      try { stored = localStorage.getItem(notifSeenKey()); } catch (e) {}
+      if (stored === null) {
+        // Akun baru di perangkat ini: informasi lama dianggap sudah dibaca.
+        notifSeenAt = items.length ? items[0].createdAt : 0;
+        try { localStorage.setItem(notifSeenKey(), String(notifSeenAt)); } catch (e) {}
+      } else notifSeenAt = Number(stored) || 0;
+      notifKnownIds = new Set();
+    }
+    const fresh = items.filter(i => !notifKnownIds.has(i.id));
+    items.forEach(i => notifKnownIds.add(i.id));
+    notifItems = items;
+    const panelOpen = document.getElementById('notif-panel')?.style.display === 'flex';
+    if (first) {
+      const unread = items.find(i => i.createdAt > notifSeenAt);
+      if (unread && !panelOpen) queueNotifBanner(unread);
+    } else {
+      fresh.sort((a, b) => a.createdAt - b.createdAt).forEach(i => {
+        if (!panelOpen) queueNotifBanner(i);
+        if (document.hidden) showSystemNotification(i);
+      });
+    }
+    if (panelOpen) { renderNotifList(notifSeenAt); notifMarkRead(); }
+    else updateNotifBadge();
+  } catch (e) { console.warn('Polling informasi:', e); }
+  finally { notifPollBusy = false; }
+}
+
+function initNotificationCenter() {
+  if (window.__notifInit) return;
+  window.__notifInit = true;
+  injectNotifStyles();
+
+  const bell = document.createElement('button');
+  bell.id = 'btn-notif'; bell.type = 'button'; bell.title = 'Informasi'; bell.setAttribute('aria-label', 'Informasi');
+  bell.innerHTML = NOTIF_BELL_SVG + '<span id="notif-badge"></span>';
+  bell.style.display = 'flex';
+  bell.addEventListener('click', () => toggleNotifPanel());
+
+  const panel = document.createElement('section'); panel.id = 'notif-panel';
+  panel.innerHTML = '<div class="np-head"><span>Informasi</span><button type="button" class="np-close" aria-label="Tutup">&times;</button></div><div id="np-perm"></div><div id="np-list"></div>';
+  panel.querySelector('.np-close').addEventListener('click', () => toggleNotifPanel(false));
+
+  const banner = document.createElement('div'); banner.id = 'notif-banner';
+  banner.innerHTML = '<div class="nb-icon">' + NOTIF_BELL_SVG + '</div><div class="nb-body"><div class="nb-title"></div><div class="nb-text"></div></div><button type="button" class="nb-close" aria-label="Tutup">&times;</button>';
+  banner.addEventListener('click', (e) => {
+    hideNotifBanner();
+    if (!e.target.closest('.nb-close')) toggleNotifPanel(true);
+  });
+
+  const permit = document.createElement('div'); permit.id = 'notif-permit';
+  permit.innerHTML = '<div class="np-card"><h3>Aktifkan notifikasi</h3><p>Izinkan notifikasi agar kamu tidak ketinggalan informasi dan pengumuman dari admin.</p><div class="np-actions"><button type="button" class="np-later">Nanti</button><button type="button" class="np-allow">Izinkan</button></div></div>';
+  permit.querySelector('.np-later').addEventListener('click', () => { permit.style.display = 'none'; });
+  permit.querySelector('.np-allow').addEventListener('click', async () => { permit.style.display = 'none'; await requestNotifPermission(); });
+
+  document.body.append(bell, panel, banner, permit);
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+
+  pollAnnouncements();
+  setInterval(pollAnnouncements, NOTIF_POLL_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollAnnouncements(); });
+  setTimeout(maybeAskNotifPermission, 1500);
+}
+
+// ----- Form admin: ketik & kirim informasi -----
+function setupAdminAnnouncementComposer(panel) {
+  injectNotifStyles();
+  panel.insertAdjacentHTML('beforeend',
+    '<hr style="width:100%;border-color:#46516b"><b>INFORMASI UNTUK PEMAIN</b>' +
+    '<label>Judul (opsional)<input id="ad-info-title" type="text" maxlength="40" placeholder="Contoh: Update baru" autocomplete="off" style="width:100%;padding:7px;border-radius:6px"></label>' +
+    '<label>Isi informasi<textarea id="ad-info-text" rows="3" maxlength="200" placeholder="Ketik informasi untuk semua pemain" style="width:100%;padding:7px;border-radius:6px;resize:vertical;font-family:inherit"></textarea></label>' +
+    '<div id="ad-info-count" style="font-size:11px;color:#9aa4bd;text-align:right">0/200</div>' +
+    '<button id="ad-info-send" type="button">Kirim informasi</button>');
+  const textEl = document.getElementById('ad-info-text');
+  textEl.addEventListener('input', () => { document.getElementById('ad-info-count').textContent = textEl.value.length + '/200'; });
+  document.getElementById('ad-info-send').addEventListener('click', sendAdminAnnouncement);
+}
+async function sendAdminAnnouncement() {
+  if (!isAdminUser()) return;
+  const titleEl = document.getElementById('ad-info-title'), textEl = document.getElementById('ad-info-text'), btn = document.getElementById('ad-info-send');
+  const title = titleEl.value.trim().slice(0, 40), text = textEl.value.trim().slice(0, 200);
+  if (!text) { showToast('Isi informasi tidak boleh kosong', 2000); return; }
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${FIREBASE_URL}announcements.json`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, text, from: String(playerData.username || 'Admin'), createdAt: { '.sv': 'timestamp' } })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    titleEl.value = ''; textEl.value = '';
+    document.getElementById('ad-info-count').textContent = '0/200';
+    showToast('Informasi terkirim ke semua pemain', 2200);
+    pollAnnouncements();
+  } catch (e) { showToast('Gagal mengirim informasi. Cek Rules Firebase.', 3000); }
+  finally { btn.disabled = false; }
+}
