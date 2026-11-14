@@ -264,6 +264,9 @@ const SHOP_ITEMS = {
   ],
   gamepass: [
     { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 10000000, gamepass: true, desc: 'Dorong teman saat balapan (tombol🫸' },
+    { id: 'gp_vip', name: 'Gamepass VIP', price: 800000, gamepass: true, emoji: '👑', desc: 'Nama khusus VIP, tag VIP di chat, dan aura emas eksklusif' },
+    { id: 'gp_2xcoin', name: 'Gamepass 2x Koin', price: 900000, gamepass: true, emoji: '🪙', desc: 'Semua koin yang kamu dapat jadi 2 kali lipat' },
+    { id: 'gp_winfx', name: 'Gamepass Animasi Menang', price: 1200000, gamepass: true, emoji: '🏆', desc: 'Mahkota emas, kembang api & confetti saat menang, dilihat semua pemain' },
     { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 15000000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 7 detik. Cooldown 5 detik' }
   ]
 };
@@ -281,7 +284,7 @@ async function fetchGlobalChat() {
       Object.values(data).forEach(msg => {
         const div = document.createElement('div');
         div.className = 'chat-msg';
-        div.innerHTML = `<span class="name ${msg.isDev ? 'dev' : ''}">${msg.name}: </span><span class="text">${msg.text}</span>`;
+        div.innerHTML = `${msg.vip ? '<span style="background:linear-gradient(#ffe27a,#ff9f1c);color:#3a2300;border-radius:6px;padding:0 5px;margin-right:4px;font-size:11px;font-weight:800">VIP</span>' : ''}<span class="name ${msg.isDev ? 'dev' : ''}"${msg.vip && !msg.isDev ? ' style="color:#ffd166"' : ''}>${msg.name}: </span><span class="text">${msg.text}</span>`;
         chatMessages.appendChild(div);
       });
       chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -323,7 +326,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
     if (text.length === 0) return;
-    const payload = { name: playerData.username, isDev: playerData.isDev, text: text, time: Date.now() };
+    const payload = { name: playerData.username, isDev: playerData.isDev, vip: hasVip(), text: text, time: Date.now() };
     fetch(`${FIREBASE_URL}chats.json`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     input.value = '';
   });
@@ -785,7 +788,7 @@ function renderShopTab(category) {
     SHOP_ITEMS.gamepass.forEach(item => {
       const owned = playerData.inventory.includes(item.id);
       const div = document.createElement('div'); div.className = 'shop-item';
-      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : '🫸'}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div><button class="shop-buy-btn" disabled>AKTIF</button>' : `<div class="item-price">🪙 ${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
+      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div><button class="shop-buy-btn" disabled>AKTIF</button>' : `<div class="item-price">🪙 ${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
       container.appendChild(div);
     });
     return;
@@ -869,6 +872,7 @@ window.buyItem = async function(category, itemId, price) {
   if (playerData.coins < price) { showToast("❌ Koin kamu tidak cukup!"); return; }
   playerData.coins -= price;
   playerData.inventory.push(itemId);
+  if (itemId === 'gp_vip') { try { updateCharacterNameSprite(playerData.username, playerData.isDev); } catch (e) {} }
   await updatePlayerFirebase();
   document.getElementById('coin-amount').textContent = playerData.coins;
   renderShopTab(category);
@@ -3065,7 +3069,7 @@ function updateCharacterNameSprite(username, isDev) {
   ctxName.fillStyle = 'rgba(0, 0, 0, 0.6)';
   ctxName.beginPath(); ctxName.roundRect(10, 10, 492, 88, 20); ctxName.fill();
   ctxName.font = 'bold 50px sans-serif'; ctxName.fillStyle = '#ffffff'; ctxName.textAlign = 'center'; ctxName.textBaseline = 'middle';
-  ctxName.fillText(username, 256, 54);
+  if (hasVip()) paintVipName(ctxName, username, 50, isDev); else ctxName.fillText(username, 256, 54);
   if (isDev) {
     ctxName.beginPath(); ctxName.arc(430, 54, 28, 0, Math.PI * 2); ctxName.fillStyle = '#1DA1F2'; ctxName.fill();
     ctxName.strokeStyle = '#ffffff'; ctxName.lineWidth = 4; ctxName.stroke();
@@ -3152,7 +3156,7 @@ async function enterRoom(code) {
   myRef = ref(multiplayerDb, `rooms/${code}/players/${mpUid}`);
   await onDisconnect(myRef).remove();
   myJoinedAt = Date.now();
-  await set(myRef, { username: String(playerData.username).slice(0, 18), userKey: accountKey(), playerId: String(playerData.playerId || (playerData.isDev ? ADMIN_PLAYER_ID : '')), isDev: !!playerData.isDev, equipped: myEquipped(), status: 'LOBBY', joinedAt: myJoinedAt, updatedAt: Date.now() });
+  await set(myRef, { vip: hasVip(), username: String(playerData.username).slice(0, 18), userKey: accountKey(), playerId: String(playerData.playerId || (playerData.isDev ? ADMIN_PLAYER_ID : '')), isDev: !!playerData.isDev, equipped: myEquipped(), status: 'LOBBY', joinedAt: myJoinedAt, updatedAt: Date.now() });
   roomUnsub = onValue(ref(multiplayerDb, `rooms/${code}`), onRoomSnapshot, (err) => { console.error(err); setRoomMsg(mpErr(err)); });
   rpCollapsed = true; // setelah masuk room, panel langsung mengecil
   updateRoomUI();
@@ -3315,6 +3319,7 @@ function onFinish() {
   awardWinCrown().catch(e => { console.warn('Mahkota kemenangan gagal disimpan:', e); showToast('⚠️ Mahkota gagal disimpan ke Firebase'); });
   if (currentMap === 'lava') savePersonalBest(personalRunScore, finishMs).catch(e => console.warn('Simpan rekor gagal:', e)); // leaderboard lama khusus map Lava
   updateLobbyLeaderboard();
+  triggerWinFx();
 }
 function finishSummary() {
   if (!roomCode) return '';
@@ -3333,6 +3338,7 @@ function honeyDeclareWin() {
   if (honeyWinAwarded || honeyRoundEnded) return;
   honeyWinAwarded = true; honeyRoundEnded = true; gameState = 'WIN';
   if (myRef) update(myRef, { status: 'WIN', wonAt: serverNow() }).catch(() => {});
+  triggerWinFx();
   awardWinCrown().catch(e => { console.warn('Gagal memberi mahkota:', e); showToast('⚠️ Mahkota gagal disimpan'); });
   showOverlay('YOU WIN! 👑', 'Kamu pemain terakhir yang bertahan! +1 mahkota', '#ffd700');
   { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = 'none'; }
@@ -3353,7 +3359,7 @@ function tickMultiplayer() {
   }
   if (!roomCode || !myRef || !character || !(gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN')) return;
   const now = performance.now(); if (now - mpLastSend < 100) return; mpLastSend = now;
-  update(myRef, { x: +character.position.x.toFixed(2), y: +character.position.y.toFixed(2), z: +character.position.z.toFixed(2), rot: +character.rotation.y.toFixed(2), status: (isSurvivalMap() && (gameState === 'GAMEOVER' || gameState === 'WIN')) ? (gameState === 'WIN' ? 'WIN' : 'ELIMINATED') : 'PLAYING', username: String(playerData.username).slice(0, 18), userKey: accountKey(), playerId: String(playerData.playerId || (playerData.isDev ? ADMIN_PLAYER_ID : '')), isDev: !!playerData.isDev, joinedAt: myJoinedAt, updatedAt: Date.now() }).catch(() => {});
+  update(myRef, { vip: hasVip(), x: +character.position.x.toFixed(2), y: +character.position.y.toFixed(2), z: +character.position.z.toFixed(2), rot: +character.rotation.y.toFixed(2), status: (isSurvivalMap() && (gameState === 'GAMEOVER' || gameState === 'WIN')) ? (gameState === 'WIN' ? 'WIN' : 'ELIMINATED') : 'PLAYING', username: String(playerData.username).slice(0, 18), userKey: accountKey(), playerId: String(playerData.playerId || (playerData.isDev ? ADMIN_PLAYER_ID : '')), isDev: !!playerData.isDev, joinedAt: myJoinedAt, updatedAt: Date.now() }).catch(() => {});
 }
 
 // ----- avatar pemain lain (kostum ikut dipakai) -----
@@ -3374,7 +3380,8 @@ function makeLabelSprite(o) { // o: { name, owner, host, costume }
   let w2 = 0, w3 = 0;
   if (o.owner) { x.font = 'bold 30px sans-serif'; w2 = x.measureText(' owner').width; w3 = 62; }
   let cx = 256 - (w1 + w2 + w3) / 2;
-  x.font = 'bold 46px sans-serif'; x.fillStyle = '#ffffff'; x.fillText(prefix + o.name, cx, 56); cx += w1;
+  if (o.vip && !o.owner) paintVipName(x, prefix + o.name, 46, false); else { x.font = 'bold 46px sans-serif'; x.fillStyle = '#ffffff'; x.fillText(prefix + o.name, cx, 56); }
+  cx += w1;
   if (o.owner) {
     x.font = 'bold 30px sans-serif'; x.fillStyle = '#ffd166'; x.fillText(' owner', cx, 58); cx += w2 + 8;
     // centang biru digambar langsung (bukan emoji) supaya tampil di semua HP
@@ -3440,7 +3447,7 @@ function updateRemoteAvatars() {
         av.visible = false;
       } else if (!d.deadAt && u.deadAt) { u.deadAt = null; av.visible = true; u.first = true; }
     } u.slot = LOBBY_SLOTS[i % LOBBY_SLOTS.length]; u.spawn = SPAWN[ids.indexOf(id) % SPAWN.length];
-    const lbl = { name: String(d.username || 'Pemain').slice(0, 14), owner: !!d.isDev, host: !!(roomMeta && roomMeta.host === id), costume: u.costumeName };
+    const lbl = { name: String(d.username || 'Pemain').slice(0, 14), owner: !!d.isDev, host: !!(roomMeta && roomMeta.host === id), costume: u.costumeName, vip: !!d.vip };
     const text = JSON.stringify(lbl);
     if (u.labelText !== text) {
       if (u.label) { av.remove(u.label); u.label.material.map.dispose(); u.label.material.dispose(); }
@@ -4349,6 +4356,135 @@ function buildPushButton() {
   setInterval(() => { b.style.display = (hasPushPass() && roomCode && gameState === 'PLAYING') ? 'flex' : 'none'; applyIncomingPushes(); }, 120);
 }
 
+// ----- GAMEPASS VIP / 2X KOIN / ANIMASI MENANG -----
+const hasGp = (id) => !!(playerData && playerData.inventory && playerData.inventory.includes(id));
+const hasVip = () => hasGp('gp_vip');
+const hasCoin2x = () => hasGp('gp_2xcoin');
+const hasWinFx = () => hasGp('gp_winfx');
+const coinX = (n) => hasCoin2x() ? n * 2 : n; // semua koin yang didapat dikali 2 kalau punya gamepass 2x
+
+// Nama VIP di label 3D: lencana "VIP" emas + nama bergradasi emas + bingkai emas.
+function paintVipName(x, text, size, isDev) {
+  const maxW = isDev ? 280 : 380, cx = isDev ? 255 : 304;
+  x.save();
+  x.strokeStyle = '#ffd166'; x.lineWidth = 4; x.beginPath(); x.roundRect(12, 12, 488, 84, 20); x.stroke();
+  const pg = x.createLinearGradient(0, 32, 0, 76); pg.addColorStop(0, '#ffe27a'); pg.addColorStop(1, '#ff9f1c');
+  x.fillStyle = pg; x.beginPath(); x.roundRect(24, 32, 76, 44, 12); x.fill();
+  x.font = 'bold 30px sans-serif'; x.fillStyle = '#3a2300'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('VIP', 62, 56);
+  let fs = size; x.font = 'bold ' + fs + 'px sans-serif';
+  while (fs > 24 && x.measureText(text).width > maxW) { fs -= 2; x.font = 'bold ' + fs + 'px sans-serif'; }
+  const ng = x.createLinearGradient(0, 28, 0, 82); ng.addColorStop(0, '#fff6c2'); ng.addColorStop(1, '#ffc93c');
+  x.fillStyle = ng; x.shadowColor = '#ff9f1c'; x.shadowBlur = 8; x.fillText(text, cx, 56);
+  x.restore();
+}
+
+// Aura emas eksklusif VIP (cincin berputar, selubung bercahaya, percikan naik). Hidup di scene agar tidak ikut ter-clone ke avatar lain.
+const vipAuras = new Map();
+let vipAuraAssets = null;
+function makeVipAura() {
+  const A = vipAuraAssets || (vipAuraAssets = {
+    ring1: new THREE.TorusGeometry(0.8, 0.035, 8, 48), ring2: new THREE.TorusGeometry(1.0, 0.02, 8, 48),
+    shell: new THREE.CylinderGeometry(0.62, 0.78, 2.7, 28, 1, true), spark: new THREE.OctahedronGeometry(0.06),
+    gold: new THREE.MeshBasicMaterial({ color: 0xffd45a, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }),
+    glow: new THREE.MeshBasicMaterial({ color: 0xffb62e, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending })
+  });
+  const g = new THREE.Group();
+  const r1 = new THREE.Mesh(A.ring1, A.gold), r2 = new THREE.Mesh(A.ring2, A.gold), shell = new THREE.Mesh(A.shell, A.glow);
+  r1.rotation.x = r2.rotation.x = Math.PI / 2; r1.position.y = r2.position.y = 0.08; shell.position.y = 1.35;
+  g.add(r1, r2, shell);
+  const sparks = [];
+  for (let i = 0; i < 8; i++) { const s = new THREE.Mesh(A.spark, A.gold); g.add(s); sparks.push(s); }
+  g.userData = { r1, r2, shell, sparks, t: Math.random() * 10 };
+  return g;
+}
+function updateVipAuras(delta) {
+  if (!scene) return;
+  const want = new Map();
+  if (character && character.visible && hasVip()) want.set('me', character);
+  for (const [id, av] of remotePlayers) { const d = roomPlayers[id]; if (d && d.vip && av.visible) want.set(id, av); }
+  for (const [k, g] of vipAuras) if (!want.has(k)) { scene.remove(g); vipAuras.delete(k); }
+  for (const [k, obj] of want) {
+    let g = vipAuras.get(k); if (!g) { g = makeVipAura(); scene.add(g); vipAuras.set(k, g); }
+    g.position.set(obj.position.x, obj.position.y, obj.position.z);
+    const u = g.userData; u.t += delta;
+    u.r1.rotation.z += delta * 1.8; u.r2.rotation.z -= delta * 1.2;
+    const pulse = 1 + Math.sin(u.t * 3) * 0.06; u.shell.scale.set(pulse, 1, pulse);
+    u.sparks.forEach((s, i) => {
+      const a = u.t * 1.6 + i * Math.PI / 4, h = (u.t * 0.5 + i / 8) % 1;
+      s.position.set(Math.cos(a) * 0.75, h * 2.6, Math.sin(a) * 0.75); s.rotation.y += delta * 4; s.scale.setScalar(Math.max(0.05, 1 - Math.abs(h - 0.5) * 1.6));
+    });
+  }
+}
+
+// Animasi menang khusus: mahkota emas melayang, pilar cahaya, gelombang cincin, kembang api & confetti.
+// Pemenang menulis winFx ke node-nya; semua pemain di room ikut melihat efeknya di atas avatar pemenang.
+const winFxList = [], handledWinFx = new Map();
+function makeCrown() {
+  const g = new THREE.Group();
+  const gold = new THREE.MeshStandardMaterial({ color: 0xffd24a, metalness: 0.9, roughness: 0.25, emissive: 0xffa800, emissiveIntensity: 0.6, side: THREE.DoubleSide });
+  const gem = new THREE.MeshStandardMaterial({ color: 0xff3b5c, emissive: 0xff1f4a, emissiveIntensity: 0.8 });
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.26, 0.16, 20, 1, true), gold));
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * Math.PI * 2, c = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.26, 8), gold);
+    c.position.set(Math.cos(a) * 0.28, 0.2, Math.sin(a) * 0.28); g.add(c);
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), gem); s.position.set(Math.cos(a) * 0.28, 0.36, Math.sin(a) * 0.28); g.add(s);
+  }
+  return g;
+}
+function winBurst(pos, n, colors, speed, life, size) {
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(size, size, size * 0.4), new THREE.MeshBasicMaterial({ color: colors[i % colors.length], transparent: true, opacity: 1 }));
+    m.position.copy(pos);
+    const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1), sp = speed * (0.5 + Math.random() * 0.6);
+    m.userData = { vx: Math.sin(ph) * Math.cos(th) * sp, vy: Math.cos(ph) * sp + 2, vz: Math.sin(ph) * Math.sin(th) * sp };
+    m.rotation.set(Math.random() * 3, Math.random() * 3, 0); scene.add(m); jumpParticles.push({ mesh: m, life });
+  }
+}
+function playWinFx(obj) {
+  if (!scene || !obj) return;
+  const g = new THREE.Group(); scene.add(g);
+  const crown = makeCrown(); g.add(crown);
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 40, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+  pillar.position.y = 20; g.add(pillar);
+  const rings = [0, 1, 2].map(() => {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.05, 8, 48), new THREE.MeshBasicMaterial({ color: 0xfff0a0, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+    r.rotation.x = Math.PI / 2; g.add(r); return r;
+  });
+  winFxList.push({ g, obj, crown, pillar, rings, t: 0, life: 4.5, nextBurst: 0.3 });
+  const base = new THREE.Vector3(obj.position.x, obj.position.y + 1.5, obj.position.z);
+  winBurst(base, 70, [0xff4d6d, 0xffd166, 0x4cc9f0, 0x80ed99, 0xf72585], 7, 2.4, 0.13); // confetti
+}
+function triggerWinFx() {
+  if (!hasWinFx() || !character) return;
+  playWinFx(character);
+  if (myRef) update(myRef, { winFx: serverNow() }).catch(() => {});
+}
+function updateWinFx(delta) {
+  if (!scene) return;
+  for (const [id, d] of Object.entries(roomPlayers)) {
+    if (id === mpUid || !d || !d.winFx || handledWinFx.get(id) === d.winFx) continue;
+    handledWinFx.set(id, d.winFx);
+    if (Math.abs(serverNow() - d.winFx) < 6000) playWinFx(remotePlayers.get(id));
+  }
+  for (let i = winFxList.length - 1; i >= 0; i--) {
+    const f = winFxList[i]; f.t += delta;
+    const p = f.obj.position, k = Math.min(1, f.t / f.life);
+    f.g.position.set(p.x, p.y, p.z);
+    f.crown.position.y = 3.2 + Math.sin(f.t * 4) * 0.1; f.crown.rotation.y += delta * 3; f.crown.scale.setScalar(Math.min(1, f.t * 4));
+    f.pillar.material.opacity = 0.35 * (1 - k);
+    f.rings.forEach((r, j) => { const q = (f.t * 0.7 + j / 3) % 1; r.scale.setScalar(0.6 + q * 4.5); r.position.y = 0.1 + q * 0.3; r.material.opacity = 0.9 * (1 - q) * (1 - k); });
+    if (f.t >= f.nextBurst && f.t < f.life - 1.2) { // kembang api di atas pemenang
+      f.nextBurst += 0.45;
+      const c = [[0xffd166, 0xfff1a8], [0xff4d6d, 0xffb3c1], [0x4cc9f0, 0xcaf0f8], [0x80ed99, 0xd8f3dc]][Math.floor(Math.random() * 4)];
+      winBurst(new THREE.Vector3(p.x + (Math.random() - 0.5) * 5, p.y + 5 + Math.random() * 3, p.z + (Math.random() - 0.5) * 5), 36, c, 5.5, 1.3, 0.1);
+    }
+    if (f.t >= f.life) {
+      f.g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+      scene.remove(f.g); winFxList.splice(i, 1);
+    }
+  }
+}
+
 // ----- GAMEPASS FREEZE PLAYER -----
 // Pelempar menulis event ke node pemain sendiri (rooms/<kode>/players/<uid>/ice). Semua klien melihat
 // kubus es terbang dari pelempar ke target; hanya korban yang benar-benar membeku di sisinya, lalu
@@ -4801,10 +4937,10 @@ function grantLoginRewards(m) {
     m.streak.claimed[def.id] = true; total += def.reward; got.push(def);
   }
   if (!total) return;
-  playerData.coins = Math.floor(Number(playerData.coins) || 0) + total;
+  playerData.coins = Math.floor(Number(playerData.coins) || 0) + coinX(total);
   const ce = document.getElementById('coin-amount'); if (ce) ce.textContent = playerData.coins;
   missionFlush();
-  showToast('📅 ' + got[got.length - 1].title + '  +' + total.toLocaleString('id-ID') + ' 🪙', 3500);
+  showToast('📅 ' + got[got.length - 1].title + '  +' + coinX(total).toLocaleString('id-ID') + ' 🪙', 3500);
   refreshMissionsModal();
 }
 function ensureMissions() {
@@ -4825,10 +4961,10 @@ function completeMission(id) {
   const m = ensureMissions(), def = DAILY_MISSIONS.find(x => x.id === id);
   if (!m || !def || m.done[id]) return;
   m.done[id] = true; m.prog[id] = def.goal;
-  playerData.coins = Math.floor(Number(playerData.coins) || 0) + def.reward;
+  playerData.coins = Math.floor(Number(playerData.coins) || 0) + coinX(def.reward);
   const ce = document.getElementById('coin-amount'); if (ce) ce.textContent = playerData.coins;
   missionFlush();
-  showToast('🎯 Misi selesai: ' + def.title + '  +' + def.reward.toLocaleString('id-ID') + ' 🪙', 3500);
+  showToast('🎯 Misi selesai: ' + def.title + '  +' + coinX(def.reward).toLocaleString('id-ID') + ' 🪙', 3500);
   refreshMissionsModal();
 }
 function missionAdd(id, amount) {
@@ -4920,6 +5056,8 @@ function animate() {
   animateRemotePlayers(delta);
   tickGhostFire();
   updateFreezeVisuals(delta);
+  updateVipAuras(delta);
+  updateWinFx(delta);
   missionTick(delta);
   if (lobbyAccentRing && gameState === 'LOBBY') lobbyAccentRing.rotation.z += delta * 0.12;
   if (scene && camera) renderer.render(scene, camera);
@@ -5112,12 +5250,13 @@ function animate() {
   // KONDISI MENANG DI PUNCAK
   if (!isSurvivalMap() && character.position.y > FIN_Y - 0.5 && Math.abs(character.position.x - WIN.x) < 4.5 && Math.abs(character.position.z - WIN.z) < 4.5) {
     gameState = 'WIN'; 
-    playerData.coins = (playerData.coins || 0) + 1000;
+    const winCoins = coinX(1000);
+    playerData.coins = (playerData.coins || 0) + winCoins;
     if (currentMap === 'snow') playerData.savedCheckpointSnow = null; else if (currentMap === 'mountain') playerData.savedCheckpointMountain = null; else playerData.savedCheckpoint = null; // selesai: progres checkpoint map ini direset
     updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins;
     onFinish();
-    showOverlay('YOU WIN!', (currentMap === 'snow' ? 'Kamu lolos dari dunia salju dan tembakan NPC! +1000 🪙' : currentMap === 'angkasa' ? 'Kamu berhasil menaklukkan lintasan luar angkasa! +1000 🪙' : currentMap === 'mountain' ? 'Kamu berhasil mencapai puncak gunung! +1000 🪙' : 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +1000 🪙') + finishSummary(), '#00ff00');
+    showOverlay('YOU WIN!', (currentMap === 'snow' ? 'Kamu lolos dari dunia salju dan tembakan NPC! +1000 🪙' : currentMap === 'angkasa' ? 'Kamu berhasil menaklukkan lintasan luar angkasa! +1000 🪙' : currentMap === 'mountain' ? 'Kamu berhasil mencapai puncak gunung! +1000 🪙' : 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +1000 🪙').split('+1000').join('+' + winCoins) + finishSummary(), '#00ff00');
   }
 
   // ===== Animasi karakter: damping + squash & stretch + condong badan =====
