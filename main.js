@@ -264,7 +264,7 @@ const SHOP_ITEMS = {
   ],
   gamepass: [
     { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 10000000, gamepass: true, desc: 'Dorong teman saat balapan (tombol🫸' },
-    { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 150000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 7 detik. Cooldown 5 detik' }
+    { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 15000000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 7 detik. Cooldown 5 detik' }
   ]
 };
 
@@ -316,7 +316,7 @@ window.addEventListener('DOMContentLoaded', () => {
   chatToggle.addEventListener('click', () => {
     const isHidden = chatBox.style.display === 'none' || chatBox.style.display === '';
     chatBox.style.display = isHidden ? 'flex' : 'none';
-    chatToggle.textContent = isHidden ? 'Tutup Chat' : 'Chat Global';
+    chatToggle.textContent = isHidden ? '❌ Tutup Chat' : '💬 Chat Global';
   });
 
   document.getElementById('chat-send').addEventListener('click', () => {
@@ -388,7 +388,7 @@ window.addEventListener('DOMContentLoaded', () => {
     setElDisplay('btn-music', 'none');
     document.getElementById('in-game-controls').style.display = 'block'; setLobbyOnlyHud(false);
     chatBox.style.display = 'none'; 
-    chatToggle.textContent = 'Chat Global';
+    chatToggle.textContent = '💬 Chat Global';
     profileModal.style.display = 'none';
     shopModal.style.display = 'none';
     // GACHA MAP: room memakai hasil gacha host (tersimpan di meta.map) agar semua pemain satu map.
@@ -592,7 +592,7 @@ async function returnToLobby() {
   if (laserWorldGroup) laserWorldGroup.visible = false;
   if (angkasaController) angkasaController.reset(physics);
   if (lobbyWorldGroup) lobbyWorldGroup.visible = true;
-  if (scene) { scene.background = new THREE.Color(0x10182b); scene.fog = null; }
+  if (scene) { scene.background = new THREE.Color(LOBBY_BG); scene.fog = new THREE.Fog(LOBBY_BG, 45, 110); }
   if (camera && controls) { camera.position.set(0, 3.8, 9.5); controls.target.set(0, 1.45, 0); }
   updateRoomUI();
 }
@@ -768,7 +768,7 @@ function startLobby() {
   init3DGame();
   if (parkourWorldGroup) parkourWorldGroup.visible = false;
   if (lobbyWorldGroup) lobbyWorldGroup.visible = true;
-  scene.fog = null;
+  scene.fog = new THREE.Fog(LOBBY_BG, 45, 110);
   character.position.set(0, 0.25, 0); character.rotation.y = 0;
   camera.position.set(0, 3.8, 9.5);
   controls.target.set(0, 1.45, 0);
@@ -1227,6 +1227,135 @@ function createJumpEffect() {
 
 // ============ 7. SETUP 3D & GAME LOOP ============
 let scene, camera, renderer, character, nameSprite, controls;
+// ===== LOBBY 3D: plaza siang hari bergaya mainan (matte, palet hangat, tanpa neon) =====
+const LOBBY_BG = 0xbfe0f2;
+function buildLobbyPlaza(root) {
+  const rng = (() => { let sd = 20241; return () => (sd = (sd * 16807) % 2147483647) / 2147483647; })();
+  const mat = (color, extra) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.92, metalness: 0, flatShading: true }, extra || {}));
+  const put = (geo, m, x, y, z, parent) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); (parent || root).add(o); return o; };
+  const srgb = (t) => { if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const WOOD = 0x8a5a35, TERRA = 0xc0674a, CREAM = 0xf3e6c8, TEAL = 0x4f8f8b, LEAF = [0x5f9f4a, 0x4f8a47, 0x78b255];
+  const PALETTE = [0xe8633a, 0xf2b84b, 0x4f9d8f, 0x5b7fd6];
+
+  // Cahaya siang hari yang hangat
+  root.add(new THREE.HemisphereLight(0xfff4e0, 0x93a85c, 1.15));
+  const sun = new THREE.DirectionalLight(0xfff1d6, 1.7); sun.position.set(-7, 14, 9); sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10 }); sun.shadow.camera.updateProjectionMatrix();
+  root.add(sun);
+
+  // Tekstur paving batu bata krem
+  const paving = (rep) => {
+    const size = 256, c = document.createElement('canvas'); c.width = c.height = size;
+    const g = c.getContext('2d'); g.fillStyle = '#b9a47f'; g.fillRect(0, 0, size, size);
+    const rows = 4, h = size / rows, w = size / 2;
+    for (let r = 0; r < rows; r++) for (let k = -1; k <= 2; k++) {
+      const j = Math.floor((rng() - 0.5) * 16), x = k * w + (r % 2) * w / 2;
+      g.fillStyle = 'rgb(' + (230 + j) + ',' + (216 + j) + ',' + (188 + j) + ')';
+      g.fillRect(x + 3, r * h + 3, w - 6, h - 6);
+    }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep); return srgb(t);
+  };
+
+  // Tanah rumput di sekeliling plaza
+  const ground = put(new THREE.CircleGeometry(90, 48), mat(0x9ac46b), 0, -0.6, 0);
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+
+  // Plaza: lingkaran luar & dalam berpaving, tepi terakota membulat
+  const sideTerra = mat(0xb5593f);
+  const outer = put(new THREE.CylinderGeometry(19, 19, 0.7, 64), [sideTerra, mat(0xffffff, { map: paving(7), flatShading: false }), sideTerra], 0, -0.38, 0);
+  outer.receiveShadow = true;
+  const sideCream = mat(0xdcc9a2);
+  const inner = put(new THREE.CylinderGeometry(12, 12, 0.12, 64), [sideCream, mat(0xffffff, { map: paving(4), flatShading: false }), sideCream], 0, 0.02, 0);
+  inner.receiveShadow = true;
+  const curbPts = [[18.6, -0.03], [18.6, 0.28], [18.85, 0.38], [19.2, 0.38], [19.45, 0.28], [19.45, -0.7]].map(p => new THREE.Vector2(p[0], p[1]));
+  const curb = put(new THREE.LatheGeometry(curbPts, 64), mat(TERRA, { side: THREE.DoubleSide }), 0, 0, 0);
+  curb.receiveShadow = true;
+
+  // Lingkaran start di tengah + cincin penanda berputar pelan dari potongan warna-warni
+  const startDisc = put(new THREE.CircleGeometry(3.0, 48), mat(CREAM), 0, 0.095, 0); startDisc.rotation.x = -Math.PI / 2; startDisc.receiveShadow = true;
+  const startRing = put(new THREE.RingGeometry(3.0, 3.3, 64), mat(TERRA), 0, 0.1, 0); startRing.rotation.x = -Math.PI / 2;
+  lobbyAccentRing = new THREE.Group(); lobbyAccentRing.rotation.x = -Math.PI / 2; lobbyAccentRing.position.set(0, 0.13, 0);
+  const dashGeo = new THREE.BoxGeometry(0.5, 0.14, 0.06), dashMats = PALETTE.map(c => mat(c));
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2, d = new THREE.Mesh(dashGeo, dashMats[i % PALETTE.length]);
+    d.position.set(Math.cos(a) * 2.1, Math.sin(a) * 2.1, 0); d.rotation.z = a + Math.PI / 2; lobbyAccentRing.add(d);
+  }
+  root.add(lobbyAccentRing);
+
+  // Dinding belakang: bagian bawah teal, atas krem, ada rel dan atap kayu
+  const wallW = 14;
+  put(new THREE.BoxGeometry(wallW, 3.4, 0.8), mat(TEAL), 0, 1.3, -10).receiveShadow = true;
+  put(new THREE.BoxGeometry(wallW, 6.0, 0.8), mat(0xe8d9b8), 0, 6.0, -10);
+  put(new THREE.BoxGeometry(wallW + 0.4, 0.22, 1.0), mat(WOOD), 0, 3.0, -10);
+  put(new THREE.BoxGeometry(wallW + 0.8, 0.3, 1.2), mat(WOOD), 0, 9.1, -10);
+
+  // Papan nama bercat tangan (di atas papan leaderboard)
+  const sc = document.createElement('canvas'); sc.width = 1024; sc.height = 256;
+  const sg = sc.getContext('2d');
+  sg.fillStyle = '#6b4a2f'; sg.beginPath(); sg.roundRect(0, 0, 1024, 256, 36); sg.fill();
+  sg.fillStyle = '#f4e7c8'; sg.beginPath(); sg.roundRect(14, 14, 996, 228, 26); sg.fill();
+  sg.textAlign = 'center'; sg.textBaseline = 'middle';
+  sg.font = '900 112px "Trebuchet MS", sans-serif'; sg.fillStyle = '#5a3a22'; sg.fillText('PARKOUR 3D', 512, 108);
+  sg.font = 'bold 36px "Trebuchet MS", sans-serif'; sg.fillStyle = '#c0563a'; sg.fillText('L O B B Y', 512, 188);
+  [0xe8633a, 0xf2b84b, 0x4f9d8f, 0x5b7fd6].forEach((c, i) => { sg.fillStyle = '#' + c.toString(16).padStart(6, '0'); sg.fillRect(330 + i * 90, 222, 70, 8); });
+  const signTex = srgb(new THREE.CanvasTexture(sc));
+  put(new THREE.PlaneGeometry(9, 2.25), new THREE.MeshBasicMaterial({ map: signTex, transparent: true }), 0, 6.7, -9.55);
+
+  // Tiang kayu di tepi dinding + bendera segitiga warna-warni di antaranya
+  const postGeo = new THREE.CylinderGeometry(0.24, 0.3, 9.1, 10);
+  for (const sd of [-1, 1]) {
+    put(postGeo, mat(WOOD), sd * 7.6, 4.45, -9.2);
+    put(new THREE.SphereGeometry(0.34, 10, 8), mat(TERRA), sd * 7.6, 9.2, -9.2);
+  }
+  const bunt = (x) => [x, 8.9 - 0.6 * (1 - Math.pow(x / 7.6, 2)), -9.2];
+  const curve = new THREE.CatmullRomCurve3([-7.6, -3.8, 0, 3.8, 7.6].map(x => new THREE.Vector3(...bunt(x))));
+  put(new THREE.TubeGeometry(curve, 24, 0.025, 4), mat(0x5a3a22), 0, 0, 0);
+  const N = 14, pos = [], col = [], cc = new THREE.Color();
+  for (let i = 0; i < N; i++) {
+    const x0 = -7.4 + (i + 0.15) * (14.8 / N), x1 = -7.4 + (i + 0.85) * (14.8 / N), xm = (x0 + x1) / 2;
+    const p0 = bunt(x0), p1 = bunt(x1), pm = bunt(xm); pm[1] -= 0.55;
+    pos.push(...p0, ...p1, ...pm); cc.setHex(PALETTE[i % PALETTE.length]); for (let k = 0; k < 3; k++) col.push(cc.r, cc.g, cc.b);
+  }
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); bg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  put(bg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }), 0, 0, 0);
+
+  // Pagar tanaman rendah di kiri-kanan dinding
+  const hedgeMat = mat(0x5a9a46), hedgeGeo = new THREE.BoxGeometry(9.2, 1.3, 1.3);
+  for (const sd of [-1, 1]) { const hg = put(hedgeGeo, hedgeMat, sd * 12.4, 0.35, -10); hg.castShadow = true; }
+
+  // Pot batu berisi semak di kiri-kanan area start
+  const potGeo = new THREE.CylinderGeometry(1.1, 0.95, 0.55, 14), bushGeo = new THREE.IcosahedronGeometry(0.95, 0), potMat = mat(0xc9b79a), bushMat = mat(LEAF[0]);
+  for (const sd of [-1, 1]) {
+    const pot = put(potGeo, potMat, sd * 5.3, 0.3, -1.2); pot.castShadow = true;
+    const bush = put(bushGeo, bushMat, sd * 5.3, 1.05, -1.2); bush.castShadow = true;
+  }
+
+  // Pohon-pohon di luar plaza (pinus & bulat), kecuali sisi depan dekat kamera
+  const trunkGeo = new THREE.CylinderGeometry(0.28, 0.4, 1.8, 7), trunkMat = mat(0x7a5a3a);
+  const coneGeo = new THREE.ConeGeometry(1.7, 3.2, 7), ballGeo = new THREE.IcosahedronGeometry(2.0, 0);
+  const leafMats = LEAF.map(c => mat(c));
+  for (let i = 0; i < 18; i++) {
+    const ang = (i / 18) * Math.PI * 2 + rng() * 0.25;
+    if (Math.sin(ang) > 0.55) continue;                         // sisi depan dibiarkan terbuka
+    const r = 25 + rng() * 10, x = Math.cos(ang) * r, z = Math.sin(ang) * r, sc2 = 0.9 + rng() * 0.7;
+    const tree = new THREE.Group(); tree.position.set(x, -0.55, z); tree.scale.setScalar(sc2);
+    put(trunkGeo, trunkMat, 0, 0.9, 0, tree);
+    const lm = leafMats[i % leafMats.length];
+    if (i % 2) { put(coneGeo, lm, 0, 3.0, 0, tree); put(coneGeo, lm, 0, 4.6, 0, tree).scale.setScalar(0.72); }
+    else put(ballGeo, lm, 0, 3.2, 0, tree);
+    root.add(tree);
+  }
+
+  // Awan datar di kejauhan
+  const cloudGeo = new THREE.IcosahedronGeometry(1, 1), cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
+  for (const [cx, cy, cz, k] of [[-34, 30, -62, 1.3], [28, 36, -72, 1.6], [52, 28, -40, 1.1]]) {
+    const cl = new THREE.Group(); cl.position.set(cx, cy, cz); cl.scale.setScalar(k * 3.2);
+    for (const [ox, oy, sx] of [[0, 0, 1.3], [1.3, -0.15, 1.0], [-1.3, -0.2, 0.95], [0.5, 0.45, 0.85]]) { const p = new THREE.Mesh(cloudGeo, cloudMat); p.position.set(ox, oy, 0); p.scale.set(sx, sx * 0.62, sx * 0.8); cl.add(p); }
+    root.add(cl);
+  }
+}
 let parkourWorldGroup = null, lobbyWorldGroup = null, lobbyAccentRing = null;
 let platforms = [], physics, lavaMat;
 let leftLegPivot, rightLegPivot, leftArmPivot, rightArmPivot, headGroup;
@@ -1824,42 +1953,11 @@ function init3DGame() {
   catch (e) { console.error('Map Laser gagal dibuat:', e); laserWorld = null; laserWorldGroup = null; }
 
   lobbyWorldGroup = new THREE.Group();
-  lobbyWorldGroup.name = 'FREE_FIRE_STYLE_LOBBY';
+  lobbyWorldGroup.name = 'LOBBY_PLAZA';
   scene.add(lobbyWorldGroup);
-  lobbyWorldGroup.add(new THREE.HemisphereLight(0xd9e9ff, 0x182039, 1.25));
-  const lobbyKey = new THREE.DirectionalLight(0xffffff, 1.8); lobbyKey.position.set(-7, 14, 9); lobbyKey.castShadow = true; lobbyWorldGroup.add(lobbyKey);
-  const lobbyFloorMat = new THREE.MeshStandardMaterial({ color: 0x202b45, metalness: 0.35, roughness: 0.62 });
-  const lobbyFloor = new THREE.Mesh(new THREE.CylinderGeometry(19, 19, 0.7, 64), lobbyFloorMat);
-  lobbyFloor.position.y = -0.38; lobbyFloor.receiveShadow = true; lobbyFloor.castShadow = true; lobbyWorldGroup.add(lobbyFloor);
-  const lobbyInner = new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 0.12, 64), new THREE.MeshStandardMaterial({ color: 0x34486c, metalness: 0.45, roughness: 0.42 }));
-  lobbyInner.position.y = 0.02; lobbyInner.receiveShadow = true; lobbyWorldGroup.add(lobbyInner);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(15.5, 0.12, 12, 96), new THREE.MeshBasicMaterial({ color: 0x42d9ff }));
-  rim.rotation.x = Math.PI / 2; rim.position.y = 0.08; lobbyWorldGroup.add(rim);
-  lobbyAccentRing = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.045, 10, 64), new THREE.MeshBasicMaterial({ color: 0xb36bff }));
-  lobbyAccentRing.rotation.x = Math.PI / 2; lobbyAccentRing.position.set(0, 0.12, 0); lobbyWorldGroup.add(lobbyAccentRing);
-  const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 9, 0.8), new THREE.MeshStandardMaterial({ color: 0x10182b, metalness: 0.25, roughness: 0.7 }));
-  backWall.position.set(0, 4.1, -10); lobbyWorldGroup.add(backWall);
-  const signCanvas = document.createElement('canvas'); signCanvas.width = 1024; signCanvas.height = 256;
-  const signCtx = signCanvas.getContext('2d');
-  signCtx.fillStyle = '#10182b'; signCtx.fillRect(0, 0, 1024, 256);
-  signCtx.strokeStyle = '#42d9ff'; signCtx.lineWidth = 12; signCtx.strokeRect(12, 12, 1000, 232);
-  signCtx.textAlign = 'center'; signCtx.textBaseline = 'middle'; signCtx.font = 'bold 100px sans-serif'; signCtx.fillStyle = '#ffffff'; signCtx.fillText('PARKOUR 3D', 512, 112);
-  signCtx.font = 'bold 34px sans-serif'; signCtx.fillStyle = '#42d9ff'; signCtx.fillText('LOBBY', 512, 194);
-  const signTex = new THREE.CanvasTexture(signCanvas);
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(10, 2.5), new THREE.MeshBasicMaterial({ map: signTex }));
-  sign.position.set(0, 5.3, -9.55); lobbyWorldGroup.add(sign);
-  for (const side of [-1, 1]) {
-    const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 6, 1.2), new THREE.MeshStandardMaterial({ color: 0x293957, metalness: 0.55, roughness: 0.35 }));
-    pillar.position.set(side * 10, 2.7, -7); lobbyWorldGroup.add(pillar);
-    const glow = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.12, 1.28), new THREE.MeshBasicMaterial({ color: side < 0 ? 0x42d9ff : 0xb36bff }));
-    glow.position.set(side * 10, 4.5, -7); lobbyWorldGroup.add(glow);
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.25, 0.45, 32), new THREE.MeshStandardMaterial({ color: 0x34486c, metalness: 0.5, roughness: 0.35 }));
-    pad.position.set(side * 5.3, 0.25, -1.2); lobbyWorldGroup.add(pad);
-  }
-  const lobbyMark = new THREE.Mesh(new THREE.CircleGeometry(3.2, 64), new THREE.MeshBasicMaterial({ color: 0x172744 }));
-  lobbyMark.rotation.x = -Math.PI / 2; lobbyMark.position.y = 0.095; lobbyWorldGroup.add(lobbyMark);
+  buildLobbyPlaza(lobbyWorldGroup);
   lobbyWorldGroup.visible = true;
-  scene.background = new THREE.Color(0x10182b); scene.fog = null;
+  scene.background = new THREE.Color(LOBBY_BG); scene.fog = new THREE.Fog(LOBBY_BG, 45, 110);
 
   character = new THREE.Group();
   character.position.set(0, 0.25, 0);
@@ -3213,7 +3311,6 @@ function onFinish() {
   if (finishMs != null) return;
   finishMs = rawElapsedMs();
   personalRunScore = scoreFromTime(finishMs);
-  missionBeatAdminCheck();
   if (myRef) update(myRef, { finishMs: Math.round(finishMs), score: personalRunScore }).catch(() => {});
   awardWinCrown().catch(e => { console.warn('Mahkota kemenangan gagal disimpan:', e); showToast('⚠️ Mahkota gagal disimpan ke Firebase'); });
   if (currentMap === 'lava') savePersonalBest(personalRunScore, finishMs).catch(e => console.warn('Simpan rekor gagal:', e)); // leaderboard lama khusus map Lava
@@ -3235,7 +3332,6 @@ function honeyEliminateLocal(reason) {
 function honeyDeclareWin() {
   if (honeyWinAwarded || honeyRoundEnded) return;
   honeyWinAwarded = true; honeyRoundEnded = true; gameState = 'WIN';
-  missionBeatAdminHoney();
   if (myRef) update(myRef, { status: 'WIN', wonAt: serverNow() }).catch(() => {});
   awardWinCrown().catch(e => { console.warn('Gagal memberi mahkota:', e); showToast('⚠️ Mahkota gagal disimpan'); });
   showOverlay('YOU WIN! 👑', 'Kamu pemain terakhir yang bertahan! +1 mahkota', '#ffd700');
@@ -3415,7 +3511,7 @@ function buildLobbyLeaderboard() {
   lobbyLeaderboardGroup.rotation.y = 0;
   lobbyWorldGroup.add(lobbyLeaderboardGroup);
 
-  const frameMat = new THREE.MeshStandardMaterial({ color: 0x10182b, metalness: 0.62, roughness: 0.32 });
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, metalness: 0.05, roughness: 0.85 });
   const frame = new THREE.Mesh(new THREE.BoxGeometry(0.22, 5.55, 5.55), frameMat);
   frame.position.set(0, 2.78, -0.06);
   frame.castShadow = true;
@@ -3436,7 +3532,7 @@ function buildLobbyLeaderboard() {
   lobbyLeaderboardGroup.add(panel);
 
   // Lampu tepi agar papan mudah terlihat di lobby.
-  const edgeMat = new THREE.MeshBasicMaterial({ color: 0x42d9ff });
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0xf2b84b });
   for (const [x, y, z, w, h, d] of [
     [0, 5.48, 0.12, 5.4, 0.045, 0.05],
     [0, 0.08, 0.12, 5.4, 0.045, 0.05],
@@ -3567,37 +3663,37 @@ function updateLobbyLeaderboard() {
   const c = lobbyLeaderboardCanvas, x = lobbyLeaderboardCtx;
   x.clearRect(0, 0, c.width, c.height);
   const grad = x.createLinearGradient(0, 0, 0, 1024);
-  grad.addColorStop(0, '#142747'); grad.addColorStop(1, '#080f20');
+  grad.addColorStop(0, '#f6ead0'); grad.addColorStop(1, '#ecd9b2');
   x.fillStyle = grad; x.fillRect(0, 0, 1024, 1024);
-  x.strokeStyle = '#42d9ff'; x.lineWidth = 12; x.strokeRect(12, 12, 1000, 1000);
+  x.strokeStyle = '#6b4a2f'; x.lineWidth = 12; x.strokeRect(12, 12, 1000, 1000);
   x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.font = '900 76px sans-serif'; x.fillStyle = '#ffffff';
+  x.font = '900 76px sans-serif'; x.fillStyle = '#4a2f1b';
   x.fillText('LEADERBOARD', 512, 82);
-  x.font = 'bold 30px sans-serif'; x.fillStyle = '#42d9ff';
+  x.font = 'bold 30px sans-serif'; x.fillStyle = '#b5513a';
   x.fillText(roomCode ? `GRUP TEMAN  •  ${entries.length}/${MAX_PLAYERS} PEMAIN` : `JUMLAH MAHKOTA • MIN. ${leaderboardMinCrowns} 👑`, 512, 142);
-  x.strokeStyle = 'rgba(66,217,255,.55)'; x.lineWidth = 3;
+  x.strokeStyle = 'rgba(107,74,47,.55)'; x.lineWidth = 3;
   x.beginPath(); x.moveTo(55, 188); x.lineTo(969, 188); x.stroke();
 
   if (!entries.length) {
-    x.fillStyle = '#dce8ff'; x.font = 'bold 38px sans-serif';
+    x.fillStyle = '#5c4630'; x.font = 'bold 38px sans-serif';
     x.fillText(roomCode ? 'MENUNGGU PEMAIN' : 'BELUM ADA REKOR', 512, 470);
-    x.font = '28px sans-serif'; x.fillStyle = '#8fa9d4';
+    x.font = '28px sans-serif'; x.fillStyle = '#8a7355';
     x.fillText(roomCode ? 'Mulai lomba untuk melihat peringkat' : 'Selesaikan parkour untuk masuk leaderboard', 512, 525);
   } else {
     entries.forEach((e, i) => {
       const top = 205 + i * 99;
-      x.fillStyle = e.isMe ? 'rgba(66,217,255,.20)' : (i % 2 ? 'rgba(255,255,255,.045)' : 'rgba(255,255,255,.085)');
+      x.fillStyle = e.isMe ? 'rgba(224,99,58,.22)' : (i % 2 ? 'rgba(74,47,27,.07)' : 'rgba(74,47,27,.13)');
       x.beginPath(); x.roundRect(42, top, 940, 88, 18); x.fill();
-      x.fillStyle = i === 0 && e.finished ? '#ffd166' : '#42d9ff';
+      x.fillStyle = i === 0 && e.finished ? '#c98a10' : '#b5513a';
       x.font = '900 42px sans-serif'; x.textAlign = 'left';
       x.fillText(String(i + 1).padStart(2, '0'), 72, top + 44);
-      x.fillStyle = '#ffffff'; x.font = 'bold 36px sans-serif';
+      x.fillStyle = '#3b2616'; x.font = 'bold 36px sans-serif';
       const name = (e.host ? '👑 ' : '') + e.name + (e.isMe ? ' (KAMU)' : '');
       x.fillText(name, 178, top + 34, 500);
-      x.textAlign = 'left'; x.font = '22px sans-serif'; x.fillStyle = '#8fb9dc';
+      x.textAlign = 'left'; x.font = '22px sans-serif'; x.fillStyle = '#8a7355';
       x.fillText('ID ' + String((sourcePlayers[e.id] || {}).playerId || (e.name.toLowerCase() === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')), 180, top + 67, 460);
       x.textAlign = 'right'; x.font = '900 30px sans-serif';
-      x.fillStyle = '#ffd76a';
+      x.fillStyle = '#b87400';
       x.fillText('👑 ' + String(e.crowns), 950, top + 44);
     });
   }
@@ -4667,21 +4763,61 @@ let walkTime = 0;
 
 // ===== MISI HARIAN (reset setiap pukul 00.00 sesuai jam perangkat) =====
 const DAILY_MISSIONS = [
-  { id: 'match',  icon: '🎮', title: 'Bermain 1 match',        desc: 'Main minimal 15 detik di satu match',          reward: 200,    goal: 1 },
-  { id: 'friend', icon: '👥', title: 'Bermain bersama teman',  desc: 'Main match di grup bersama minimal 1 teman',   reward: 300,    goal: 1 },
+  // Login beruntun: progres = jumlah hari login berturut-turut (siklus 5 hari), hadiah otomatis masuk saat login.
+  { id: 'login1', group: 'Login Beruntun (siklus 5 hari)', login: 1, icon: '📅', title: 'Login hari ke-1',          desc: 'Buka game hari ini',                         reward: 300,  goal: 1 },
+  { id: 'login2', login: 2, icon: '📅', title: 'Login 2 hari berturut-turut', desc: 'Buka game 2 hari tanpa terlewat',            reward: 600,  goal: 2 },
+  { id: 'login3', login: 3, icon: '📅', title: 'Login 3 hari berturut-turut', desc: 'Buka game 3 hari tanpa terlewat',            reward: 800,  goal: 3 },
+  { id: 'login5', login: 5, icon: '🗓️', title: 'Login 5 hari berturut-turut', desc: 'Buka game 5 hari tanpa terlewat',            reward: 1000, goal: 5 },
+  // Main match: tiap match dihitung sekali jika main minimal 15 detik.
+  { id: 'match',  group: 'Main Match', icon: '🎮', title: 'Bermain 1 match',        desc: 'Main minimal 15 detik di satu match',          reward: 200,    goal: 1 },
+  { id: 'match2', track: 'match', icon: '🎮', title: 'Bermain 2 match',        desc: 'Selesaikan 2 match hari ini (min. 15 detik)',  reward: 500,    goal: 2 },
+  { id: 'match3', track: 'match', icon: '🎮', title: 'Bermain 3 match',        desc: 'Selesaikan 3 match hari ini (min. 15 detik)',  reward: 800,    goal: 3 },
+  { id: 'friend', group: 'Misi Lainnya', icon: '👥', title: 'Bermain bersama teman',  desc: 'Main match di grup bersama minimal 1 teman',   reward: 300,    goal: 1 },
   { id: 'time',   icon: '⏱️', title: 'Bermain selama 30 menit', desc: 'Total waktu bermain aktif hari ini',            reward: 1000,   goal: 1800 },
-  { id: 'admin',  icon: '👑', title: 'Kalahkan Admin',          desc: 'Menangkan balapan melawan admin di room',      reward: 999999, goal: 1 },
 ];
 const MISSION_MIN_ROUND_SEC = 15;
-let missionRoundSec = 0, missionLastPos = null, missionLastMoveAt = 0, missionDirty = false, missionSaveAt = 0;
+const LOGIN_CYCLE = 5;
+let missionRoundSec = 0, missionRoundCounted = false, missionLastPos = null, missionLastMoveAt = 0, missionDirty = false, missionSaveAt = 0;
 
-function missionDayKey() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function missionDayKey(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+// Hitung streak login untuk hari ini dari data streak terakhir.
+function nextLoginStreak(old, day) {
+  if (!old || !old.last) return { count: 1, last: day, claimed: {} };
+  if (old.last === day) return old;
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  const prev = Number(old.count) || 0;
+  if (old.last === missionDayKey(y)) {
+    if (prev >= LOGIN_CYCLE) return { count: 1, last: day, claimed: {} };          // siklus 5 hari selesai -> mulai lagi
+    return { count: prev + 1, last: day, claimed: old.claimed || {} };
+  }
+  return { count: 1, last: day, claimed: {} };                                      // ada hari yang terlewat -> mulai dari awal
+}
+function grantLoginRewards(m) {
+  if (!m || !m.streak) return;
+  if (!m.streak.claimed) m.streak.claimed = {};
+  let total = 0; const got = [];
+  for (const def of DAILY_MISSIONS) {
+    if (!def.login || m.streak.claimed[def.id] || (Number(m.streak.count) || 0) < def.login) continue;
+    m.streak.claimed[def.id] = true; total += def.reward; got.push(def);
+  }
+  if (!total) return;
+  playerData.coins = Math.floor(Number(playerData.coins) || 0) + total;
+  const ce = document.getElementById('coin-amount'); if (ce) ce.textContent = playerData.coins;
+  missionFlush();
+  showToast('📅 ' + got[got.length - 1].title + '  +' + total.toLocaleString('id-ID') + ' 🪙', 3500);
+  refreshMissionsModal();
+}
 function ensureMissions() {
   if (!playerData || !playerData.username) return null;
   const day = missionDayKey();
-  let m = playerData.dailyMissions;
-  if (!m || m.day !== day) { m = playerData.dailyMissions = { day, prog: {}, done: {} }; missionDirty = true; }   // hari baru -> reset
+  let m = playerData.dailyMissions, fresh = false;
+  if (!m || m.day !== day) {                                                         // hari baru -> reset misi harian, streak login dilanjutkan
+    m = playerData.dailyMissions = { day, prog: {}, done: {}, streak: nextLoginStreak(m && m.streak, day) };
+    missionDirty = true; fresh = true;
+  }
   if (!m.prog) m.prog = {}; if (!m.done) m.done = {};
+  if (!m.streak) { m.streak = nextLoginStreak(null, day); missionDirty = true; fresh = true; }   // data lama tanpa streak
+  if (fresh) grantLoginRewards(m);
   return m;
 }
 function missionFlush() { missionDirty = false; missionSaveAt = performance.now(); updatePlayerFirebase().catch(e => console.warn('Gagal menyimpan misi:', e)); }
@@ -4697,38 +4833,29 @@ function completeMission(id) {
 }
 function missionAdd(id, amount) {
   const m = ensureMissions(), def = DAILY_MISSIONS.find(x => x.id === id);
-  if (!m || !def || m.done[id]) return;
-  if (id === 'admin' && isAdminUser()) return;           // akun admin tidak bisa mengalahkan dirinya sendiri
+  if (!m || !def || def.login || m.done[id]) return;
   m.prog[id] = Math.min(def.goal, (Number(m.prog[id]) || 0) + amount); missionDirty = true;
   if (m.prog[id] >= def.goal) completeMission(id);
 }
+// Tambah progres ke semua misi yang melacak hal yang sama (mis. 'match' -> misi 1, 2, dan 3 match).
+function missionTrack(track, amount) {
+  for (const def of DAILY_MISSIONS) if (!def.login && (def.track || def.id) === track) missionAdd(def.id, amount);
+}
 function missionTick(dt) {
   const m = ensureMissions(); if (!m || !character) return;
-  if (gameState === 'LOBBY') { missionRoundSec = 0; missionLastPos = null; if (missionDirty) missionFlush(); return; }
+  if (gameState === 'LOBBY') { missionRoundSec = 0; missionRoundCounted = false; missionLastPos = null; if (missionDirty) missionFlush(); return; }
   if (gameState !== 'PLAYING' || document.hidden) return;
   const now = performance.now(), p = character.position;
   if (!missionLastPos || Math.hypot(p.x - missionLastPos.x, p.y - missionLastPos.y, p.z - missionLastPos.z) > 0.05) { missionLastMoveAt = now; missionLastPos = p.clone(); }
   if (now - missionLastMoveAt > 15000) return;            // diam/AFK lebih dari 15 detik tidak dihitung
   missionRoundSec += dt;
-  missionAdd('time', dt);
-  if (missionRoundSec >= MISSION_MIN_ROUND_SEC) {
-    missionAdd('match', 1);
-    if (roomCode && roomStartAt && Object.keys(roomPlayers || {}).length >= 2) missionAdd('friend', 1);
+  missionTrack('time', dt);
+  if (missionRoundSec >= MISSION_MIN_ROUND_SEC && !missionRoundCounted) {   // satu match dihitung satu kali
+    missionRoundCounted = true;
+    missionTrack('match', 1);
+    if (roomCode && roomStartAt && Object.keys(roomPlayers || {}).length >= 2) missionTrack('friend', 1);
   }
   if (missionDirty && now - missionSaveAt > 30000) missionFlush();   // simpan berkala
-}
-// Balapan: admin kalah jika belum finish, atau finish lebih lambat dari kamu.
-function missionBeatAdminCheck() {
-  if (!roomCode || isAdminUser() || finishMs == null) return;
-  const adminP = Object.entries(roomPlayers || {}).find(([id, p]) => id !== mpUid && p && p.isDev && String(p.status || '').toUpperCase() !== 'LOBBY');
-  if (!adminP) return;
-  const af = adminP[1].finishMs;
-  if (af == null || Number(af) > finishMs) missionAdd('admin', 1);
-}
-// Honey Drop: kamu bertahan paling akhir, jadi admin yang ada di ronde itu otomatis kalah.
-function missionBeatAdminHoney() {
-  if (!roomCode || isAdminUser()) return;
-  if (Object.entries(roomPlayers || {}).some(([id, p]) => id !== mpUid && p && p.isDev)) missionAdd('admin', 1);
 }
 
 function missionResetText() {
@@ -4742,8 +4869,16 @@ function refreshMissionsModal() {
   document.getElementById('missions-reset').textContent = missionResetText();
   const list = document.getElementById('missions-list'); list.innerHTML = '';
   for (const def of DAILY_MISSIONS) {
-    const done = !!m.done[def.id], prog = done ? def.goal : Math.min(def.goal, Number(m.prog[def.id]) || 0), pct = Math.round(prog / def.goal * 100);
-    const txt = def.id === 'time' ? Math.floor(prog / 60) + ' / ' + Math.floor(def.goal / 60) + ' menit' : prog + ' / ' + def.goal;
+    if (def.group) { const h = document.createElement('div'); h.className = 'mi-h'; h.textContent = def.group; list.appendChild(h); }
+    let done, prog, txt;
+    if (def.login) {
+      const st = m.streak || { count: 0, claimed: {} };
+      done = !!(st.claimed && st.claimed[def.id]); prog = done ? def.goal : Math.min(def.goal, Number(st.count) || 0); txt = prog + ' / ' + def.goal + ' hari';
+    } else {
+      done = !!m.done[def.id]; prog = done ? def.goal : Math.min(def.goal, Number(m.prog[def.id]) || 0);
+      txt = def.id === 'time' ? Math.floor(prog / 60) + ' / ' + Math.floor(def.goal / 60) + ' menit' : prog + ' / ' + def.goal;
+    }
+    const pct = Math.round(prog / def.goal * 100);
     const row = document.createElement('div'); row.className = 'mi-row' + (done ? ' mi-done' : '');
     row.innerHTML = '<div class="mi-ic">' + def.icon + '</div><div class="mi-body"><b>' + def.title + '</b><small>' + def.desc + '</small>' +
       '<div class="mi-bar"><i style="width:' + pct + '%"></i></div><small>' + (done ? '✅ Selesai' : txt) + '</small></div>' +
@@ -4758,7 +4893,7 @@ function buildMissionsUI() {
     '#missions-modal{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}' +
     '#missions-card{width:min(380px,calc(100vw - 24px));max-height:82vh;overflow:auto;padding:14px;border-radius:16px;background:rgba(9,16,31,.97);border:1px solid rgba(120,255,160,.6);color:#fff;font-family:sans-serif;box-shadow:0 10px 40px #000a}' +
     '#missions-card h3{margin:0 0 2px;font-size:18px}#missions-reset{font-size:12px;color:#8dffb0;margin-bottom:10px}' +
-    '.mi-row{display:flex;gap:10px;align-items:center;padding:9px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06)}.mi-row.mi-done{opacity:.65}' +
+    '.mi-h{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8dffb0;margin:12px 2px 6px}.mi-row{display:flex;gap:10px;align-items:center;padding:9px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06)}.mi-row.mi-done{opacity:.65}' +
     '.mi-ic{font-size:24px;width:32px;text-align:center}.mi-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.mi-body small{color:#aab4c8;font-size:11px}' +
     '.mi-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden;margin:3px 0}.mi-bar i{display:block;height:100%;background:linear-gradient(90deg,#34d17a,#8dffb0)}' +
     '.mi-rw{font-weight:800;color:#ffd166;text-align:center;font-size:13px;line-height:1.2}#missions-close{width:100%;margin-top:4px;padding:10px;border:0;border-radius:10px;background:#1e2a44;color:#fff;font-weight:700}';
