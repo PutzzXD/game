@@ -720,7 +720,7 @@ async function awardWinCrown() {
   playerData.crowns = next;
   updateCrownProfileUI();
   // Simpan juga salinan di node leaderboard supaya penyaringan dan tampilan selalu sinkron.
-  await socialPatch(`leaderboard/${key}`, { crowns: next }).catch(() => {});
+  await socialPatch(`leaderboard/${key}`, { crowns: next, username: String(playerData.username || key).slice(0, 18), playerId: String(playerData.playerId || ''), isDev: !!playerData.isDev, equipped: myEquipped() }).catch(() => {});
   refreshSoloLeaderboard(true).catch(() => {});
   showToast(`MENANG! Kamu mendapat 1 mahkota (${next})`, 2800);
 }
@@ -3650,15 +3650,26 @@ async function refreshSoloLeaderboard(force = false) {
       socialGet('players').catch(() => ({}))
     ]);
     await loadCrownSettings();
-    soloLeaderboardEntries = Object.entries(data || {})
-      .filter(([key, p]) => p && Number(p.bestScore) > 0 && Number(p.crowns ?? profiles?.[key]?.crowns ?? 0) >= leaderboardMinCrowns)
-      .map(([key, p]) => ({
-        id: key, username: String(p.username || key).slice(0, 18),
-        playerId: String(p.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')),
-        isDev: !!p.isDev, equipped: p.equipped || {}, crowns: key === DEV_USERNAME ? ADMIN_FIXED_CROWNS : Math.max(0, Number(profiles?.[key]?.crowns ?? p.crowns) || 0),
+    // Sumber data = gabungan node `leaderboard` + `players` (profil). Dulu hanya node `leaderboard` yang dibaca dan
+    // wajib punya bestScore > 0 (rekor Lava), sehingga pemain yang mahkotanya didapat dari map lain (Salju, Angkasa,
+    // Gunung, Honey, Laser) tidak pernah masuk walau mahkotanya sudah tersimpan di DB. Sekarang cukup mahkota >= minimal.
+    const lb = data || {}, pf = profiles || {};
+    const keys = new Set([...Object.keys(lb), ...Object.keys(pf)]);
+    const rows = [];
+    for (const key of keys) {
+      const p = lb[key] || {}, prof = pf[key] || {};
+      if (!p || typeof p !== 'object' || !prof || typeof prof !== 'object') continue;
+      const crowns = key === DEV_USERNAME ? ADMIN_FIXED_CROWNS : Math.max(0, Math.floor(Number(prof.crowns ?? p.crowns) || 0));
+      if (crowns <= 0 || crowns < leaderboardMinCrowns) continue;
+      rows.push({
+        id: key, username: String(prof.username || p.username || key).slice(0, 18),
+        playerId: String(prof.playerId || p.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------')),
+        isDev: !!(prof.isDev ?? p.isDev), equipped: prof.equipped || p.equipped || {}, crowns,
         bestScore: Number(p.bestScore) || 0, bestTimeMs: Number(p.bestTimeMs) || 0,
         finishMs: Number(p.bestTimeMs) || null
-      }))
+      });
+    }
+    soloLeaderboardEntries = rows
       .sort((a, b) => b.crowns - a.crowns || String(a.username).localeCompare(String(b.username)))
       .slice(0, MAX_PLAYERS);
     soloLeaderboardLastFetch = Date.now();
