@@ -3,6 +3,7 @@ import { buildSnowWorld } from './snow.js';
 import { buildAngkasaWorld } from './angkasa.js';
 import { buildMountainWorld } from './mountain.js';
 import { buildHoneyWorld } from './honey.js';
+import { buildLaserWorld } from './laser.js';
 import { buildLavaMap, updateLavaMap } from './lava.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -391,7 +392,7 @@ window.addEventListener('DOMContentLoaded', () => {
     shopModal.style.display = 'none';
     // GACHA MAP: room memakai hasil gacha host (tersimpan di meta.map) agar semua pemain satu map.
     const roomMap = roomMeta && roomMeta.map;
-    const pickedMap = (roomCode && roomStartAt) ? ((roomMap === 'snow' && snowWorld) ? 'snow' : (roomMap === 'angkasa' && angkasaWorld) ? 'angkasa' : (roomMap === 'mountain' && mountainWorld) ? 'mountain' : (roomMap === 'honey' && honeyWorld) ? 'honey' : 'lava') : rollMap();
+    const pickedMap = (roomCode && roomStartAt) ? ((roomMap === 'snow' && snowWorld) ? 'snow' : (roomMap === 'angkasa' && angkasaWorld) ? 'angkasa' : (roomMap === 'mountain' && mountainWorld) ? 'mountain' : (roomMap === 'honey' && honeyWorld) ? 'honey' : (roomMap === 'laser' && laserWorld) ? 'laser' : 'lava') : rollMap();
     gachaBusy = true;
     playMapGacha(pickedMap, roomCode ? 900 : 1500, () => {
       gachaBusy = false;
@@ -587,6 +588,7 @@ async function returnToLobby() {
   if (angkasaWorldGroup) angkasaWorldGroup.visible = false;
   if (mountainWorldGroup) mountainWorldGroup.visible = false;
   if (honeyWorldGroup) honeyWorldGroup.visible = false;
+  if (laserWorldGroup) laserWorldGroup.visible = false;
   if (angkasaController) angkasaController.reset(physics);
   if (lobbyWorldGroup) lobbyWorldGroup.visible = true;
   if (scene) { scene.background = new THREE.Color(0x10182b); scene.fog = null; }
@@ -1246,7 +1248,7 @@ let batGrp, capeB, ironHelm, ironBody, thorHelm, thorBody, capeT;
 let MAZE_H = 12, MAZE_Z = -101;
 let zoomDir = 0, guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 // Sistem multi-map (gacha): map aktif + dunia tiap map. Lihat blok SNOW-MODULE.
-let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, snowController = null, angkasaWorld = null, angkasaWorldGroup = null, angkasaController = null, mountainWorld = null, mountainWorldGroup = null, honeyWorld = null, honeyWorldGroup = null, curGroundPlat = null, gachaBusy = false;
+let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, snowController = null, angkasaWorld = null, angkasaWorldGroup = null, angkasaController = null, mountainWorld = null, mountainWorldGroup = null, honeyWorld = null, honeyWorldGroup = null, laserWorld = null, laserWorldGroup = null, curGroundPlat = null, gachaBusy = false;
 const ROASTS = {
   hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
   fall: ['Beruntung banget jatuh ke lava, hangat kan? 🔥😹', 'Pemain paling beruntung sedunia: jatuh dari tempat yang sama lagi 🍀💀', 'Mantap, rekor jatuh terbaru! Lava bangga sama kamu 🏅🔥'],
@@ -1817,6 +1819,8 @@ function init3DGame() {
   try { const builtMountain = buildMountainWorld(THREE, scene, { showToast }); mountainWorld = builtMountain.world; mountainWorldGroup = builtMountain.group; } catch (e) { console.error('Map Gunung gagal dibuat:', e); mountainWorld = null; if (mountainWorldGroup) { scene.remove(mountainWorldGroup); mountainWorldGroup = null; } }
   try { honeyWorld = buildHoneyWorld(THREE, scene, { onTileStep: (i) => { if (myRef) update(myRef, { ['ht/t' + i]: serverNow() }).catch(() => {}); } }); honeyWorldGroup = honeyWorld.group; honeyWorldGroup.visible = false; }
   catch (e) { console.error('Map Honey gagal dibuat:', e); honeyWorld = null; }
+  try { laserWorld = buildLaserWorld(THREE, scene); laserWorldGroup = laserWorld.group; laserWorldGroup.visible = false; }
+  catch (e) { console.error('Map Laser gagal dibuat:', e); laserWorld = null; laserWorldGroup = null; }
 
   lobbyWorldGroup = new THREE.Group();
   lobbyWorldGroup.name = 'FREE_FIRE_STYLE_LOBBY';
@@ -2991,6 +2995,7 @@ let lobbyLeaderboardGroup = null, lobbyLeaderboardTexture = null, lobbyLeaderboa
 const lobbyLeaderboardAvatars = new Map();
 let deathFrozenMs = null, roomRunReset = 0;
 let honeyRoundEnded = false, honeyWinAwarded = false;
+const isSurvivalMap = () => currentMap === 'honey' || currentMap === 'laser'; // bertahan terakhir menang (Honey & Laser)
 // Waktu berjalan sejak mulai/respawn terakhir
 function rawElapsedMs() {
   return roomStartAt ? Math.max(0, serverNow() - Math.max(roomStartAt, roomRunReset)) : Math.max(0, performance.now() - soloStart);
@@ -3071,7 +3076,7 @@ function onRoomSnapshot(sn) {
   }
   updateRoomUI(); updateRemoteAvatars();
   if (currentMap === 'honey' && honeyWorld && roomStartAt) honeyWorld.syncRemote(roomPlayers, mpUid, serverNow(), roomStartAt);
-  if (currentMap === 'honey' && roomMeta.startAt) checkHoneyLastPlayer();
+  if (isSurvivalMap() && roomMeta.startAt) checkHoneyLastPlayer();
   if (roomMeta.startAt && !roomStarted && roomMeta.startAt !== lastRoundStartAt && roomRoundBusy()) { // host menekan MULAI (atau kamu gabung saat game sudah jalan)
     roomStarted = true; roomStartAt = roomMeta.startAt; lastRoundStartAt = roomMeta.startAt;
     document.getElementById('btn-start-game').click();
@@ -3118,6 +3123,7 @@ function onGameBegin() {
   if (angkasaWorldGroup) angkasaWorldGroup.visible = currentMap === 'angkasa';
   if (mountainWorldGroup) mountainWorldGroup.visible = currentMap === 'mountain';
   if (honeyWorldGroup) honeyWorldGroup.visible = currentMap === 'honey';
+  if (laserWorldGroup) laserWorldGroup.visible = currentMap === 'laser';
   if (lobbyWorldGroup) lobbyWorldGroup.visible = false;
   if (scene) {
     if (currentMap === 'snow') {
@@ -3131,6 +3137,8 @@ function onGameBegin() {
       scene.fog = new THREE.Fog(0x9fc8e8, 45, 230);
     } else if (currentMap === 'honey') {
       scene.background = new THREE.Color(0x58b8f0); scene.fog = new THREE.Fog(0x9fd8ff, 60, 160);
+    } else if (currentMap === 'laser' && laserWorld) {
+      laserWorld.applyEnvironment(scene);
     } else {
       scene.background = new THREE.Color(0x1a1a24);
       scene.fog = new THREE.Fog(0x1a1a24, 20, 150);
@@ -3146,9 +3154,10 @@ function onGameBegin() {
   checkpoint = { p: null, set: false, x: 0, y: 0.25, z: 0 };
   if (camera && controls) { camera.position.set(0, 4, 8); controls.target.set(0, 1.5, 0); }
   if (currentMap === 'honey' && honeyWorld) honeyWorld.reset();
+  if (currentMap === 'laser' && laserWorld) laserWorld.reset();
   if (roomCode && roomStartAt) {
     const idx = Math.max(0, sortedIds().indexOf(mpUid)), sp = SPAWN[idx % SPAWN.length];
-    if (currentMap === 'honey') character.position.set(sp[0], honeyWorld.spawn.y, sp[1]); else character.position.set(sp[0], 0.25, sp[1]); checkpoint.x = character.position.x; checkpoint.z = character.position.z;
+    if (currentMap === 'honey') character.position.set(sp[0], honeyWorld.spawn.y, sp[1]); else if (currentMap === 'laser') character.position.set(sp[0], laserWorld.spawn.y, sp[1]); else character.position.set(sp[0], 0.25, sp[1]); checkpoint.x = character.position.x; checkpoint.z = character.position.z;
     gameState = serverNow() < roomStartAt ? 'COUNTDOWN' : 'PLAYING';
     update(myRef, { status: 'PLAYING', deadAt: null, ht: null, out: null, finishMs: null, score: null, eliminatedAt: null, wonAt: null }).catch(() => {});
   } else {
@@ -3214,13 +3223,13 @@ function finishSummary() {
   return ' • Peringkat #' + (Object.entries(roomPlayers).filter(([id, p]) => id !== mpUid && p.finishMs != null && p.finishMs < finishMs).length + 1);
 }
 
-function honeyEliminateLocal() {
+function honeyEliminateLocal(reason) {
   if (honeyRoundEnded || gameState !== 'PLAYING') return;
   honeyRoundEnded = true; gameState = 'GAMEOVER'; shatterLocal();
   if (myRef) update(myRef, { status: 'ELIMINATED', eliminatedAt: serverNow() }).catch(() => {});
-  showOverlay('YOU LOSE', 'Kamu jatuh lebih dulu! 🍯', '#ff4242');
+  showOverlay('YOU LOSE', reason === 'laser' ? 'Kamu kena laser lebih dulu! 🔴' : (currentMap === 'laser' ? 'Kamu jatuh ke slime lebih dulu! 🟢' : 'Kamu jatuh lebih dulu! 🍯'), '#ff4242');
   { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = 'none'; } // tanpa tombol coba lagi
-  setTimeout(() => { if (gameState === 'GAMEOVER' && currentMap === 'honey') returnToLobby(); }, 1800);
+  setTimeout(() => { if (gameState === 'GAMEOVER' && isSurvivalMap()) returnToLobby(); }, 1800);
 }
 function honeyDeclareWin() {
   if (honeyWinAwarded || honeyRoundEnded) return;
@@ -3230,7 +3239,7 @@ function honeyDeclareWin() {
   awardWinCrown().catch(e => { console.warn('Gagal memberi mahkota:', e); showToast('⚠️ Mahkota gagal disimpan'); });
   showOverlay('YOU WIN! 👑', 'Kamu pemain terakhir yang bertahan! +1 mahkota', '#ffd700');
   { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = 'none'; }
-  setTimeout(() => { if (gameState === 'WIN' && currentMap === 'honey') returnToLobby(); }, 3500);
+  setTimeout(() => { if (gameState === 'WIN' && isSurvivalMap()) returnToLobby(); }, 3500);
 }
 function checkHoneyLastPlayer() {
   if (!roomCode || !roomPlayers || honeyRoundEnded || gameState !== 'PLAYING') return;
@@ -3247,7 +3256,7 @@ function tickMultiplayer() {
   }
   if (!roomCode || !myRef || !character || !(gameState === 'PLAYING' || gameState === 'GAMEOVER' || gameState === 'WIN')) return;
   const now = performance.now(); if (now - mpLastSend < 100) return; mpLastSend = now;
-  update(myRef, { x: +character.position.x.toFixed(2), y: +character.position.y.toFixed(2), z: +character.position.z.toFixed(2), rot: +character.rotation.y.toFixed(2), status: (currentMap === 'honey' && (gameState === 'GAMEOVER' || gameState === 'WIN')) ? (gameState === 'WIN' ? 'WIN' : 'ELIMINATED') : 'PLAYING', username: String(playerData.username).slice(0, 18), userKey: accountKey(), playerId: String(playerData.playerId || (playerData.isDev ? ADMIN_PLAYER_ID : '')), isDev: !!playerData.isDev, joinedAt: myJoinedAt, updatedAt: Date.now() }).catch(() => {});
+  update(myRef, { x: +character.position.x.toFixed(2), y: +character.position.y.toFixed(2), z: +character.position.z.toFixed(2), rot: +character.rotation.y.toFixed(2), status: (isSurvivalMap() && (gameState === 'GAMEOVER' || gameState === 'WIN')) ? (gameState === 'WIN' ? 'WIN' : 'ELIMINATED') : 'PLAYING', username: String(playerData.username).slice(0, 18), userKey: accountKey(), playerId: String(playerData.playerId || (playerData.isDev ? ADMIN_PLAYER_ID : '')), isDev: !!playerData.isDev, joinedAt: myJoinedAt, updatedAt: Date.now() }).catch(() => {});
 }
 
 // ----- avatar pemain lain (kostum ikut dipakai) -----
@@ -4452,10 +4461,10 @@ window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() =>
 // sehingga seluruh sistem lama (kontrol, kamera, respawn, multiplayer) tetap
 // memakai kode yang sama.
 // =====================================================================
-const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' }, angkasa: { icon: '🚀', name: 'MAP ANGKASA', color: '#a78bfa' }, mountain: { icon: '🏔️', name: 'MAP GUNUNG', color: '#65c987' }, honey: { icon: '🍯', name: 'HONEY DROP', color: '#ffc53a' } };
+const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' }, angkasa: { icon: '🚀', name: 'MAP ANGKASA', color: '#a78bfa' }, mountain: { icon: '🏔️', name: 'MAP GUNUNG', color: '#65c987' }, honey: { icon: '🍯', name: 'HONEY DROP', color: '#ffc53a' }, laser: { icon: '🔴', name: 'LASER LAB', color: '#ff3a8a' } };
 
 // Gacha: hanya memilih map yang benar-benar tersedia.
-function rollMap(multi) { const available = ['lava']; if (snowWorld) available.push('snow'); if (angkasaWorld) available.push('angkasa'); if (mountainWorld) available.push('mountain'); if (honeyWorld && multi) available.push('honey'); /* Honey Drop: hanya room 2+ pemain */ return available[Math.floor(Math.random() * available.length)]; }
+function rollMap(multi) { const available = ['lava']; if (snowWorld) available.push('snow'); if (angkasaWorld) available.push('angkasa'); if (mountainWorld) available.push('mountain'); if (honeyWorld && multi) available.push('honey'); if (laserWorld && multi) available.push('laser'); /* Honey Drop: hanya room 2+ pemain */ return available[Math.floor(Math.random() * available.length)]; }
 
 // Animasi gacha horizontal: kartu map bergeser dari kanan ke kiri lalu berhenti tepat di hasil.
 function playMapGacha(result, spinMs, done) {
@@ -4476,6 +4485,7 @@ function playMapGacha(result, spinMs, done) {
     if (mountainWorld) keys.push('mountain');
     // Honey harus ikut daftar kartu roulette, bukan hanya daftar rollMap().
     if (honeyWorld && roomCode) keys.push('honey'); // kartu Honey hanya muncul di room multiplayer
+    if (laserWorld && roomCode) keys.push('laser'); // kartu Laser hanya muncul di room multiplayer
     const chosen = keys.includes(result) ? result : 'lava';
     const winnerIndex = 30;
 
@@ -4536,7 +4546,7 @@ function playMapGacha(result, spinMs, done) {
     const loading = el.querySelector('#gc-loading');
     const cardHTML = (key, index) => {
       const m = MAP_LABELS[key] || MAP_LABELS.lava;
-      const tag = key === 'honey' ? '🍯 HONEY PARKOUR' : 'PARKOUR WORLD';
+      const tag = key === 'honey' ? '🍯 HONEY PARKOUR' : (key === 'laser' ? '🔴 LASER SURVIVAL' : 'PARKOUR WORLD');
       return `<div class="gc-card" data-map="${key}" data-index="${index}" style="--map-color:${m.color}"><div class="gc-card-icon">${m.icon}</div><div class="gc-card-name">${m.name}</div><div class="gc-card-tag">${tag}</div></div>`;
     };
 
@@ -4609,7 +4619,8 @@ function applyMap(id) {
   if (id === 'angkasa' && !angkasaWorld) id = 'lava';
   if (id === 'mountain' && !mountainWorld) id = 'lava';
   if (id === 'honey' && !honeyWorld) id = 'lava';
-  const w = id === 'honey' ? honeyWorld : (id === 'snow' ? snowWorld : (id === 'angkasa' ? angkasaWorld : (id === 'mountain' ? mountainWorld : lavaWorld)));
+  if (id === 'laser' && !laserWorld) id = 'lava';
+  const w = id === 'laser' ? laserWorld : id === 'honey' ? honeyWorld : (id === 'snow' ? snowWorld : (id === 'angkasa' ? angkasaWorld : (id === 'mountain' ? mountainWorld : lavaWorld)));
   if (!w) return;
   currentMap = id;
 
@@ -4627,6 +4638,7 @@ function applyMap(id) {
   if (angkasaWorldGroup) angkasaWorldGroup.visible = id === 'angkasa';
   if (mountainWorldGroup) mountainWorldGroup.visible = id === 'mountain';
   if (honeyWorldGroup) honeyWorldGroup.visible = id === 'honey';
+  if (laserWorldGroup) laserWorldGroup.visible = id === 'laser';
   if (id === 'snow' && snowController) snowController.reset();
   if (angkasaController) angkasaController.reset(physics);
   if (id === 'angkasa' && scene) {
@@ -4637,6 +4649,8 @@ function applyMap(id) {
     scene.fog = new THREE.Fog(0x9fc8e8, 45, 230);
   } else if (id === 'honey' && scene) {
     scene.background = new THREE.Color(0x58b8f0); scene.fog = new THREE.Fog(0x9fd8ff, 60, 160);
+  } else if (id === 'laser' && scene) {
+    laserWorld.applyEnvironment(scene);
   } else if (scene) {
     // Kembalikan latar default game untuk Lava/Snow; efek khusus map tetap
     // dikelola oleh modul map masing-masing.
@@ -4842,6 +4856,10 @@ function animate() {
   });
   if (currentMap === 'mountain' && mountainWorld?.swingPlanks) mountainWorld.swingPlanks.forEach(p => { p.mesh.rotation.z = Math.sin(t * p.speed + p.phase) * 0.08; });
   if (currentMap === 'honey' && honeyWorld) honeyWorld.update(delta, character.position);
+  if (currentMap === 'laser' && laserWorld) { // waktu laser = detik sejak ronde mulai (sama di semua pemain room)
+    const laserHit = laserWorld.update(delta, character.position, roomStartAt ? (serverNow() - roomStartAt) / 1000 : undefined);
+    if (laserHit && !godMode && !flyMode && gameState === 'PLAYING') honeyEliminateLocal('laser');
+  }
   if (currentMap === 'angkasa' && angkasaController) angkasaController.update(delta, {
     curGroundPlat, physics, character, godMode, flyMode, hitCD, knock
   });
@@ -4949,14 +4967,14 @@ function animate() {
 
   // JIKA JATUH KE LAVA
   if (godMode && character.position.y < -3) { character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z); physics.velocityY = 0; }
-  const fallLimit = currentMap === 'honey' ? honeyWorld.FIN_Y : -3;
+  const fallLimit = currentMap === 'honey' ? honeyWorld.FIN_Y : (currentMap === 'laser' ? laserWorld.fallLimit : -3);
   if (!godMode && !flyMode && character.position.y < fallLimit) {
-    if (currentMap === 'honey') honeyEliminateLocal();
+    if (isSurvivalMap()) honeyEliminateLocal('fall');
     else { gameState = 'GAMEOVER'; shatterLocal(); setTimeout(() => { if (gameState === 'GAMEOVER') showGameOver('fall'); }, 900); }
   }
 
   // KONDISI MENANG DI PUNCAK
-  if (currentMap !== 'honey' && character.position.y > FIN_Y - 0.5 && Math.abs(character.position.x - WIN.x) < 4.5 && Math.abs(character.position.z - WIN.z) < 4.5) {
+  if (!isSurvivalMap() && character.position.y > FIN_Y - 0.5 && Math.abs(character.position.x - WIN.x) < 4.5 && Math.abs(character.position.z - WIN.z) < 4.5) {
     gameState = 'WIN'; 
     playerData.coins = (playerData.coins || 0) + 1000;
     if (currentMap === 'snow') playerData.savedCheckpointSnow = null; else if (currentMap === 'mountain') playerData.savedCheckpointMountain = null; else playerData.savedCheckpoint = null; // selesai: progres checkpoint map ini direset
