@@ -316,7 +316,7 @@ window.addEventListener('DOMContentLoaded', () => {
   chatToggle.addEventListener('click', () => {
     const isHidden = chatBox.style.display === 'none' || chatBox.style.display === '';
     chatBox.style.display = isHidden ? 'flex' : 'none';
-    chatToggle.textContent = isHidden ? '❌ Tutup Chat' : '💬 Chat Global';
+    chatToggle.textContent = isHidden ? 'Tutup Chat' : 'Chat Global';
   });
 
   document.getElementById('chat-send').addEventListener('click', () => {
@@ -388,7 +388,7 @@ window.addEventListener('DOMContentLoaded', () => {
     setElDisplay('btn-music', 'none');
     document.getElementById('in-game-controls').style.display = 'block'; setLobbyOnlyHud(false);
     chatBox.style.display = 'none'; 
-    chatToggle.textContent = '💬 Chat Global';
+    chatToggle.textContent = 'Chat Global';
     profileModal.style.display = 'none';
     shopModal.style.display = 'none';
     // GACHA MAP: room memakai hasil gacha host (tersimpan di meta.map) agar semua pemain satu map.

@@ -66,8 +66,9 @@ html body .ui-btn.ui-icon-only{padding:0 !important}
 html body .ui-btn.ui-icon-only .ui-ic{width:22px; height:22px}
 html body #btn-music.ui-btn{min-width:44px; min-height:44px}
 html body #btn-notif .ui-ic,html body #btn-missions .ui-ic,html body #btn-leave-group .ui-ic{width:18px; height:18px}
-html body .ui-btn.ui-big{font-size:clamp(20px,5.2vw,28px) !important; letter-spacing:.06em}
+html body .ui-btn.ui-big{font-size:clamp(18px,4.6vw,24px) !important; letter-spacing:.06em}
 html body .ui-btn.ui-big .ui-ic{width:1.1em; height:1.1em}
+html body #btn-start-game.ui-btn{width:auto !important; min-width:104px; padding:0 18px !important}
 html body .ui-btn[disabled]{filter:grayscale(.85) brightness(.9); opacity:.75}
 
 /* tombol bulat kecil (HUD): jadi kotak tumpul biar tidak seragam "bulat semua" */
@@ -135,9 +136,6 @@ function applyAll() {
 
 function init() {
   if (window.__lobbyUiInit) return; window.__lobbyUiInit = true;
-  const font = document.createElement('link');
-  font.rel = 'stylesheet'; font.href = 'https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&display=swap';
-  document.head.appendChild(font);
   const st = document.createElement('style'); st.id = 'lobby-ui-css'; st.textContent = buildCss(); document.head.appendChild(st);
   applyAll();
   // Tombol yang dibuat belakangan (bel, misi, keluar grup, dorong, freeze) ikut ditema otomatis.

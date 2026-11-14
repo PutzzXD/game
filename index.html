@@ -9,7 +9,7 @@
   <link rel="manifest" href="./manifest.json">
   
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@500;700&family=Baloo+2:wght@600;800&display=swap');
 
     * { box-sizing: border-box; }
     body { 
@@ -231,6 +231,73 @@
     #startup-loading.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
     #rotate-overlay { display: none !important; }
 
+  
+    /* =====================================================================
+       TEMA LOBBY "sticker arcade": warna solid, garis tepi tebal gelap,
+       bayangan keras di bawah, font bulat tebal. Tanpa gradasi/glow/neon.
+       Tombol utama (MULAI, toko, vault, dll.) ditema oleh lobbyui.js.
+       ===================================================================== */
+    :root { --ink:#1b1233; --cream:#fff4d6; --yellow:#ffc21a; --green:#3ddc84; --blue:#4da3ff; --pink:#ff6b9a; --red:#ff5a4d; --ui-font:'Baloo 2','Trebuchet MS',system-ui,sans-serif; }
+
+    /* HUD kiri atas */
+    #coin-hud { background:var(--yellow); color:var(--ink); border:3px solid var(--ink); border-radius:12px; box-shadow:0 4px 0 var(--ink); font-family:var(--ui-font); font-weight:800; font-size:14px; padding:4px 10px; gap:6px; }
+    #coin-icon { font-size:0; width:16px; height:16px; border-radius:50%; background:#fff3a8; border:2.5px solid var(--ink); box-shadow:inset 0 0 0 2px #e0a800; display:inline-block; }
+    #hud-verified { border:2px solid var(--ink); }
+
+    /* Jendela (profil, toko, vault) */
+    #profile-modal, #shop-modal, #vault-modal { background:var(--cream); color:var(--ink); border:3px solid var(--ink); border-radius:18px; box-shadow:0 6px 0 var(--ink); font-family:var(--ui-font); }
+    #profile-modal h3 { color:var(--ink); border-bottom:3px solid var(--ink); padding-bottom:8px; font-family:var(--ui-font); font-weight:800; letter-spacing:.05em; align-items:center; }
+    #profile-modal p { color:#4a3d6b; font-size:15px; }
+    #profile-modal .dev-badge { color:#0b72c9; }
+    #shop-modal h2, #vault-modal h2 { color:var(--ink); font-family:var(--ui-font); font-weight:800; letter-spacing:.08em; }
+    .btn-logout { background:var(--red); color:#fff; border:3px solid var(--ink); border-radius:12px; box-shadow:0 4px 0 var(--ink); font-family:var(--ui-font); font-weight:800; letter-spacing:.05em; }
+    .btn-logout:active { transform:translateY(3px); box-shadow:0 1px 0 var(--ink); }
+
+    /* Tombol tutup (X digambar CSS, bukan emoji) */
+    .btn-close-shop, #close-modal { position:relative; display:inline-block; width:34px; height:34px; font-size:0; background:var(--red); border:3px solid var(--ink); border-radius:10px; box-shadow:0 3px 0 var(--ink); color:transparent; flex:none; }
+    .btn-close-shop { position:absolute; top:14px; right:16px; }
+    .btn-close-shop::before, .btn-close-shop::after, #close-modal::before, #close-modal::after { content:''; position:absolute; left:50%; top:50%; width:16px; height:3.5px; margin:-1.75px 0 0 -8px; background:#fff; border-radius:2px; }
+    .btn-close-shop::before, #close-modal::before { transform:rotate(45deg); }
+    .btn-close-shop::after, #close-modal::after { transform:rotate(-45deg); }
+    .btn-close-shop:active, #close-modal:active { transform:translateY(2px); box-shadow:0 1px 0 var(--ink); }
+
+    /* Kartu item toko / vault */
+    .shop-item { background:#fff; color:var(--ink); border:3px solid var(--ink); border-radius:14px; box-shadow:0 4px 0 var(--ink); }
+    .shop-item .color-preview { border:3px solid var(--ink); }
+    .shop-item .item-name { color:var(--ink); font-family:var(--ui-font); font-weight:800; }
+    .shop-item .item-price { color:#a35f00; font-family:var(--ui-font); font-weight:800; }
+    .shop-item .owned-label { color:#14804a !important; }
+    .inventory-empty { background:rgba(27,18,51,.07); color:#6b5d8a; }
+
+    /* Chat */
+    #chat-toggle { background:var(--blue); color:var(--ink); border:3px solid var(--ink); border-radius:12px; box-shadow:0 4px 0 var(--ink); font-family:var(--ui-font); font-weight:800; font-size:14px; padding:4px 14px; }
+    #chat-toggle:active { transform:translateY(3px); box-shadow:0 1px 0 var(--ink); }
+    #chat-box { background:var(--cream); border:3px solid var(--ink); border-radius:14px; box-shadow:0 4px 0 var(--ink); backdrop-filter:none; -webkit-backdrop-filter:none; }
+    .chat-msg .name { color:#b4236b; }
+    .chat-msg .name.dev { color:#0b72c9; }
+    .chat-msg .text { color:#2b2147; }
+    #chat-input-area { border-top:3px solid var(--ink); }
+    #chat-input { color:var(--ink); font-family:var(--ui-font); font-weight:600; }
+    #chat-input::placeholder { color:#8a7fa8; }
+    #chat-send { background:var(--green); color:var(--ink); border:2px solid var(--ink); border-radius:8px; font-family:var(--ui-font); font-weight:800; }
+
+    /* Notifikasi tengah layar */
+    #custom-toast { background:var(--cream); color:var(--ink); border:3px solid var(--ink); border-radius:16px; box-shadow:0 6px 0 var(--ink); font-family:var(--ui-font); font-weight:800; }
+
+    /* Kontrol main */
+    #btn-jump { background:var(--green); color:var(--ink); border:3px solid var(--ink); box-shadow:0 5px 0 var(--ink); font-family:var(--ui-font); font-weight:800; letter-spacing:.04em; }
+    #btn-jump:active { background:var(--green); transform:translateY(4px); box-shadow:0 1px 0 var(--ink); }
+    #btn-run { background:var(--red); color:#fff; border:3px solid var(--ink); box-shadow:0 5px 0 var(--ink); font-family:var(--ui-font); font-weight:800; letter-spacing:.04em; }
+    #btn-run:active { background:var(--red); transform:translateY(4px); box-shadow:0 1px 0 var(--ink); }
+    #joystick-zone { background:rgba(27,18,51,.38); border:3px solid rgba(255,255,255,.85); }
+    #joystick-knob { background:var(--cream); border:3px solid var(--ink); }
+
+    /* Layar menang/kalah */
+    #overlay { background:rgba(27,18,51,.9); }
+    #overlay h1 { font-family:var(--ui-font); font-weight:800; font-size:clamp(34px,9vw,56px); letter-spacing:.04em; text-shadow:0 4px 0 var(--ink); }
+    #overlay p { font-family:var(--ui-font); font-weight:600; }
+    #overlay button { background:var(--yellow); color:var(--ink); border:3px solid var(--ink); border-radius:14px; box-shadow:0 5px 0 #8a6200; font-family:var(--ui-font); font-weight:800; letter-spacing:.05em; }
+    #overlay button:active { transform:translateY(4px); box-shadow:0 1px 0 #8a6200; }
   </style>
 </head>
 <body>
@@ -386,7 +453,7 @@
     <button id="btn-vault" type="button" style="display:none"><span>🎒</span><span>VAULT</span></button>
 
     <div id="chat-container">
-      <button id="chat-toggle">💬 Chat Global</button>
+      <button id="chat-toggle">Chat Global</button>
       <div id="chat-box">
         <div id="chat-messages"></div>
         <div id="chat-input-area">
@@ -405,7 +472,7 @@
 
     <div id="shop-modal">
       <span class="btn-close-shop" id="close-shop">✖</span>
-      <h2>🛒 TOKO KARAKTER</h2>
+      <h2>TOKO KARAKTER</h2>
       <div class="shop-tabs" id="shop-tabs-container">
         <button class="shop-tab-btn active" data-cat="baju">Baju</button>
         <button class="shop-tab-btn" data-cat="celana">Celana</button>
@@ -417,7 +484,7 @@
 
     <div id="vault-modal">
       <span class="btn-close-shop" id="close-vault">✖</span>
-      <h2>🎒 VAULT / KOLEKSI</h2>
+      <h2>KOLEKSI</h2>
       <div class="vault-tabs">
         <button class="vault-tab-btn active" data-cat="baju">Baju</button>
         <button class="vault-tab-btn" data-cat="celana">Celana</button>
