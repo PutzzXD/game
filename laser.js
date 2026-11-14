@@ -2,9 +2,10 @@
 //  LASER.JS  —  Map "Laser Lab" (terinspirasi Stumble Guys)
 //  Arena bundar berlantai ubin biru-abu, dikelilingi cincin hazard
 //  kuning-hitam, kolam slime hijau, dek ungu, layar monitor & tabung.
-//  Laser merah-muda berputar menyapu arena. Mulai dari 1 laser,
-//  makin lama makin banyak & makin cepat -> pemain harus refleks
-//  melompati laser. Kena laser / jatuh ke slime = tereliminasi.
+//  Laser merah-muda JALAN LURUS menyapu arena (tidak berputar).
+//  5 detik pertama aman; laser pertama muncul di detik ke-5, lalu makin
+//  lama makin sering & makin cepat, datang dari arah yang berbeda-beda.
+//  Kena laser / jatuh ke slime = tereliminasi.
 //
 //  Pemakaian (mirip buildHoneyWorld):
 //    import { buildLaserWorld } from './laser.js';
@@ -33,11 +34,15 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
   const BEAM_HIT_TOP = BEAM_Y + 0.12;// kaki pemain di bawah ini = kena laser
   const PLAYER_R = 0.38;
 
-  const MAX_LASERS = opts.maxLasers || 8;       // jumlah laser maksimum
-  const FIRST_DELAY = opts.firstDelay ?? 3;     // detik sebelum laser pertama aktif
-  const INTERVAL = opts.interval || 10;         // tiap sekian detik tambah 1 laser
-  const WARN = 1.6;                             // detik kedipan peringatan sebelum laser baru aktif
-  const OFFSETS = [0, 3.6, -3.6, 6.2, -6.2, 1.8, -1.8, 7.8]; // jarak garis laser dari pusat
+  const FIRST_DELAY = opts.firstDelay ?? 5;     // detik laser pertama MUNCUL (masa aman awal)
+  const WARN = 0.9;                             // detik kedip di tepi arena sebelum laser mulai jalan
+  const START_GAP = opts.interval || 3.2;       // jeda antar laser di awal (detik)
+  const MIN_GAP = opts.minGap || 0.8;           // jeda tercepat antar laser
+  const GAP_DECAY = 0.95;                       // tiap laser baru, jeda dikali ini (makin rapat)
+  const SPEED_START = 3.4, SPEED_MAX = 7.2;     // kecepatan jalan laser (unit/detik)
+  const TRAVEL = ARENA_R + 1.5;                 // laser jalan dari -TRAVEL ke +TRAVEL
+  const MAX_DUR = (TRAVEL * 2) / SPEED_START + WARN;
+  const POOL = Math.ceil(MAX_DUR / MIN_GAP) + 2; // jumlah mesh laser yang didaur ulang
 
   const group = new THREE.Group();
   group.name = 'laser-world';
@@ -188,8 +193,11 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
   const emitterBulbGeo = new THREE.SphereGeometry(0.34, 14, 10);
   const floorGlowGeo = new THREE.PlaneGeometry(1, 1);
 
+  // Setiap laser = garis lurus (chord) yang JALAN menyeberangi arena, bukan berputar.
+  // Laser ke-k muncul di T(k), arah datangnya beda-beda (golden angle),
+  // jeda antar laser makin pendek & kecepatan makin tinggi. Semua deterministik dari waktu.
   const lasers = [];
-  for (let i = 0; i < MAX_LASERS; i++) {
+  for (let i = 0; i < POOL; i++) {
     const core = new THREE.Mesh(unitCyl, beamCoreMat(1)); core.scale.set(BEAM_R, 1, BEAM_R);
     const glow = new THREE.Mesh(unitCyl, beamGlowMat(0.38)); glow.scale.set(0.2, 1, 0.2);
     const floorGlow = new THREE.Mesh(floorGlowGeo, new THREE.MeshBasicMaterial({ color: 0xff2e7e, transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
@@ -204,49 +212,47 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
     const holder = new THREE.Group(); holder.visible = false;
     holder.add(core, glow, floorGlow, ems[0], ems[1]);
     group.add(holder);
-    lasers.push({
-      i, holder, core, glow, floorGlow, ems,
-      T: FIRST_DELAY + i * INTERVAL,                 // detik laser ini mulai berbahaya
-      offset: OFFSETS[i % OFFSETS.length],
-      dir: i % 2 === 0 ? 1 : -1,                    // selang-seling searah/berlawanan jarum jam
-      w: 0.85 + 0.07 * i,                           // kecepatan dasar (rad/detik)
-      th0: i * 2.399963 + 0.4                        // sudut awal (golden angle)
-    });
+    lasers.push({ i, holder, core, glow, floorGlow, ems });
   }
 
-  // Kecepatan naik pelan sampai +50% di detik ke-120, lalu tetap.
-  function phase(t) {
-    const T = 120, k = 0.5 / T;
-    return t + 0.5 * k * Math.min(t, T) * Math.min(t, T) + 0.5 * Math.max(0, t - T);
+  // Waktu muncul laser ke-k (di-cache; dihitung kumulatif dari jeda yang makin pendek).
+  const spawnTimes = [FIRST_DELAY];
+  function spawnTime(k) {
+    while (spawnTimes.length <= k) {
+      const n = spawnTimes.length;
+      const gap = Math.max(MIN_GAP, START_GAP * Math.pow(GAP_DECAY, n - 1));
+      spawnTimes.push(spawnTimes[n - 1] + gap);
+    }
+    return spawnTimes[k];
   }
-  function angleOf(L, t) { return L.th0 + L.dir * L.w * phase(t); }
+  const speedOf = (k) => Math.min(SPEED_MAX, SPEED_START + 0.04 * (spawnTime(k) - FIRST_DELAY));
+  const angleOf = (k) => k * 2.399963 + 0.4;         // arah datang laser (rad), selalu berganti-ganti
 
   // ---------- State ----------
   let elapsed = 0, hitFlag = false, activeCount = 0;
 
-  function placeLaser(L, t, state) {
-    const th = angleOf(L, t), c = Math.cos(th), s = Math.sin(th), d = L.offset;
-    const half = Math.sqrt(RAIL_R * RAIL_R - d * d);
-    const cx = -s * d, cz = c * d;                     // titik tengah garis
+  // pos = posisi laser sepanjang arah jalannya (-TRAVEL .. +TRAVEL), a = arah jalan.
+  function placeLaser(L, k, t, pos, moving) {
+    const a = angleOf(k), na = Math.cos(a), nb = Math.sin(a);
+    const th = a + Math.PI / 2;                         // arah garis laser (tegak lurus arah jalan)
+    const c = Math.cos(th), s = Math.sin(th);
+    const half = Math.sqrt(Math.max(0.01, RAIL_R * RAIL_R - pos * pos));
     const h = L.holder;
-    h.position.set(cx, 0, cz);
-    // Orientasikan silinder (sumbu Y) sepanjang arah (cos, sin) di bidang XZ
+    h.position.set(na * pos, 0, nb * pos);
     const rot = new THREE.Euler(0, -th, Math.PI / 2);
     L.core.rotation.copy(rot); L.glow.rotation.copy(rot);
     L.core.position.y = BEAM_Y; L.glow.position.y = BEAM_Y;
     L.core.scale.y = half * 2; L.glow.scale.y = half * 2;
-    L.floorGlow.rotation.z = th;                       // setelah rotation.x = -90°, z memutar di lantai
     L.floorGlow.scale.set(half * 2, 0.5, 1); L.floorGlow.position.y = FLOOR_TOP + 0.02;
     L.floorGlow.rotation.set(-Math.PI / 2, 0, -th, 'XYZ');
     L.ems[0].position.set(c * half, BEAM_Y, s * half);
     L.ems[1].position.set(-c * half, BEAM_Y, -s * half);
-    // Tampilan: peringatan (berkedip redup) vs aktif (terang, sedikit berdenyut)
-    if (state === 'warn') {
-      const blink = (Math.sin(t * 22) > 0) ? 0.55 : 0.12;
-      L.core.material.opacity = blink * 0.6; L.glow.material.opacity = blink * 0.5; L.floorGlow.material.opacity = blink * 0.25;
+    if (!moving) {                                      // baru muncul: berkedip di tepi arena
+      const blink = (Math.sin(t * 22) > 0) ? 0.6 : 0.15;
+      L.core.material.opacity = blink * 0.7; L.glow.material.opacity = blink * 0.5; L.floorGlow.material.opacity = blink * 0.25;
       L.core.scale.x = L.core.scale.z = BEAM_R * 0.6;
-    } else {
-      const pulse = 0.9 + 0.1 * Math.sin(t * 30 + L.i);
+    } else {                                            // jalan: terang & berdenyut
+      const pulse = 0.9 + 0.1 * Math.sin(t * 30 + k);
       L.core.material.opacity = 1; L.glow.material.opacity = 0.34 * pulse + 0.06; L.floorGlow.material.opacity = 0.22;
       L.core.scale.x = L.core.scale.z = BEAM_R; L.glow.scale.x = L.glow.scale.z = 0.19 + 0.03 * pulse;
     }
@@ -263,20 +269,31 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
     elapsed = (typeof elapsedOverride === 'number') ? elapsedOverride : elapsed + delta;
     const t = Math.max(0, elapsed);
     let hit = false; activeCount = 0;
+    lasers.forEach(L => { L.holder.visible = false; });
 
-    for (const L of lasers) {
-      let state = 'off';
-      if (t >= L.T) state = 'on'; else if (t >= L.T - WARN) state = 'warn';
-      if (state === 'off') { L.holder.visible = false; continue; }
-      placeLaser(L, t, state);
-      if (state !== 'on') continue;
-      activeCount++;
-      if (!hit && playerPos) {
-        const th = angleOf(L, t);
-        // jarak mendatar pemain ke garis laser
-        const dist = Math.abs(-playerPos.x * Math.sin(th) + playerPos.z * Math.cos(th) - L.offset);
-        const onFloor = Math.hypot(playerPos.x, playerPos.z) < RAIL_R;
-        if (onFloor && dist < PLAYER_R + BEAM_R && playerPos.y < BEAM_HIT_TOP && playerPos.y > FLOOR_TOP - 1.5) hit = true;
+    // Cari laser yang sedang tampil: k terbesar yang sudah muncul, mundur sampai yang sudah selesai.
+    let kMax = 0;
+    while (spawnTime(kMax + 1) <= t) kMax++;
+    if (t >= FIRST_DELAY) {
+      for (let k = kMax; k >= 0 && k > kMax - POOL; k--) {
+        const age = t - spawnTime(k);
+        const sp = speedOf(k);
+        const moveTime = age - WARN;
+        if (moveTime > (TRAVEL * 2) / sp) continue;       // sudah lewat arena
+        const L = lasers[k % POOL];
+        if (moveTime < 0) { placeLaser(L, k, t, -TRAVEL, false); continue; }
+        const pos = -TRAVEL + sp * moveTime;
+        placeLaser(L, k, t, pos, true);
+        activeCount++;
+        if (!hit && playerPos) {
+          const a = angleOf(k), na = Math.cos(a), nb = Math.sin(a);
+          const along = playerPos.x * na + playerPos.z * nb;        // posisi pemain searah jalan laser
+          const across = -playerPos.x * nb + playerPos.z * na;      // posisi pemain sepanjang garis laser
+          const half = Math.sqrt(Math.max(0, RAIL_R * RAIL_R - pos * pos));
+          const onFloor = Math.hypot(playerPos.x, playerPos.z) < RAIL_R;
+          if (onFloor && Math.abs(across) < half && Math.abs(along - pos) < PLAYER_R + BEAM_R &&
+              playerPos.y < BEAM_HIT_TOP && playerPos.y > FLOOR_TOP - 1.5) hit = true;
+        }
       }
     }
 
