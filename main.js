@@ -4957,17 +4957,17 @@ let walkTime = 0;
 
 // ===== MISI HARIAN (reset setiap pukul 00.00 sesuai jam perangkat) =====
 const DAILY_MISSIONS = [
-  // Login beruntun: progres = jumlah hari login berturut-turut (siklus 5 hari), hadiah otomatis masuk saat login.
-  { id: 'login1', group: 'Login Beruntun (siklus 5 hari)', login: 1, icon: '📅', title: 'Login hari ke-1',          desc: 'Buka game hari ini',                         reward: 300,  goal: 1 },
-  { id: 'login2', login: 2, icon: '📅', title: 'Login 2 hari berturut-turut', desc: 'Buka game 2 hari tanpa terlewat',            reward: 600,  goal: 2 },
-  { id: 'login3', login: 3, icon: '📅', title: 'Login 3 hari berturut-turut', desc: 'Buka game 3 hari tanpa terlewat',            reward: 800,  goal: 3 },
-  { id: 'login5', login: 5, icon: '🗓️', title: 'Login 5 hari berturut-turut', desc: 'Buka game 5 hari tanpa terlewat',            reward: 1000, goal: 5 },
-  // Main match: tiap match dihitung sekali jika main minimal 15 detik.
-  { id: 'match',  group: 'Main Match', icon: '🎮', title: 'Bermain 1 match',        desc: 'Main minimal 15 detik di satu match',          reward: 200,    goal: 1 },
-  { id: 'match2', track: 'match', icon: '🎮', title: 'Bermain 2 match',        desc: 'Selesaikan 2 match hari ini (min. 15 detik)',  reward: 500,    goal: 2 },
-  { id: 'match3', track: 'match', icon: '🎮', title: 'Bermain 3 match',        desc: 'Selesaikan 3 match hari ini (min. 15 detik)',  reward: 800,    goal: 3 },
-  { id: 'friend', group: 'Misi Lainnya', icon: '👥', title: 'Bermain bersama teman',  desc: 'Main match di grup bersama minimal 1 teman',   reward: 300,    goal: 1 },
-  { id: 'time',   icon: '⏱️', title: 'Bermain selama 30 menit', desc: 'Total waktu bermain aktif hari ini',            reward: 1000,   goal: 1800 },
+  // Login beruntun: progres = jumlah hari login berturut-turut (siklus 5 hari). Hadiah diambil lewat tombol Klaim.
+  { id: 'login1', group: 'Login berturut-turut (siklus 5 hari)', login: 1, title: 'Login hari ke-1',            desc: 'Masuk game hari ini',               reward: 300,  goal: 1 },
+  { id: 'login2', login: 2, title: 'Login 2 hari berturut-turut', desc: 'Masuk 2 hari tanpa terlewat',      reward: 600,  goal: 2 },
+  { id: 'login3', login: 3, title: 'Login 3 hari berturut-turut', desc: 'Masuk 3 hari tanpa terlewat',      reward: 800,  goal: 3 },
+  { id: 'login5', login: 5, title: 'Login 5 hari berturut-turut', desc: 'Masuk 5 hari tanpa terlewat',      reward: 1000, goal: 5 },
+  // Main match: tiap match dihitung sekali jika dimainkan minimal 15 detik.
+  { id: 'match',  group: 'Main match', title: 'Main 1 match', desc: 'Main minimal 15 detik dalam satu match', reward: 200, goal: 1 },
+  { id: 'match2', track: 'match', title: 'Main 2 match', desc: 'Dua match hari ini, masing-masing minimal 15 detik',  reward: 500, goal: 2 },
+  { id: 'match3', track: 'match', title: 'Main 3 match', desc: 'Tiga match hari ini, masing-masing minimal 15 detik', reward: 800, goal: 3 },
+  { id: 'friend', group: 'Lainnya', title: 'Main bareng teman', desc: 'Main satu match di room dengan minimal 1 teman', reward: 300, goal: 1 },
+  { id: 'time',   title: 'Main 30 menit', desc: 'Total waktu bermain aktif hari ini', reward: 1000, goal: 1800 },
 ];
 const MISSION_MIN_ROUND_SEC = 15;
 const LOGIN_CYCLE = 5;
@@ -4986,44 +4986,57 @@ function nextLoginStreak(old, day) {
   }
   return { count: 1, last: day, claimed: {} };                                      // ada hari yang terlewat -> mulai dari awal
 }
-function grantLoginRewards(m) {
-  if (!m || !m.streak) return;
-  if (!m.streak.claimed) m.streak.claimed = {};
-  let total = 0; const got = [];
-  for (const def of DAILY_MISSIONS) {
-    if (!def.login || m.streak.claimed[def.id] || (Number(m.streak.count) || 0) < def.login) continue;
-    m.streak.claimed[def.id] = true; total += def.reward; got.push(def);
-  }
-  if (!total) return;
-  playerData.coins = Math.floor(Number(playerData.coins) || 0) + total;
-  const ce = document.getElementById('coin-amount'); if (ce) ce.textContent = playerData.coins;
-  missionFlush();
-  showToast('📅 ' + got[got.length - 1].title + '  +' + total.toLocaleString('id-ID') + ' 🪙', 3500);
-  refreshMissionsModal();
-}
 function ensureMissions() {
   if (!playerData || !playerData.username) return null;
   const day = missionDayKey();
-  let m = playerData.dailyMissions, fresh = false;
+  let m = playerData.dailyMissions;
   if (!m || m.day !== day) {                                                         // hari baru -> reset misi harian, streak login dilanjutkan
-    m = playerData.dailyMissions = { day, prog: {}, done: {}, streak: nextLoginStreak(m && m.streak, day) };
-    missionDirty = true; fresh = true;
+    m = playerData.dailyMissions = { day, prog: {}, done: {}, claimed: {}, streak: nextLoginStreak(m && m.streak, day) };
+    missionDirty = true;
   }
   if (!m.prog) m.prog = {}; if (!m.done) m.done = {};
-  if (!m.streak) { m.streak = nextLoginStreak(null, day); missionDirty = true; fresh = true; }   // data lama tanpa streak
-  if (fresh) grantLoginRewards(m);
+  if (!m.claimed) { m.claimed = Object.assign({}, m.done); missionDirty = true; }    // data lama: misi yang sudah selesai dulu sudah dibayar otomatis
+  if (!m.streak) { m.streak = nextLoginStreak(null, day); missionDirty = true; }     // data lama tanpa streak
+  if (!m.streak.claimed) m.streak.claimed = {};
   return m;
 }
 function missionFlush() { missionDirty = false; missionSaveAt = performance.now(); updatePlayerFirebase().catch(e => console.warn('Gagal menyimpan misi:', e)); }
+// Status satu misi: selesai (syarat terpenuhi) dan sudah diklaim atau belum.
+function missionState(m, def) {
+  if (def.login) {
+    const count = Number(m.streak.count) || 0;
+    return { done: count >= def.login, claimed: !!m.streak.claimed[def.id], prog: Math.min(def.goal, count) };
+  }
+  const done = !!m.done[def.id];
+  return { done, claimed: !!m.claimed[def.id], prog: done ? def.goal : Math.min(def.goal, Number(m.prog[def.id]) || 0) };
+}
+// Menyelesaikan misi TIDAK memberi koin. Koin baru masuk saat pemain menekan Klaim di lobby.
 function completeMission(id) {
   const m = ensureMissions(), def = DAILY_MISSIONS.find(x => x.id === id);
   if (!m || !def || m.done[id]) return;
-  m.done[id] = true; m.prog[id] = def.goal;
+  m.done[id] = true; m.prog[id] = def.goal; missionDirty = true;
+  refreshMissionsModal();
+}
+function claimMission(id, silent) {
+  if (gameState !== 'LOBBY') return 0;
+  const m = ensureMissions(), def = DAILY_MISSIONS.find(x => x.id === id);
+  if (!m || !def) return 0;
+  const st = missionState(m, def);
+  if (!st.done || st.claimed) return 0;
+  if (def.login) m.streak.claimed[id] = true; else m.claimed[id] = true;
   playerData.coins = Math.floor(Number(playerData.coins) || 0) + def.reward;
   const ce = document.getElementById('coin-amount'); if (ce) ce.textContent = playerData.coins;
-  missionFlush();
-  showToast('🎯 Misi selesai: ' + def.title + '  +' + def.reward.toLocaleString('id-ID') + ' 🪙', 3500);
-  refreshMissionsModal();
+  if (!silent) { missionFlush(); refreshMissionsModal(); }
+  return def.reward;
+}
+function claimAllMissions() {
+  let total = 0;
+  for (const def of DAILY_MISSIONS) total += claimMission(def.id, true);
+  if (total) { missionFlush(); refreshMissionsModal(); }
+}
+function missionClaimableCount() {
+  const m = ensureMissions(); if (!m) return 0;
+  return DAILY_MISSIONS.filter(def => { const st = missionState(m, def); return st.done && !st.claimed; }).length;
 }
 function missionAdd(id, amount) {
   const m = ensureMissions(), def = DAILY_MISSIONS.find(x => x.id === id);
@@ -5057,47 +5070,59 @@ function missionResetText() {
   const h = Math.floor(ms / 3600000), mi = Math.floor(ms / 60000) % 60, se = Math.floor(ms / 1000) % 60;
   return 'Reset dalam ' + String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0') + ':' + String(se).padStart(2, '0');
 }
-function refreshMissionsModal() {
+let missionListSig = '';
+function refreshMissionsModal(force) {
+  const dot = document.getElementById('mi-dot'), nClaim = missionClaimableCount();
+  if (dot) dot.style.display = nClaim ? 'block' : 'none';
   const box = document.getElementById('missions-modal'); if (!box || box.style.display === 'none') return;
   const m = ensureMissions(); if (!m) return;
   document.getElementById('missions-reset').textContent = missionResetText();
+  const all = document.getElementById('missions-claim-all'); all.style.display = nClaim >= 2 ? 'block' : 'none';
+  // Daftar hanya digambar ulang kalau ada perubahan, supaya tombol Klaim tidak hilang di tengah ketukan.
+  const sig = DAILY_MISSIONS.map(def => { const s2 = missionState(m, def); return def.id + ':' + (def.id === 'time' ? Math.floor(s2.prog / 30) : s2.prog) + ':' + s2.done + ':' + s2.claimed; }).join('|');
+  if (sig === missionListSig && !force) return;
+  missionListSig = sig;
   const list = document.getElementById('missions-list'); list.innerHTML = '';
   for (const def of DAILY_MISSIONS) {
     if (def.group) { const h = document.createElement('div'); h.className = 'mi-h'; h.textContent = def.group; list.appendChild(h); }
-    let done, prog, txt;
-    if (def.login) {
-      const st = m.streak || { count: 0, claimed: {} };
-      done = !!(st.claimed && st.claimed[def.id]); prog = done ? def.goal : Math.min(def.goal, Number(st.count) || 0); txt = prog + ' / ' + def.goal + ' hari';
-    } else {
-      done = !!m.done[def.id]; prog = done ? def.goal : Math.min(def.goal, Number(m.prog[def.id]) || 0);
-      txt = def.id === 'time' ? Math.floor(prog / 60) + ' / ' + Math.floor(def.goal / 60) + ' menit' : prog + ' / ' + def.goal;
-    }
-    const pct = Math.round(prog / def.goal * 100);
-    const row = document.createElement('div'); row.className = 'mi-row' + (done ? ' mi-done' : '');
-    row.innerHTML = '<div class="mi-ic">' + def.icon + '</div><div class="mi-body"><b>' + def.title + '</b><small>' + def.desc + '</small>' +
-      '<div class="mi-bar"><i style="width:' + pct + '%"></i></div><small>' + (done ? '✅ Selesai' : txt) + '</small></div>' +
-      '<div class="mi-rw">+' + def.reward.toLocaleString('id-ID') + '<br>🪙</div>';
-    list.appendChild(row);
+    const st = missionState(m, def);
+    const txt = def.login ? st.prog + ' dari ' + def.goal + ' hari' : (def.id === 'time' ? Math.floor(st.prog / 60) + ' dari ' + Math.floor(def.goal / 60) + ' menit' : st.prog + ' dari ' + def.goal);
+    const row = document.createElement('div'); row.className = 'mi-row';
+    const info = document.createElement('div'); info.className = 'mi-info';
+    const t = document.createElement('div'); t.className = 'mi-title'; t.textContent = def.title;
+    const d = document.createElement('div'); d.className = 'mi-desc'; d.textContent = def.desc;
+    const bar = document.createElement('div'); bar.className = 'mi-bar'; const fill = document.createElement('i'); fill.style.width = Math.round(st.prog / def.goal * 100) + '%'; bar.appendChild(fill);
+    const pr = document.createElement('div'); pr.className = 'mi-desc'; pr.textContent = txt;
+    info.append(t, d, bar, pr);
+    const act = document.createElement('div'); act.className = 'mi-act';
+    const rw = document.createElement('div'); rw.className = 'mi-reward'; rw.textContent = def.reward.toLocaleString('id-ID') + ' koin';
+    act.appendChild(rw);
+    if (st.claimed) { const c = document.createElement('div'); c.className = 'mi-claimed'; c.textContent = 'Sudah diklaim'; act.appendChild(c); row.classList.add('mi-off'); }
+    else if (st.done) { const b = document.createElement('button'); b.type = 'button'; b.className = 'mi-claim'; b.textContent = 'Klaim'; b.dataset.id = def.id; act.appendChild(b); }
+    row.append(info, act); list.appendChild(row);
   }
 }
 function buildMissionsUI() {
   if (document.getElementById('btn-missions')) return;
   const st = document.createElement('style');
-  st.textContent = '#btn-missions{position:fixed;top:142px;right:16px;z-index:59;width:34px;height:34px;border:1px solid rgba(120,255,160,.8);border-radius:50%;background:rgba(10,28,16,.92);color:#8dffb0;font-size:16px;box-shadow:0 3px 12px #0008;display:none;align-items:center;justify-content:center;padding:0}#btn-missions:active{transform:scale(.92)}' +
+  st.textContent = '#btn-missions{position:fixed;top:142px;right:16px;z-index:59;height:30px;padding:0 12px;border:1px solid #3a4258;border-radius:8px;background:#1b2030;color:#e6e9f2;font:600 13px sans-serif;display:none;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(0,0,0,.4)}#btn-missions:active{background:#242b40}#mi-dot{display:none;width:8px;height:8px;border-radius:50%;background:#e5484d}' +
     '#missions-modal{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}' +
-    '#missions-card{width:min(380px,calc(100vw - 24px));max-height:82vh;overflow:auto;padding:14px;border-radius:16px;background:rgba(9,16,31,.97);border:1px solid rgba(120,255,160,.6);color:#fff;font-family:sans-serif;box-shadow:0 10px 40px #000a}' +
-    '#missions-card h3{margin:0 0 2px;font-size:18px}#missions-reset{font-size:12px;color:#8dffb0;margin-bottom:10px}' +
-    '.mi-h{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8dffb0;margin:12px 2px 6px}.mi-row{display:flex;gap:10px;align-items:center;padding:9px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,.06)}.mi-row.mi-done{opacity:.65}' +
-    '.mi-ic{font-size:24px;width:32px;text-align:center}.mi-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.mi-body small{color:#aab4c8;font-size:11px}' +
-    '.mi-bar{height:6px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden;margin:3px 0}.mi-bar i{display:block;height:100%;background:linear-gradient(90deg,#34d17a,#8dffb0)}' +
-    '.mi-rw{font-weight:800;color:#ffd166;text-align:center;font-size:13px;line-height:1.2}#missions-close{width:100%;margin-top:4px;padding:10px;border:0;border-radius:10px;background:#1e2a44;color:#fff;font-weight:700}';
+    '#missions-card{width:min(400px,calc(100vw - 24px));max-height:82vh;overflow:auto;padding:16px;border-radius:12px;background:#171b27;border:1px solid #2d3446;color:#e6e9f2;font-family:sans-serif}' +
+    '#missions-card h3{margin:0;font-size:17px;font-weight:700}#missions-reset{font-size:12px;color:#8b94a8;margin:2px 0 8px}' +
+    '.mi-h{font-size:12px;font-weight:600;color:#8b94a8;margin:14px 0 2px}.mi-row{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #252b3b}.mi-row.mi-off{opacity:.55}' +
+    '.mi-info{flex:1;min-width:0}.mi-title{font-size:14px;font-weight:600}.mi-desc{font-size:12px;color:#8b94a8;margin-top:1px}' +
+    '.mi-bar{height:4px;border-radius:2px;background:#252b3b;overflow:hidden;margin:6px 0 3px}.mi-bar i{display:block;height:100%;background:#5b8def}' +
+    '.mi-act{text-align:right;min-width:84px}.mi-reward{font-size:12px;color:#c9ced9;margin-bottom:6px}.mi-claimed{font-size:12px;color:#8b94a8}' +
+    '.mi-claim,#missions-claim-all{padding:7px 14px;border:0;border-radius:6px;background:#2f9e6e;color:#fff;font:600 13px sans-serif}.mi-claim:active,#missions-claim-all:active{background:#27855c}' +
+    '#missions-claim-all{display:none;width:100%;margin:2px 0 4px}#missions-close{width:100%;margin-top:12px;padding:9px;border:1px solid #2d3446;border-radius:6px;background:transparent;color:#c9ced9;font:600 13px sans-serif}';
   document.head.appendChild(st);
-  const b = document.createElement('button'); b.id = 'btn-missions'; b.type = 'button'; b.textContent = '🎯'; b.title = 'Misi Harian';
+  const b = document.createElement('button'); b.id = 'btn-missions'; b.type = 'button'; b.innerHTML = 'Misi <span id="mi-dot"></span>'; b.title = 'Misi harian';
   const box = document.createElement('div'); box.id = 'missions-modal';
-  box.innerHTML = '<div id="missions-card"><h3>🎯 Misi Harian</h3><div id="missions-reset"></div><div id="missions-list"></div><button id="missions-close" type="button">Tutup</button></div>';
+  box.innerHTML = '<div id="missions-card"><h3>Misi harian</h3><div id="missions-reset"></div><button id="missions-claim-all" type="button">Klaim semua</button><div id="missions-list"></div><button id="missions-close" type="button">Tutup</button></div>';
   const close = () => { box.style.display = 'none'; };
-  b.addEventListener('click', () => { box.style.display = 'flex'; refreshMissionsModal(); });
-  box.addEventListener('click', e => { if (e.target === box) close(); });
+  b.addEventListener('click', () => { box.style.display = 'flex'; refreshMissionsModal(true); });
+  box.addEventListener('click', e => { if (e.target === box) close(); const c = e.target.closest && e.target.closest('.mi-claim'); if (c) claimMission(c.dataset.id); });
+  box.querySelector('#missions-claim-all').addEventListener('click', claimAllMissions);
   box.querySelector('#missions-close').addEventListener('click', close);
   document.body.appendChild(b); document.body.appendChild(box);
   setInterval(() => { b.style.display = (gameState === 'LOBBY' && playerData && playerData.username) ? 'flex' : 'none'; if (gameState !== 'LOBBY') close(); else refreshMissionsModal(); }, 1000);
