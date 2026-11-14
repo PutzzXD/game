@@ -261,8 +261,8 @@ const SHOP_ITEMS = {
     { id: 'aks_jubah', name: 'Jubah Merah', price: 350 }
   ],
   gamepass: [
-    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 850000, gamepass: true, desc: 'Dorong teman saat balapan (tombol🫸' },
-    { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 150000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 5 detik. Cooldown 20 detik' }
+    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 10000000, gamepass: true, desc: 'Dorong teman saat balapan (tombol🫸' },
+    { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 150000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 7 detik. Cooldown 5 detik' }
   ]
 };
 
@@ -4202,7 +4202,7 @@ let pushSeq = 0, lastPushAt = 0;
 const handledPush = new Map(); // uid pendorong -> seq terakhir
 const hasPushPass = () => playerData.inventory.includes('gp_dorong');
 function tryPushNearestFriend() {
-  if (!hasPushPass()) { showToast('🔒 Beli Gamepass Dorong di Shop dulu'); return; }
+  if (!hasPushPass()) return;
   if (!roomCode || !myRef || gameState !== 'PLAYING') return;
   const now = performance.now();
   if (now - lastPushAt < PUSH_COOLDOWN) return;
@@ -4247,7 +4247,7 @@ function buildPushButton() {
 // Pelempar menulis event ke node pemain sendiri (rooms/<kode>/players/<uid>/ice). Semua klien melihat
 // kubus es terbang dari pelempar ke target; hanya korban yang benar-benar membeku di sisinya, lalu
 // menulis frozenUntil agar semua orang melihat balok es di sekeliling korban.
-const FREEZE_DURATION = 10000, FREEZE_COOLDOWN = 2000, FREEZE_RANGE = 30, FREEZE_IMMUNE = 1000, ICE_FLIGHT_MS = 380;
+const FREEZE_DURATION = 7000, FREEZE_COOLDOWN = 5000, FREEZE_RANGE = 30, FREEZE_IMMUNE = 1000, ICE_FLIGHT_MS = 380;
 let lastIceAt = -1e9, localFreezeUntil = 0, freezeImmuneUntil = 0;
 const handledIce = new Map();   // uid pelempar -> seq terakhir yang sudah diproses
 const iceProjectiles = [];      // kubus es yang sedang terbang
@@ -4295,15 +4295,14 @@ function applyLocalFreeze() {
   if (isFrozenLocal() || now < freezeImmuneUntil) return;
   localFreezeUntil = now + FREEZE_DURATION; freezeImmuneUntil = localFreezeUntil + FREEZE_IMMUNE;
   moveVel.set(0, 0); knock.set(0, 0); isRunning = false;
-  showToast('🧊 Kamu dibekukan 5 detik!', 1600);
   if (myRef) update(myRef, { frozenUntil: serverNow() + FREEZE_DURATION }).catch(() => {});
 }
 function clearLocalFreeze() { localFreezeUntil = 0; if (myRef) update(myRef, { frozenUntil: null }).catch(() => {}); }
 function tryFreezeNearest() {
-  if (!hasFreezePass()) { showToast('🔒 Beli Gamepass Freeze Player di Shop dulu'); return; }
+  if (!hasFreezePass()) return;
   if (!roomCode || !myRef || gameState !== 'PLAYING' || isFrozenLocal()) return;
   const now = performance.now(), left = FREEZE_COOLDOWN - (now - lastIceAt);
-  if (left > 0) { showToast('❄️ Cooldown ' + Math.ceil(left / 1000) + ' detik', 900); return; }
+  if (left > 0) return;
   let best = null, bestD = FREEZE_RANGE;
   for (const [id, av] of remotePlayers) {
     const d = roomPlayers[id]; if (!d || d.deadAt || !av.visible) continue;
@@ -4311,13 +4310,12 @@ function tryFreezeNearest() {
     const dist = Math.hypot(av.position.x - character.position.x, av.position.z - character.position.z);
     if (dist < bestD && Math.abs(av.position.y - character.position.y) < 12) { best = id; bestD = dist; }
   }
-  if (!best) { showToast('Tidak ada pemain di dekatmu', 1000); return; }
+  if (!best) return;
   lastIceAt = now;
   const tav = remotePlayers.get(best);
   if (tav) { character.rotation.y = Math.atan2(tav.position.x - character.position.x, tav.position.z - character.position.z); pushAnimStart = performance.now(); } // animasi melempar
   spawnIceProjectile(character, tav, null);
   update(myRef, { ice: { target: best, seq: Date.now(), t: serverNow() } }).catch(() => {});
-  showToast('🧊 Lempar es ke ' + String(roomPlayers[best]?.username || 'pemain') + '!', 1000);
 }
 function applyIncomingIce() {
   if (!roomCode || !character) return;
