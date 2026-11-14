@@ -1959,8 +1959,8 @@ function init3DGame() {
   catch (e) { console.error('Map Honey gagal dibuat:', e); honeyWorld = null; }
   try { laserWorld = buildLaserWorld(THREE, scene); laserWorldGroup = laserWorld.group; laserWorldGroup.visible = false; }
   catch (e) { console.error('Map Laser gagal dibuat:', e); laserWorld = null; laserWorldGroup = null; }
-  try { lavaLandWorld = buildLavaLandWorld(THREE, scene, { onTileStep: (i) => { if (myRef) update(myRef, { ['lt/t' + i]: serverNow() }).catch(() => {}); } }); lavaLandWorldGroup = lavaLandWorld.group; lavaLandWorldGroup.visible = false; }
-  catch (e) { console.error('Map Lava Land gagal dibuat:', e); lavaLandWorld = null; lavaLandWorldGroup = null; }
+  try { lavaLandWorld = buildLavaLandWorld(THREE, scene, { onTileStep: (i) => { if (myRef) update(myRef, { ['lt/t' + i]: serverNow() }).catch(() => {}); } }); lavaLandWorldGroup = lavaLandWorld.group; lavaLandWorldGroup.visible = false; console.info('Lava Land dimuat:', lavaLandWorld.platforms.length, 'ubin'); }
+  catch (e) { console.error('Map Lava Land gagal dibuat:', e); window.__lavaLandError = String(e && e.stack || e); lavaLandWorld = null; lavaLandWorldGroup = null; }
 
   lobbyWorldGroup = new THREE.Group();
   lobbyWorldGroup.name = 'LOBBY_PLAZA';
