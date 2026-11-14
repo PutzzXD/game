@@ -1959,8 +1959,8 @@ function init3DGame() {
   catch (e) { console.error('Map Honey gagal dibuat:', e); honeyWorld = null; }
   try { laserWorld = buildLaserWorld(THREE, scene); laserWorldGroup = laserWorld.group; laserWorldGroup.visible = false; }
   catch (e) { console.error('Map Laser gagal dibuat:', e); laserWorld = null; laserWorldGroup = null; }
-  try { lavaLandWorld = buildLavaLandWorld(THREE, scene, { onTileStep: (i) => { if (myRef) update(myRef, { ['lt/t' + i]: serverNow() }).catch(() => {}); } }); lavaLandWorldGroup = lavaLandWorld.group; lavaLandWorldGroup.visible = false; console.info('Lava Land dimuat:', lavaLandWorld.platforms.length, 'ubin'); }
-  catch (e) { console.error('Map Lava Land gagal dibuat:', e); window.__lavaLandError = String(e && e.stack || e); lavaLandWorld = null; lavaLandWorldGroup = null; }
+  try { lavaLandWorld = buildLavaLandWorld(THREE, scene, { onTileStep: (i) => { if (myRef) update(myRef, { ['lt/t' + i]: serverNow() }).catch(() => {}); } }); lavaLandWorldGroup = lavaLandWorld.group; lavaLandWorldGroup.visible = false; }
+  catch (e) { console.error('Map Lava Land gagal dibuat:', e); lavaLandWorld = null; lavaLandWorldGroup = null; }
 
   lobbyWorldGroup = new THREE.Group();
   lobbyWorldGroup.name = 'LOBBY_PLAZA';
@@ -4769,11 +4769,17 @@ function playMapGacha(result, spinMs, done) {
     if (snowWorld) keys.push('snow');
     if (angkasaWorld) keys.push('angkasa');
     if (mountainWorld) keys.push('mountain');
-    // Honey harus ikut daftar kartu roulette, bukan hanya daftar rollMap().
-    if (honeyWorld && roomCode) keys.push('honey'); // kartu Honey hanya muncul di room multiplayer
-    if (laserWorld && roomCode) keys.push('laser'); // kartu Laser hanya muncul di room multiplayer
-    if (lavaLandWorld && roomCode) keys.push('lavaland'); // kartu Lava Land hanya muncul di room multiplayer
+    // Pool survival multiplayer. Jangan hanya bergantung pada roomCode di sini:
+    // pada pergantian state room, roomCode bisa sesaat belum terbaca saat roulette dibuat.
+    // Jika hasil host sudah lavaland, kartu Lava Land wajib masuk agar tidak fallback ke MAP LAVA.
+    const survivalRoom = !!roomCode || ['honey', 'laser', 'lavaland'].includes(result);
+    if (honeyWorld && survivalRoom) keys.push('honey');
+    if (laserWorld && survivalRoom) keys.push('laser');
+    if (lavaLandWorld && survivalRoom) keys.push('lavaland');
     const chosen = keys.includes(result) ? result : 'lava';
+    if (result === 'lavaland' && !lavaLandWorld) {
+      console.error('[LAVA LAND] Hasil gacha meminta lavaland, tetapi lavaLandWorld belum dibuat. Periksa error buildLavaLandWorld.');
+    }
     const winnerIndex = 30;
 
     // Perbarui CSS setiap kali agar tidak memakai style gacha versi lama.

@@ -6,7 +6,7 @@ export function buildLavaLandWorld(THREE, scene, opts = {}) {
   const group = new THREE.Group(); scene.add(group);
   const RINGS = 7, S = 1.2, R = 1.08, LAVA_Y = -1.6, WARN = 0.9, FALL = 1.1;
   const platforms = [], tiles = [], bubbles = [];
-  const mkTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; try { draw(c.getContext('2d'), w, h); } catch (e) { console.warn('Lava Land: tekstur gagal digambar', e); } const t = new THREE.CanvasTexture(c); if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const mkTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace; return t; };
 
   // Tekstur batu ubin
   const stone = mkTex(128, 128, (x, w, h) => {
@@ -45,8 +45,6 @@ export function buildLavaLandWorld(THREE, scene, opts = {}) {
   const lava = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.MeshBasicMaterial({ map: lavaTex }));
   lava.rotation.x = -Math.PI / 2; lava.position.y = LAVA_Y; group.add(lava);
 
-  // Dekorasi (gelembung & rambu) bersifat opsional: kalau gagal, map tetap jadi.
-  try {
   // Gelembung lava yang naik-turun
   const bubMat = new THREE.MeshBasicMaterial({ color: 0xff8a2a });
   for (let i = 0; i < 18; i++) {
@@ -65,7 +63,6 @@ export function buildLavaLandWorld(THREE, scene, opts = {}) {
   sign.rotation.z = Math.PI / 4; sign.position.set(-9, 2.2, -19); group.add(sign);
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 4.2, 10), new THREE.MeshStandardMaterial({ color: 0x2a5fb0 }));
   pole.position.set(-9, 0.5, -19); group.add(pole);
-  } catch (e) { console.warn('Lava Land: dekorasi gagal dibuat', e); }
 
   let clock = 0;
   function update(delta, pos, t) {
