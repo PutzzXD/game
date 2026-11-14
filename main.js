@@ -4,6 +4,7 @@ import { buildAngkasaWorld } from './angkasa.js';
 import { buildMountainWorld } from './mountain.js';
 import { buildHoneyWorld } from './honey.js';
 import { buildLaserWorld } from './laser.js';
+import './lobbyui.js'; // tema tombol & HUD lobby
 import { buildLavaMap, updateLavaMap } from './lava.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
