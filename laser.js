@@ -1,7 +1,8 @@
 // ============================================================
 //  LASER.JS  —  Map "Laser Lab" (terinspirasi Stumble Guys)
-//  Arena bundar berlantai ubin biru-abu, dikelilingi cincin hazard
-//  kuning-hitam, kolam slime hijau, dek ungu, layar monitor & tabung.
+//  Arena bundar berlantai ubin biru muda, dikelilingi cincin hazard
+//  kuning-hitam yang tebal & membulat, kolam slime hijau terang, dek ungu
+//  dengan pelek tebal, layar monitor hijau di lengan robot & tabung slime.
 //  Laser merah-muda JALAN LURUS menyapu arena (tidak berputar).
 //  5 detik pertama aman; laser pertama muncul di detik ke-5, lalu makin
 //  lama makin sering & makin cepat, datang dari arah yang berbeda-beda.
@@ -27,7 +28,7 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
   const FLOOR_TOP = 0.25;            // tinggi permukaan lantai (sama dgn spawn map lain)
   const ARENA_R = 9;                 // radius lantai yang bisa diinjak
   const HAZARD_OUT = 10.4;           // radius luar cincin hazard
-  const RAIL_R = 11.0;               // radius jalur emitter laser
+  const RAIL_R = 13.6;               // radius emitter laser (duduk di atas pelek ungu)
   const SLIME_Y = -1.2;
   const BEAM_Y = FLOOR_TOP + 0.62;   // tinggi tengah laser dari dasar
   const BEAM_R = 0.07;               // tebal inti laser
@@ -63,16 +64,16 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
   // ---------- Tekstur ----------
   // Ubin lantai biru-abu dengan garis sambungan & baut kecil.
   const tileTex = canvasTex(256, 256, (g, w, h) => {
-    const shades = ['#a9bde0', '#9fb4da', '#b4c6e6', '#a3b8de'];
+    const shades = ['#bccbea', '#b2c4e6', '#c4d2ee', '#b7c8e8'];
     const n = 2, s = w / n;
     for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
       g.fillStyle = shades[(i * 2 + j) % shades.length];
       g.fillRect(i * s, j * s, s, s);
-      g.strokeStyle = '#6f84ad'; g.lineWidth = 4; g.strokeRect(i * s + 2, j * s + 2, s - 4, s - 4);
-      g.fillStyle = '#7d92bb';
+      g.strokeStyle = '#8397c0'; g.lineWidth = 5; g.strokeRect(i * s + 2, j * s + 2, s - 4, s - 4);
+      g.fillStyle = '#8a9dc4';
       [[10, 10], [s - 10, 10], [10, s - 10], [s - 10, s - 10]].forEach(([bx, by]) => { g.beginPath(); g.arc(i * s + bx, j * s + by, 3, 0, 7); g.fill(); });
     }
-  }, 5, 5);
+  }, 3, 3);
 
   // Garis miring kuning-hitam untuk cincin hazard.
   const hazardTex = canvasTex(128, 128, (g, w, h) => {
@@ -81,7 +82,7 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
     for (let k = -2; k < 5; k++) {
       g.beginPath(); g.moveTo(k * 32, 0); g.lineTo(k * 32 + 16, 0); g.lineTo(k * 32 + 16 + h, h); g.lineTo(k * 32 + h, h); g.fill();
     }
-  }, 28, 1);
+  }, 36, 1);
 
   // Layar monitor hijau berpola grid.
   const screenTex = canvasTex(256, 160, (g, w, h) => {
@@ -92,18 +93,33 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
     g.strokeStyle = '#0d5a1c'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
   });
 
+  // Slime hijau dengan bercak lebih terang (digeser pelan tiap frame).
+  const slimeTex = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#35e04f'; g.fillRect(0, 0, w, h);
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 34; i++) {
+      const x = rnd() * w, y = rnd() * h, r = 14 + rnd() * 34;
+      for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) {
+        const gr = g.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+        gr.addColorStop(0, i % 3 ? 'rgba(170,255,120,0.55)' : 'rgba(20,170,50,0.45)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = gr; g.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+      }
+    }
+  }, 4, 4);
+
   // ---------- Material ----------
   const metalDark = new THREE.MeshStandardMaterial({ color: 0x2b2f3d, roughness: 0.55, metalness: 0.6 });
   const metalLight = new THREE.MeshStandardMaterial({ color: 0x9aa3b8, roughness: 0.4, metalness: 0.7 });
   const floorTop = new THREE.MeshStandardMaterial({ color: tileTex ? 0xffffff : 0xa9bde0, map: tileTex || null, roughness: 0.55, metalness: 0.1 });
   const floorSide = new THREE.MeshStandardMaterial({ color: 0x3a3f55, roughness: 0.6, metalness: 0.4 });
   const hazardMat = new THREE.MeshStandardMaterial({ color: tileTex ? 0xffffff : 0xf5c400, map: hazardTex || null, roughness: 0.6 });
-  const slimeMat = new THREE.MeshStandardMaterial({ color: 0x30e04a, emissive: 0x22ff3c, emissiveIntensity: 0.9, roughness: 0.25 });
-  const deckMat = new THREE.MeshStandardMaterial({ color: 0x6d4fb0, roughness: 0.7, metalness: 0.15, side: THREE.DoubleSide });
-  const deckDark = new THREE.MeshStandardMaterial({ color: 0x4a3480, roughness: 0.7, metalness: 0.2 });
+  const slimeMat = new THREE.MeshStandardMaterial({ color: slimeTex ? 0xffffff : 0x30e04a, map: slimeTex || null, emissive: 0x22ff3c, emissiveIntensity: 0.55, roughness: 0.2 });
+  const deckMat = new THREE.MeshStandardMaterial({ color: 0x7c5cc4, roughness: 0.7, metalness: 0.15, side: THREE.DoubleSide });
+  const deckDark = new THREE.MeshStandardMaterial({ color: 0x5a3f98, roughness: 0.7, metalness: 0.2 });
   const screenMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: screenTex || null, emissive: 0x20c040, emissiveMap: screenTex || null, emissiveIntensity: 0.9, roughness: 0.4 });
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x43e85a, emissive: 0x1fd23a, emissiveIntensity: 0.7, transparent: true, opacity: 0.78, roughness: 0.15 });
   const yellowMat = new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.5, metalness: 0.2 });
+  const redFrameMat = new THREE.MeshStandardMaterial({ color: 0xb3202a, roughness: 0.5, metalness: 0.3 });
 
   // ---------- Lantai arena (satu-satunya yang bisa diinjak) ----------
   const floorGeo = new THREE.CylinderGeometry(ARENA_R, ARENA_R, 1, 64);
@@ -123,9 +139,14 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
     isFallen: false, tell: 0, revealTimer: 0, dx: 0, r: ARENA_R
   }];
 
-  // ---------- Cincin hazard kuning-hitam ----------
-  const hazardPts = [new THREE.Vector2(ARENA_R, FLOOR_TOP - 0.3), new THREE.Vector2(ARENA_R, FLOOR_TOP - 0.05), new THREE.Vector2(HAZARD_OUT, FLOOR_TOP - 0.05), new THREE.Vector2(HAZARD_OUT, FLOOR_TOP - 0.5)];
-  const hazardRing = new THREE.Mesh(new THREE.LatheGeometry(hazardPts, 72), hazardMat);
+  // ---------- Cincin hazard kuning-hitam (tebal, membulat, lebih tinggi dari lantai) ----------
+  const T = FLOOR_TOP;
+  const hazardPts = [
+    new THREE.Vector2(ARENA_R, T - 0.02), new THREE.Vector2(ARENA_R + 0.18, T + 0.14), new THREE.Vector2(ARENA_R + 0.55, T + 0.26),
+    new THREE.Vector2(ARENA_R + 0.95, T + 0.26), new THREE.Vector2(HAZARD_OUT - 0.25, T + 0.14), new THREE.Vector2(HAZARD_OUT, T - 0.1),
+    new THREE.Vector2(HAZARD_OUT, SLIME_Y - 0.2)
+  ];
+  const hazardRing = new THREE.Mesh(new THREE.LatheGeometry(hazardPts, 96), hazardMat);
   hazardRing.material.side = THREE.DoubleSide;
   group.add(hazardRing);
 
@@ -137,32 +158,34 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
   slimeCore.rotation.x = -Math.PI / 2; slimeCore.position.y = SLIME_Y - 0.6;
   group.add(slimeCore);
 
-  // ---------- Dek ungu di luar kolam ----------
-  const deckPts = [new THREE.Vector2(13, -1.6), new THREE.Vector2(13, 0.0), new THREE.Vector2(26, 0.0), new THREE.Vector2(26, -1.6)];
-  const deck = new THREE.Mesh(new THREE.LatheGeometry(deckPts, 72), deckMat);
+  // ---------- Dek ungu di luar kolam (pelek tebal membulat di sekeliling kolam) ----------
+  const deckPts = [
+    new THREE.Vector2(13, -1.6), new THREE.Vector2(13, 0.15), new THREE.Vector2(13.12, 0.42), new THREE.Vector2(13.5, 0.6),
+    new THREE.Vector2(14.3, 0.62), new THREE.Vector2(14.9, 0.42), new THREE.Vector2(15.4, 0.0), new THREE.Vector2(26, 0.0), new THREE.Vector2(26, -1.6)
+  ];
+  const deck = new THREE.Mesh(new THREE.LatheGeometry(deckPts, 96), deckMat);
   deck.receiveShadow = true; group.add(deck);
-  const deckLip = new THREE.Mesh(new THREE.TorusGeometry(13.1, 0.22, 8, 72), yellowMat);
-  deckLip.rotation.x = Math.PI / 2; deckLip.position.y = 0.05;
-  group.add(deckLip);
-  // Baut/silinder kecil di dek
-  for (let i = 0; i < 40; i++) {
-    const a = (i / 40) * Math.PI * 2, bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.18, 10), deckDark);
-    bolt.position.set(Math.cos(a) * 14.6, 0.08, Math.sin(a) * 14.6); group.add(bolt);
+  // Baut bulat di pelek & di dek luar
+  const boltGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.14, 10);
+  for (let i = 0; i < 36; i++) {
+    const a = (i / 36) * Math.PI * 2, bolt = new THREE.Mesh(boltGeo, deckDark);
+    bolt.position.set(Math.cos(a) * 14.0, 0.66, Math.sin(a) * 14.0); group.add(bolt);
   }
-
-  // Rel jalur emitter laser (mengambang di atas slime)
-  const rail = new THREE.Mesh(new THREE.TorusGeometry(RAIL_R, 0.09, 8, 96), metalLight);
-  rail.rotation.x = Math.PI / 2; rail.position.y = BEAM_Y - 0.15;
-  group.add(rail);
+  for (let i = 0; i < 28; i++) {
+    const a = ((i + 0.5) / 28) * Math.PI * 2, bolt = new THREE.Mesh(boltGeo, deckDark);
+    bolt.position.set(Math.cos(a) * 17.2, 0.07, Math.sin(a) * 17.2); group.add(bolt);
+  }
 
   // ---------- Dekorasi: layar monitor di lengan robot ----------
   const screens = [];
-  [[-0.9, 5.2, 4.2], [0.35, 5.8, 4.8], [1.5, 5.0, 4.0], [2.9, 5.6, 4.4], [4.4, 5.2, 4.2]].forEach(([ang, y, w], i) => {
-    const R = 21.5 + (i % 2) * 1.5, ax = Math.cos(ang) * R, az = Math.sin(ang) * R;
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.4, y, 10), metalDark);
+  [[-0.9, 5.0, 4.2], [0.35, 5.6, 4.8], [1.5, 4.8, 4.0], [2.9, 5.4, 4.4], [4.4, 5.0, 4.2]].forEach(([ang, y, w], i) => {
+    const R = 18.5 + (i % 2) * 1.6, ax = Math.cos(ang) * R, az = Math.sin(ang) * R;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, y, 10), metalDark);
     pole.position.set(ax, y / 2, az); group.add(pole);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 2.4), yellowMat);
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, w * 0.62 + 0.5, 0.45), metalDark);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.85, 0.5, 12), yellowMat);
+    base.position.set(ax, 0.25, az); group.add(base);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 2.6), yellowMat);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, w * 0.62 + 0.5, 0.45), i % 3 === 1 ? redFrameMat : metalDark);
     const scr = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.62), screenMat.clone());
     const holder = new THREE.Group();
     holder.position.set(ax, y + 1.4, az);
@@ -298,7 +321,8 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
     }
 
     // Animasi dekor: slime berdenyut, layar berkedip halus
-    slimeMat.emissiveIntensity = 0.8 + 0.2 * Math.sin(t * 2.2);
+    slimeMat.emissiveIntensity = 0.5 + 0.12 * Math.sin(t * 2.2);
+    if (slimeTex) { slimeTex.offset.x = (t * 0.012) % 1; slimeTex.offset.y = (t * 0.007) % 1; }
     screens.forEach((s, i) => { s.material.emissiveIntensity = 0.8 + 0.15 * Math.sin(t * 3 + i * 1.7); });
 
     if (hit && !hitFlag) { hitFlag = true; if (typeof opts.onHit === 'function') { try { opts.onHit(); } catch (e) {} } }
@@ -308,8 +332,8 @@ export function buildLaserWorld(THREE, scene, opts = {}) {
   // Latar & kabut khas map ini (panggil saat map aktif).
   function applyEnvironment(sc) {
     const s = sc || scene;
-    s.background = new THREE.Color(0x2b2057);
-    s.fog = new THREE.Fog(0x2b2057, 45, 140);
+    s.background = new THREE.Color(0x7a82cf);
+    s.fog = new THREE.Fog(0x7a82cf, 60, 160);
   }
 
   const SPAWN_POINTS = [[0, 0], [-1.5, 0], [1.5, 0], [-3, 0], [3, 0], [-1.5, 1.5], [1.5, 1.5], [0, 1.5]];
