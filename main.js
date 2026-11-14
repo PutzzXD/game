@@ -265,7 +265,7 @@ const SHOP_ITEMS = {
   gamepass: [
     { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 10000000, gamepass: true, desc: 'Dorong teman saat balapan (tombol🫸' },
     { id: 'gp_vip', name: 'Gamepass VIP', price: 800000, gamepass: true, emoji: '👑', desc: 'Nama khusus VIP, tag VIP di chat, dan aura emas eksklusif' },
-    { id: 'gp_2xcoin', name: 'Gamepass 2x Koin', price: 900000, gamepass: true, emoji: '🪙', desc: 'Semua koin yang kamu dapat jadi 2 kali lipat' },
+    { id: 'gp_2xcoin', name: 'Gamepass 2x Koin', price: 900000, gamepass: true, emoji: '🪙', desc: 'Koin hadiah saat bermain & menang jadi 2 kali lipat' },
     { id: 'gp_winfx', name: 'Gamepass Animasi Menang', price: 1200000, gamepass: true, emoji: '🏆', desc: 'Mahkota emas, kembang api & confetti saat menang, dilihat semua pemain' },
     { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 15000000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 7 detik. Cooldown 5 detik' }
   ]
@@ -573,6 +573,7 @@ async function returnToLobby() {
   const adFly = document.getElementById('ad-fly'); if (adFly) { adFly.classList.remove('on'); adFly.textContent = '✈️ Terbang: OFF (F)'; }
   finishMs = null; deathFrozenMs = null; roomRunReset = 0; honeyRoundEnded = false; honeyWinAwarded = false; soloStart = 0;
   { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = ''; }
+  hideWinUi();
   try { guards.forEach(gd => gd.reset()); } catch (e) {}
   if (character) { character.visible = true; character.position.set(0, 0.25, 0); character.rotation.y = 0; }
   if (physics) physics.velocityY = 0;
@@ -721,7 +722,7 @@ async function awardWinCrown() {
   // Simpan juga salinan di node leaderboard supaya penyaringan dan tampilan selalu sinkron.
   await socialPatch(`leaderboard/${key}`, { crowns: next }).catch(() => {});
   refreshSoloLeaderboard(true).catch(() => {});
-  showToast(`🏆 MENANG! Kamu mendapat 1 mahkota (${next})`, 2800);
+  showToast(`MENANG! Kamu mendapat 1 mahkota (${next})`, 2800);
 }
 
 // ============ 4. FUNGSI LOBI & SHOP ============
@@ -877,12 +878,12 @@ window.buyItem = async function(category, itemId, price) {
   document.getElementById('coin-amount').textContent = playerData.coins;
   renderShopTab(category);
   if (document.getElementById('vault-modal').style.display === 'flex') renderVaultTab(category);
-  showToast("✅ Berhasil dibeli!");
+  showToast("Berhasil dibeli!");
 };
 
 window.equipItem = async function(category, itemId) {
   if (itemId === 'baju_developer' && accountKey() !== DEV_USERNAME) {
-    showToast('🔒 Kostum Developer khusus akun admin');
+    showToast('Kostum Developer khusus akun admin');
     return;
   }
   let equipKey = category;
@@ -893,7 +894,7 @@ window.equipItem = async function(category, itemId) {
   updateCharacterVisuals();
   renderShopTab(category);
   if (document.getElementById('vault-modal').style.display === 'flex') renderVaultTab(category);
-  showToast("✅ Item berhasil dipakai!");
+  showToast("Item berhasil dipakai!");
 };
 
 async function updatePlayerFirebase() {
@@ -3041,6 +3042,37 @@ function checkWallCollision(x, z, y) {
   return false;
 }
 
+// Layar menang: tulisan kecil di atas (langsung muncul), tombol "Kembali Lobby" di kanan bawah setelah 5 detik
+// supaya animasi menang masih terlihat jelas (tidak tertutup overlay besar).
+let winUiTimer = null;
+function hideWinUi() {
+  if (winUiTimer) { clearTimeout(winUiTimer); winUiTimer = null; }
+  const b = document.getElementById('win-banner'); if (b) b.style.display = 'none';
+  const l = document.getElementById('btn-win-lobby'); if (l) l.style.display = 'none';
+}
+function showWinBanner(detail) {
+  const ov = document.getElementById('overlay'); if (ov) ov.style.display = 'none';
+  if (!document.getElementById('win-ui-style')) {
+    const st = document.createElement('style'); st.id = 'win-ui-style';
+    st.textContent = '#win-banner{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:70;padding:6px 16px;border-radius:14px;background:rgba(0,0,0,.6);border:2px solid #ffd166;color:#ffd166;font:800 15px sans-serif;text-align:center;pointer-events:none;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis;animation:winBannerIn .4s ease-out}#win-banner small{display:block;color:#fff;font:600 12px sans-serif;margin-top:1px}@keyframes winBannerIn{from{opacity:0;transform:translate(-50%,-14px)}to{opacity:1;transform:translate(-50%,0)}}#btn-win-lobby{position:fixed;right:16px;bottom:16px;z-index:80;padding:12px 18px;border-radius:14px;border:2px solid #ffd166;background:linear-gradient(#ffe27a,#ff9f1c);color:#3a2300;font:800 15px sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.4);touch-action:manipulation;-webkit-tap-highlight-color:transparent;display:none}#btn-win-lobby:active{transform:scale(.95)}';
+    document.head.appendChild(st);
+  }
+  let b = document.getElementById('win-banner');
+  if (!b) { b = document.createElement('div'); b.id = 'win-banner'; document.body.appendChild(b); }
+  b.innerHTML = '🏆 ANDA MENANG' + (detail ? '<small></small>' : '');
+  if (detail) b.querySelector('small').textContent = detail;
+  b.style.display = 'block'; b.style.animation = 'none'; void b.offsetWidth; b.style.animation = '';
+  let l = document.getElementById('btn-win-lobby');
+  if (!l) {
+    l = document.createElement('button'); l.id = 'btn-win-lobby'; l.type = 'button'; l.textContent = 'Kembali Lobby';
+    l.addEventListener('click', () => { hideWinUi(); if (roomCode) returnToLobby(); else location.reload(); });
+    document.body.appendChild(l);
+  }
+  l.style.display = 'none';
+  if (winUiTimer) clearTimeout(winUiTimer);
+  winUiTimer = setTimeout(() => { winUiTimer = null; if (gameState === 'WIN') l.style.display = 'block'; }, 5000);
+}
+
 function showOverlay(title, desc, color) {
   const t = document.getElementById('overlay-title');
   t.textContent = title; t.style.color = color; t.style.fontSize = ''; t.style.maxWidth = ''; t.style.textAlign = ''; t.style.lineHeight = '';
@@ -3250,6 +3282,7 @@ function onGameBegin() {
   const rp = document.getElementById('room-panel'); if (rp) rp.style.display = 'none';
   finishMs = null; deathFrozenMs = null; roomRunReset = 0; honeyRoundEnded = false; honeyWinAwarded = false;
   { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = ''; }
+  hideWinUi();
   personalRunScore = 0;
   activatedCheckpoints = new WeakSet();
   // Reset warna/status checkpoint hanya saat putaran baru dimulai. Respawn tidak meresetnya.
@@ -3340,9 +3373,8 @@ function honeyDeclareWin() {
   if (myRef) update(myRef, { status: 'WIN', wonAt: serverNow() }).catch(() => {});
   triggerWinFx();
   awardWinCrown().catch(e => { console.warn('Gagal memberi mahkota:', e); showToast('⚠️ Mahkota gagal disimpan'); });
-  showOverlay('YOU WIN! 👑', 'Kamu pemain terakhir yang bertahan! +1 mahkota', '#ffd700');
+  showWinBanner('Pemain terakhir bertahan  +1 👑');
   { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = 'none'; }
-  setTimeout(() => { if (gameState === 'WIN' && isSurvivalMap()) returnToLobby(); }, 3500);
 }
 function checkHoneyLastPlayer() {
   if (!roomCode || !roomPlayers || honeyRoundEnded || gameState !== 'PLAYING') return;
@@ -4937,10 +4969,10 @@ function grantLoginRewards(m) {
     m.streak.claimed[def.id] = true; total += def.reward; got.push(def);
   }
   if (!total) return;
-  playerData.coins = Math.floor(Number(playerData.coins) || 0) + coinX(total);
+  playerData.coins = Math.floor(Number(playerData.coins) || 0) + total;
   const ce = document.getElementById('coin-amount'); if (ce) ce.textContent = playerData.coins;
   missionFlush();
-  showToast('📅 ' + got[got.length - 1].title + '  +' + coinX(total).toLocaleString('id-ID') + ' 🪙', 3500);
+  showToast('📅 ' + got[got.length - 1].title + '  +' + total.toLocaleString('id-ID') + ' 🪙', 3500);
   refreshMissionsModal();
 }
 function ensureMissions() {
@@ -4961,10 +4993,10 @@ function completeMission(id) {
   const m = ensureMissions(), def = DAILY_MISSIONS.find(x => x.id === id);
   if (!m || !def || m.done[id]) return;
   m.done[id] = true; m.prog[id] = def.goal;
-  playerData.coins = Math.floor(Number(playerData.coins) || 0) + coinX(def.reward);
+  playerData.coins = Math.floor(Number(playerData.coins) || 0) + def.reward;
   const ce = document.getElementById('coin-amount'); if (ce) ce.textContent = playerData.coins;
   missionFlush();
-  showToast('🎯 Misi selesai: ' + def.title + '  +' + coinX(def.reward).toLocaleString('id-ID') + ' 🪙', 3500);
+  showToast('🎯 Misi selesai: ' + def.title + '  +' + def.reward.toLocaleString('id-ID') + ' 🪙', 3500);
   refreshMissionsModal();
 }
 function missionAdd(id, amount) {
@@ -5256,7 +5288,7 @@ function animate() {
     updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins;
     onFinish();
-    showOverlay('YOU WIN!', (currentMap === 'snow' ? 'Kamu lolos dari dunia salju dan tembakan NPC! +1000 🪙' : currentMap === 'angkasa' ? 'Kamu berhasil menaklukkan lintasan luar angkasa! +1000 🪙' : currentMap === 'mountain' ? 'Kamu berhasil mencapai puncak gunung! +1000 🪙' : 'Putzzdev mengakui kamu jago melewati tower, jebakan, dan labirin! +1000 🪙').split('+1000').join('+' + winCoins) + finishSummary(), '#00ff00');
+    showWinBanner('+' + winCoins + ' 🪙' + finishSummary());
   }
 
   // ===== Animasi karakter: damping + squash & stretch + condong badan =====
