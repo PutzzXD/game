@@ -1,11 +1,23 @@
 // ===== MAP SURVIVAL: LAVA LAND (gaya Stumble Guys) =====
-// Arena ubin hexagon biru di atas lautan lava. Ubin yang diinjak berubah pink lalu runtuh ke lava; pemain terakhir yang
-// bertahan menang. Waktu ubin dihitung dari awal ronde (detik) sehingga sama di semua pemain; ubin yang diinjak pemain lain
-// disinkronkan lewat Firebase (lt/t<index> = waktu server, mirip ht/ di Honey Drop).
+// Arena ubin hexagon biru di atas lautan lava. LAVA TERUS NAIK. Ubin yang diinjak akan berubah pink sebentar lalu TUMBUH
+// ke atas (satu per satu, waktunya acak per ubin tapi sama di semua pemain) jadi pilar; pemain harus lompat ke batu yang
+// lebih tinggi supaya tidak kena lava. Pemain terakhir yang bertahan menang. Waktu dihitung dari awal ronde (detik);
+// ubin yang diinjak pemain lain disinkronkan lewat Firebase (lt/t<index> = waktu server, mirip ht/ di Honey Drop).
 export function buildLavaLandWorld(THREE, scene, opts = {}) {
   const group = new THREE.Group(); scene.add(group);
-  const RINGS = 7, S = 1.2, R = 1.08, LAVA_Y = -1.6, WARN = 0.9, FALL = 1.1;
+  const RINGS = 7, S = 1.2, R = 1.08, LAVA_Y = -1.6;
+  // ---- Pengaturan lava naik & batu tumbuh (ubah di sini kalau mau lebih mudah/sulit) ----
+  const LAVA_DELAY = 6;      // detik sebelum lava mulai naik
+  const LAVA_RATE = 0.14;    // kecepatan naik lava (unit/detik)
+  const LAVA_MAX_RISE = 9.2; // batas naik lava (lebih tinggi dari pilar tertinggi, jadi akhirnya semua tenggelam)
+  const LAVA_KILL = 0.5;     // pemain mati kalau kakinya lebih dalam dari ini di bawah permukaan lava
+  const STEP = 0.9;          // tinggi tiap kali batu tumbuh (masih bisa dilompati)
+  const GROW_T = 0.5;        // lama animasi tumbuh (detik)
+  const WARN = 0.9;          // ubin berkedip pink sebelum tumbuh (detik)
+  const hash = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
+  let lavaY = LAVA_Y;
   const platforms = [], tiles = [], bubbles = [];
+  const tmpCol = new THREE.Color(), whiteCol = new THREE.Color(0xffffff);
   const mkTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace; return t; };
 
   // Tekstur batu ubin
@@ -27,7 +39,10 @@ export function buildLavaLandWorld(THREE, scene, opts = {}) {
     const mesh = new THREE.Mesh(geo, [sideMat, topMat, sideMat]);
     mesh.position.set(x, 0, z); mesh.receiveShadow = true; group.add(mesh);
     const plat = { mesh, width: R * 2, depth: R * 2, type: 'static', startX: x, startY: 0, startZ: z, range: 0, speed: 0, phase: 0, isFallen: false, tell: 0, revealTimer: 0, dx: 0, r: 1.0 };
-    platforms.push(plat); tiles.push({ plat, topMat, sideMat, i: idx++, stepAt: null, vy: 0 });
+    platforms.push(plat);
+    // tiap ubin punya jadwal tumbuh acak (deterministik dari nomor ubin -> sama di semua pemain)
+    tiles.push({ plat, mesh, topMat, sideMat, i: idx, stepAt: null, h: 0, maxLv: 3 + Math.floor(hash(idx, 1) * 5), t0: 1.0 + hash(idx, 2) * 2.5, period: 2.4 + hash(idx, 3) * 2.4 });
+    idx++;
   }
 
   // Lautan lava bermotif sel merah-oranye
@@ -65,32 +80,36 @@ export function buildLavaLandWorld(THREE, scene, opts = {}) {
   pole.position.set(-9, 0.5, -19); group.add(pole);
 
   let clock = 0;
+  function setHeight(tl, h, shake) { // batu tumbuh ke atas, dasar tetap di bawah
+    tl.h = h; tl.plat.hh = 0.25 + h / 2; // dipakai tabrakan di main.js: puncak = mesh.y + hh
+    tl.mesh.scale.y = (0.5 + h) / 0.5; tl.mesh.position.y = h / 2 + shake;
+  }
   function update(delta, pos, t) {
     clock = typeof t === 'number' ? t : clock + delta;
+    // lava naik pelan-pelan setelah LAVA_DELAY detik
+    lavaY = LAVA_Y + Math.min(LAVA_MAX_RISE, Math.max(0, clock - LAVA_DELAY) * LAVA_RATE);
+    lava.position.y = lavaY;
     lavaTex.offset.x += delta * 0.012; lavaTex.offset.y += delta * 0.006;
-    for (const b of bubbles) b.position.y = LAVA_Y + 0.1 + Math.sin(clock * 1.5 + b.userData.ph) * 0.15;
+    for (const b of bubbles) b.position.y = lavaY + 0.1 + Math.sin(clock * 1.5 + b.userData.ph) * 0.15;
     for (const tl of tiles) {
       const p = tl.plat;
       if (tl.stepAt == null) { // diinjak pertama kali (hanya setelah ronde dimulai)
-        if (clock >= 0 && pos && !p.isFallen && Math.abs(pos.y - 0.25) < 0.14 && Math.hypot(pos.x - p.startX, pos.z - p.startZ) < p.r) {
+        if (clock >= 0 && pos && Math.abs(pos.y - 0.25) < 0.14 && Math.hypot(pos.x - p.startX, pos.z - p.startZ) < p.r) {
           tl.stepAt = clock; if (opts.onTileStep) opts.onTileStep(tl.i);
         }
         continue;
       }
       const age = clock - tl.stepAt;
-      if (age < FALL) { // biru -> pink sambil bergetar
-        const k = Math.min(1, Math.max(0, age) / WARN);
-        tl.topMat.color.copy(baseCol).lerp(warnCol, k);
-        tl.sideMat.color.copy(tl.topMat.color).multiplyScalar(0.62);
-        p.mesh.position.y = Math.sin(clock * 60 + tl.i) * 0.015 * k;
-      } else { // runtuh ke lava
-        if (!p.isFallen) { p.isFallen = true; tl.vy = 0; tl.topMat.transparent = tl.sideMat.transparent = true; }
-        tl.vy += 14 * delta; p.mesh.position.y -= tl.vy * delta;
-        p.mesh.rotation.x += delta * 0.8 * (tl.i % 2 ? 1 : -1);
-        const op = Math.max(0, 1 - (age - FALL) / 1.0);
-        tl.topMat.opacity = tl.sideMat.opacity = op;
-        if (op <= 0 || p.mesh.position.y < LAVA_Y - 0.5) p.mesh.visible = false;
-      }
+      // n = berapa kali batu ini sudah mulai tumbuh
+      const n = age < tl.t0 ? 0 : Math.min(tl.maxLv, Math.floor((age - tl.t0) / tl.period) + 1);
+      let h = 0;
+      if (n > 0) { const e = Math.min(1, (age - (tl.t0 + (n - 1) * tl.period)) / GROW_T); h = STEP * ((n - 1) + (1 - Math.pow(1 - e, 3))); }
+      // kedip pink sebentar sebelum tumbuh lagi
+      let warnK = 0;
+      if (n < tl.maxLv) { const until = tl.t0 + n * tl.period - age; if (until < WARN) warnK = 1 - Math.max(0, until) / WARN; }
+      tmpCol.copy(baseCol).lerp(whiteCol, Math.min(0.3, (h / STEP) * 0.05)).lerp(warnCol, warnK); // makin tinggi makin terang
+      tl.topMat.color.copy(tmpCol); tl.sideMat.color.copy(tmpCol).multiplyScalar(0.62);
+      setHeight(tl, h, warnK > 0 ? Math.sin(clock * 60 + tl.i) * 0.015 * warnK : 0);
     }
   }
   function syncRemote(players, myUid, nowMs, startMs) {
@@ -106,21 +125,20 @@ export function buildLavaLandWorld(THREE, scene, opts = {}) {
     }
   }
   function reset() {
-    clock = 0;
+    clock = 0; lavaY = LAVA_Y; lava.position.y = LAVA_Y;
     for (const tl of tiles) {
-      const p = tl.plat; tl.stepAt = null; tl.vy = 0; p.isFallen = false;
-      p.mesh.visible = true; p.mesh.position.set(p.startX, 0, p.startZ); p.mesh.rotation.set(0, 0, 0);
+      tl.stepAt = null; tl.plat.isFallen = false; tl.mesh.visible = true;
+      tl.mesh.rotation.set(0, 0, 0); tl.mesh.position.x = tl.plat.startX; tl.mesh.position.z = tl.plat.startZ; setHeight(tl, 0, 0);
       tl.topMat.color.copy(baseCol); tl.sideMat.color.copy(baseCol).multiplyScalar(0.62);
-      tl.topMat.transparent = tl.sideMat.transparent = false; tl.topMat.opacity = tl.sideMat.opacity = 1;
     }
   }
   function applyEnvironment(sc) { sc.background = new THREE.Color(0xff9a58); sc.fog = new THREE.Fog(0xff9a58, 45, 170); }
 
   return { group, platforms, hazards: [], guards: [], laserBeam: null, FIN_Y: 1000, WIN: { x: 0, y: 1000, z: 0 }, MAZE_H: 0, MAZE_Z: 0,
-    spawn: new THREE.Vector3(0, 0.25, 0), fallLimit: -2.4, applyEnvironment, reset, update, syncRemote };
+    spawn: new THREE.Vector3(0, 0.25, 0), get fallLimit() { return lavaY - LAVA_KILL; }, applyEnvironment, reset, update, syncRemote };
 }
 
-// Banner pembuka ala Stumble Guys: papan putih "LAVA LAND" + pita merah "DON'T FALL!"
+// Banner pembuka ala Stumble Guys: papan putih "LAVA LAND" + pita merah "LAVA IS RISING!"
 let lavaLandIntroTimer = null;
 export function showLavaLandIntro() {
   if (!document.getElementById('ll-intro-style')) {
@@ -129,7 +147,7 @@ export function showLavaLandIntro() {
     document.head.appendChild(st);
   }
   let el = document.getElementById('ll-intro');
-  if (!el) { el = document.createElement('div'); el.id = 'll-intro'; el.innerHTML = '<div class="t">LAVA LAND</div><div class="s">DON\'T FALL!</div>'; document.body.appendChild(el); }
+  if (!el) { el = document.createElement('div'); el.id = 'll-intro'; el.innerHTML = '<div class="t">LAVA LAND</div><div class="s">LAVA IS RISING!</div>'; document.body.appendChild(el); }
   el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   clearTimeout(lavaLandIntroTimer); lavaLandIntroTimer = setTimeout(() => el.classList.remove('show'), 3500);
 }

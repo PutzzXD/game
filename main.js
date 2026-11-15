@@ -3992,13 +3992,13 @@ async function renderIncomingFriendRequests() {
   const requests = await socialGet(`friendRequests/${myPlayerKey()}`).catch(() => ({}));
   const pending = Object.entries(requests || {}).filter(([, r]) => r?.status === 'pending');
   list.replaceChildren();
-  if (!pending.length) { list.textContent = 'Tidak ada permintaan pertemanan.'; return; }
+  if (!pending.length) { list.innerHTML = '<div class="ps-empty">Belum ada permintaan.</div>'; return; }
   pending.forEach(([key, req]) => {
     const row = document.createElement('div'); row.className = 'ps-result';
     const info = document.createElement('div'); info.className = 'ps-info';
     const name = document.createElement('b'); name.textContent = req.fromName || key;
     socialGet(`players/${encodeURIComponent(key)}/username`).then(n => { if (n) name.textContent = n; }).catch(() => {}); // nama terbaru pengirim
-    const meta = document.createElement('small'); meta.textContent = 'Ingin berteman denganmu'; info.append(name, meta);
+    const meta = document.createElement('small'); meta.textContent = 'Mau berteman denganmu'; info.append(name, meta);
     const actions = document.createElement('div'); actions.className = 'ps-friend-actions';
     const yes = document.createElement('button'); yes.className = 'ps-action'; yes.textContent = '✓'; yes.title = 'Terima';
     yes.onclick = () => respondFriendRequest(key, true).catch(e => showToast(e.message));
@@ -4180,7 +4180,7 @@ async function searchGlobalPlayers(query) {
       const meta = document.createElement('small'); meta.textContent = `ID: ${String(pl.playerId || (key === DEV_USERNAME ? ADMIN_PLAYER_ID : '------'))} · ${key === DEV_USERNAME || pl.isDev ? 'ADMIN' : 'PLAYER'}`;
       info.append(name, meta);
       const actions = document.createElement('div'); actions.className = 'ps-friend-actions';
-      const inspect = document.createElement('button'); inspect.className = 'ps-action'; inspect.textContent = '👁'; inspect.title = 'Periksa akun';
+      const inspect = document.createElement('button'); inspect.className = 'ps-action ps-ghost'; inspect.textContent = 'Profil'; inspect.title = 'Periksa akun';
       inspect.onclick = () => inspectPlayerAccount(key, String(pl.username || key)).catch(e => showToast(e.message));
       actions.appendChild(inspect);
       const action = document.createElement('button'); action.className = 'ps-action ps-add'; action.title = friends[key] ? 'Sudah berteman' : 'Tambah teman';
@@ -4195,6 +4195,7 @@ async function searchGlobalPlayers(query) {
   } finally { playerSearchBusy = false; }
 }
 
+const socialHue = str => { let h = 0; for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 async function renderFriendsList() {
   const list = document.getElementById('ps-friends');
   if (!list) return;
@@ -4202,7 +4203,7 @@ async function renderFriendsList() {
     const friends = await loadMyFriends();
     list.replaceChildren();
     const entries = Object.entries(friends);
-    if (!entries.length) { list.textContent = 'Belum ada teman. Terima permintaan dari menu cari teman.'; return; }
+    if (!entries.length) { list.innerHTML = '<div class="ps-empty">Belum ada teman.<br>Cari pemain lewat tombol biru lalu kirim permintaan.</div>'; return; }
     for (const [key, saved] of entries) {
       const profile = await socialGet(`players/${key}`).catch(() => null);
       if (!profile) continue;
@@ -4210,17 +4211,18 @@ async function renderFriendsList() {
       const info = document.createElement('div'); info.className = 'ps-info';
       row.dataset.friendKey = key;
       const name = document.createElement('b'); name.textContent = String(profile.username || saved.username || key);
-      const dot = document.createElement('span'); dot.className = 'ps-dot'; dot.dataset.key = key; name.prepend(dot);
-      const meta = document.createElement('small'); meta.textContent = `ID: ${String(profile.playerId || '------')}`;
+      const av = document.createElement('div'); av.className = 'ps-av'; av.textContent = (name.textContent.trim()[0] || '?').toUpperCase(); av.style.background = `hsl(${socialHue(name.textContent)} 62% 48%)`;
+      const dot = document.createElement('span'); dot.className = 'ps-dot'; dot.dataset.key = key; av.appendChild(dot);
+      const meta = document.createElement('small'); meta.textContent = 'Offline'; meta.title = `ID: ${String(profile.playerId || '------')}`;
       info.append(name, meta);
-      const inspect = document.createElement('button'); inspect.className = 'ps-action'; inspect.textContent = '👁'; inspect.title = 'Periksa akun';
+      const inspect = document.createElement('button'); inspect.className = 'ps-action ps-ghost'; inspect.textContent = 'Profil'; inspect.title = 'Periksa akun';
       inspect.onclick = () => inspectPlayerAccount(key, String(profile.username || key)).catch(e => showToast(e.message));
-      const invite = document.createElement('button'); invite.className = 'ps-action ps-invite'; invite.textContent = '+'; invite.title = 'Undang ke room';
+      const invite = document.createElement('button'); invite.className = 'ps-action ps-invite'; invite.textContent = 'Undang'; invite.title = 'Undang ke room';
       invite.onclick = () => sendGameInvite(key, String(profile.username || key)).catch(e => showToast(e.message));
       const removeBtn = document.createElement('button'); removeBtn.className = 'ps-remove'; removeBtn.textContent = '×'; removeBtn.title = 'Hapus teman';
       removeBtn.onclick = () => removeFriend(key).catch(e => showToast(e.message));
       const actions = document.createElement('div'); actions.className = 'ps-friend-actions'; actions.append(inspect, invite, removeBtn);
-      row.append(info, actions); list.append(row);
+      row.append(av, info, actions); list.append(row);
     }
     friendKeysCache = new Set(entries.map(([k]) => k));
     applyFriendPresence();
@@ -4231,7 +4233,9 @@ function showGameInvite(inviteKey, invite) {
   const overlay = document.getElementById('social-invite-overlay');
   if (!overlay || !invite || invite.status !== 'pending') return;
   activeInviteKey = inviteKey;
-  document.getElementById('social-invite-name').textContent = `${invite.fromName || inviteKey} mengundangmu bermain!`;
+  const inviterName = String(invite.fromName || inviteKey);
+  document.getElementById('social-invite-name').textContent = inviterName;
+  { const av = document.getElementById('social-invite-avatar'); if (av) { av.textContent = (inviterName.trim()[0] || '?').toUpperCase(); av.style.background = `hsl(${socialHue(inviterName)} 62% 48%)`; } }
   { const rEl = document.getElementById('social-invite-room'); if (rEl) { rEl.textContent = ''; rEl.style.display = 'none'; } } // kode room disembunyikan (tetap tersimpan di dataset untuk gabung)
   overlay.style.display = 'flex';
   overlay.dataset.inviter = inviteKey;
@@ -4248,7 +4252,7 @@ async function pollSocialNotifications() {
     const pendingInvite = Object.entries(invites || {}).find(([, v]) => v?.status === 'pending');
     if (pendingInvite) {
       const stamp = pendingInvite[0] + ':' + (pendingInvite[1].sentAt || '');
-      if (stamp !== lastInviteToastStamp) { lastInviteToastStamp = stamp; showToast(`📨 ${pendingInvite[1].fromName || pendingInvite[0]} mengundangmu main!`, 1000); }
+      lastInviteToastStamp = stamp;
       showGameInvite(pendingInvite[0], pendingInvite[1]);
     }
     const pendingRequests = Object.entries(requests || {}).filter(([, v]) => v?.status === 'pending');
@@ -4279,21 +4283,72 @@ async function respondGameInvite(accept) {
 function buildPlayerSearchUI() {
   if (document.getElementById('player-search')) { renderFriendsList(); return; }
   const css = document.createElement('style');
-  css.textContent = `#player-search{position:fixed;top:58px;right:58px;left:auto;z-index:58;width:min(310px,calc(100vw - 24px));max-height:75vh;overflow:auto;padding:10px;background:rgba(9,16,31,.95);border:1px solid rgba(66,217,255,.55);border-radius:13px;color:#fff;font:13px sans-serif;box-shadow:0 8px 28px #0006;backdrop-filter:blur(8px);display:none}#ps-head{display:flex;align-items:center;justify-content:space-between;font-weight:900;color:#42d9ff;margin-bottom:7px}#ps-close{border:0;background:#263a59;color:#fff;border-radius:7px;width:27px;height:27px;font-size:17px}#ps-launcher{position:fixed;top:16px;right:16px;left:auto;z-index:59;width:34px;height:34px;border:1px solid rgba(66,217,255,.75);border-radius:50%;background:rgba(9,16,31,.92);color:#42d9ff;font-size:18px;font-weight:900;box-shadow:0 3px 12px #0008;display:flex;align-items:center;justify-content:center}#ps-launcher:active{transform:scale(.94)}#ps-invite-launcher{position:fixed;top:58px;right:16px;z-index:59;width:34px;height:34px;border:1px solid rgba(255,190,80,.8);border-radius:50%;background:rgba(28,20,10,.92);color:#ffd166;font-size:16px;box-shadow:0 3px 12px #0008;display:flex;align-items:center;justify-content:center}#player-friends{position:fixed;top:58px;right:58px;left:auto;z-index:58;width:min(310px,calc(100vw - 24px));max-height:75vh;overflow:auto;padding:10px;background:rgba(9,16,31,.96);border:1px solid rgba(255,190,80,.55);border-radius:13px;color:#fff;font:13px sans-serif;box-shadow:0 8px 28px #0006;display:none}#pf-head{display:flex;justify-content:space-between;align-items:center;color:#ffd166;font-weight:900;margin-bottom:8px}#pf-close{border:0;background:#263a59;color:#fff;border-radius:7px;width:27px;height:27px;font-size:17px}#ps-controls{display:flex;gap:6px}#ps-query{min-width:0;flex:1;padding:9px;border-radius:8px;border:1px solid #52627d;background:#101b30;color:#fff;outline:none}#ps-submit,.ps-action{border:0;border-radius:8px;padding:7px 10px;background:#167bd4;color:#fff;font-weight:800;font-size:11px}.ps-action:disabled{background:#176b51;color:#b8ffe3}.ps-add{width:27px;height:27px;min-width:27px!important;padding:0!important;border-radius:50%!important;font-size:17px!important;line-height:27px}.ps-result{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:rgba(255,255,255,.07)}.ps-info{display:flex;flex-direction:column;gap:3px;min-width:0}.ps-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ps-info small{color:#9fb4d5}#player-search-results,#ps-friends{display:flex;flex-direction:column;gap:5px;margin-top:7px;max-height:170px;overflow:auto}.ps-empty{padding:9px;color:#aab9d0;text-align:center}.ps-section{display:flex;align-items:center;justify-content:space-between;color:#42d9ff;font-weight:900;margin-top:12px;margin-bottom:5px}.ps-friend-actions{display:flex;gap:4px}.ps-invite{font-size:18px;min-width:32px;padding:3px}.ps-remove{border:0;border-radius:7px;background:#632d3c;color:#fff;font-size:18px;min-width:28px}.ps-notif{background:#e23c55;color:#fff;border-radius:50%;padding:2px 6px;font-size:10px}#social-invite-overlay{position:fixed;inset:0;z-index:10020;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.68);backdrop-filter:blur(5px);padding:18px}#social-invite-card{width:min(360px,100%);padding:24px;border:1px solid #42d9ff;border-radius:20px;background:linear-gradient(145deg,#142747,#080f20);box-shadow:0 0 35px #168bd766;color:#fff;text-align:center;font-family:sans-serif}#social-invite-card h2{margin:0 0 12px;color:#42d9ff}#social-invite-name{font-size:16px;font-weight:800}#social-invite-room{margin:15px 0;color:#a9c9ff;font-weight:900;letter-spacing:3px}.social-invite-actions{display:flex;gap:9px}.social-invite-actions button{flex:1;border:0;border-radius:10px;padding:12px;color:white;font-weight:900}.si-accept{background:#078b61}.si-decline{background:#713447}`;
+  css.textContent = `
+:root{--sc-ink:#1b1030;--sc-paper:#fff8e7;--sc-mute:#7a6f8f;--sc-blue:#4f86e8;--sc-orange:#ff9f43;--sc-green:#3ddc84;--sc-red:#ff4d6d}
+#player-search,#player-friends{position:fixed;top:60px;right:66px;left:auto;z-index:58;width:min(330px,calc(100vw - 84px));max-height:76vh;overflow:auto;padding:12px;background:var(--sc-paper);border:3px solid var(--sc-ink);border-radius:16px;box-shadow:0 5px 0 var(--sc-ink),0 14px 30px rgba(0,0,0,.35);color:var(--sc-ink);font:700 13px/1.3 sans-serif;display:none;animation:scPop .16s ease-out}
+@keyframes scPop{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
+#ps-head,#pf-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;font:900 16px sans-serif;letter-spacing:.3px;color:var(--sc-ink)}
+#pf-head small{display:block;margin-top:2px;font:700 11px sans-serif;color:var(--sc-mute);letter-spacing:0}
+#ps-close,#pf-close{flex:none;width:30px;height:30px;border:3px solid var(--sc-ink);border-radius:9px;background:#fff;color:var(--sc-ink);font:900 17px/1 sans-serif;box-shadow:0 3px 0 var(--sc-ink);padding:0}
+#ps-close:active,#pf-close:active{transform:translateY(3px);box-shadow:none}
+#ps-launcher,#ps-invite-launcher{position:fixed;right:16px;z-index:59;width:42px;height:42px;padding:0;border:3px solid var(--sc-ink);border-radius:12px;box-shadow:0 4px 0 var(--sc-ink);display:flex;align-items:center;justify-content:center;color:#fff;-webkit-tap-highlight-color:transparent}
+#ps-launcher{top:14px;background:var(--sc-blue)}
+#ps-invite-launcher{top:68px;background:var(--sc-orange)}
+#ps-launcher:active,#ps-invite-launcher:active{transform:translateY(4px);box-shadow:none}
+#ps-launcher svg,#ps-invite-launcher svg{width:22px;height:22px;fill:currentColor;stroke:var(--sc-ink);stroke-width:1.2;paint-order:stroke}
+#ps-controls{display:flex;gap:6px}
+#ps-query{min-width:0;flex:1;padding:9px 10px;border:3px solid var(--sc-ink);border-radius:10px;background:#fff;color:var(--sc-ink);font:700 13px sans-serif;outline:none}
+#ps-query:focus{border-color:var(--sc-blue)}
+#ps-query::placeholder{color:#a79fb8}
+#player-search-results,#ps-friends,#ps-requests{display:flex;flex-direction:column;gap:7px;margin-top:9px}
+#ps-friends{max-height:46vh;overflow:auto;padding:0 2px 4px 0}
+#player-search-results{max-height:200px;overflow:auto}
+.ps-action,#ps-submit{border:3px solid var(--sc-ink);border-radius:10px;padding:6px 11px;background:var(--sc-blue);color:#fff;font:900 12px sans-serif;box-shadow:0 3px 0 var(--sc-ink);white-space:nowrap;-webkit-tap-highlight-color:transparent}
+.ps-action:active,#ps-submit:active,.ps-remove:active{transform:translateY(3px);box-shadow:none}
+.ps-action:disabled{background:#d8d0e6;color:var(--sc-mute);box-shadow:0 3px 0 #a79fb8;border-color:#a79fb8}
+.ps-invite{background:var(--sc-green);color:var(--sc-ink)}
+.ps-ghost{background:#fff;color:var(--sc-ink)}
+.ps-add{width:30px;height:30px;min-width:30px!important;padding:0!important;border-radius:50%!important;font-size:18px!important;line-height:1}
+.ps-remove{border:3px solid var(--sc-ink);border-radius:10px;background:#fff;color:var(--sc-red);font:900 16px/1 sans-serif;min-width:30px;height:30px;padding:0;box-shadow:0 3px 0 var(--sc-ink)}
+.ps-result{display:flex;align-items:center;gap:9px;padding:8px;border:3px solid var(--sc-ink);border-radius:12px;background:#fff}
+.ps-av{position:relative;flex:none;width:38px;height:38px;border:3px solid var(--sc-ink);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font:900 16px sans-serif;text-shadow:0 1px 0 rgba(0,0,0,.35)}
+.ps-av .ps-dot{position:absolute;right:-5px;bottom:-5px;width:14px;height:14px;margin:0;border:3px solid var(--sc-ink);border-radius:50%;background:#b9b0c9;box-shadow:none}
+.ps-av .ps-dot.on{background:var(--sc-green);box-shadow:none}
+.ps-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.ps-info b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:900 14px sans-serif;color:var(--sc-ink)}
+.ps-info small{font:700 11px sans-serif;color:var(--sc-mute)}
+.ps-info small[data-online="1"]{color:#14a35a}
+.ps-friend-actions{display:flex;gap:5px;flex:none;align-items:center}
+.ps-empty{padding:12px 6px;color:var(--sc-mute);text-align:center;font:700 12px sans-serif}
+.ps-section{display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:10px;border-top:3px dashed #d9cfb6;font:900 12px sans-serif;letter-spacing:.6px;color:#2a5fb0}
+.ps-notif{background:var(--sc-red);color:#fff;border:2px solid var(--sc-ink);border-radius:10px;padding:1px 7px;font:900 11px sans-serif}
+#social-invite-overlay{position:fixed;inset:0;z-index:10020;display:none;align-items:center;justify-content:center;background:rgba(27,16,48,.62);padding:18px}
+#social-invite-card{position:relative;width:min(340px,100%);padding:30px 22px 20px;border:4px solid var(--sc-ink);border-radius:20px;background:var(--sc-paper);box-shadow:0 7px 0 var(--sc-ink),0 24px 50px rgba(0,0,0,.45);color:var(--sc-ink);text-align:center;font-family:sans-serif;animation:siPop .28s cubic-bezier(.2,1.5,.4,1)}
+@keyframes siPop{from{opacity:0;transform:translateY(18px) scale(.88)}to{opacity:1;transform:none}}
+.si-avatar{position:absolute;left:50%;top:-34px;transform:translateX(-50%);width:68px;height:68px;border:4px solid var(--sc-ink);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font:900 30px sans-serif;text-shadow:0 2px 0 rgba(0,0,0,.35);box-shadow:0 4px 0 var(--sc-ink)}
+.si-label{margin-top:12px;font:900 11px sans-serif;letter-spacing:1.2px;color:var(--sc-mute);text-transform:uppercase}
+#social-invite-name{margin:4px 0 2px;font:900 26px/1.1 sans-serif;color:var(--sc-ink);overflow-wrap:anywhere}
+.si-sub{font:700 14px sans-serif;color:#5a4f70}
+.social-invite-actions{display:flex;gap:10px;margin-top:20px}
+.social-invite-actions button{flex:1;height:48px;border:3px solid var(--sc-ink);border-radius:13px;font:900 15px sans-serif;color:var(--sc-ink);box-shadow:0 4px 0 var(--sc-ink);-webkit-tap-highlight-color:transparent}
+.social-invite-actions button:active{transform:translateY(4px);box-shadow:none}
+.si-accept{background:var(--sc-green);flex:1.4!important}
+.si-decline{background:#fff}
+`;
   document.head.appendChild(css);
-  const launcher = document.createElement('button'); launcher.id = 'ps-launcher'; launcher.type = 'button'; launcher.title = 'Cari teman'; launcher.textContent = '👤';
+  const launcher = document.createElement('button'); launcher.id = 'ps-launcher'; launcher.type = 'button'; launcher.title = 'Cari teman'; launcher.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="9.5" cy="8" r="4"/><path d="M2 21c0-4.4 3.4-7 7.5-7s7.5 2.6 7.5 7z"/><path d="M19 5v6M16 8h6" fill="none" stroke-width="2.6" stroke-linecap="round"/></svg>';
   const box = document.createElement('section'); box.id = 'player-search';
-  box.innerHTML = `<div id="ps-head"><span>🔎 CARI TEMAN <span id="ps-notif-count" class="ps-notif" style="display:none">0</span></span><button id="ps-close" title="Tutup">×</button></div><div id="ps-controls"><input id="ps-query" maxlength="30" placeholder="Username / ID 6 digit" autocomplete="off"><button id="ps-submit">CARI</button></div><div id="player-search-results"><div class="ps-empty">Cari pemain lalu kirim permintaan teman.</div></div><div class="ps-section">PERMINTAAN MASUK</div><div id="ps-requests">Memuat permintaan…</div>`;
-  const inviteLauncher = document.createElement('button'); inviteLauncher.id = 'ps-invite-launcher'; inviteLauncher.type = 'button'; inviteLauncher.title = 'Teman saya & undang bermain'; inviteLauncher.textContent = '👥';
+  box.innerHTML = `<div id="ps-head"><span>Cari Teman <span id="ps-notif-count" class="ps-notif" style="display:none">0</span></span><button id="ps-close" title="Tutup">×</button></div><div id="ps-controls"><input id="ps-query" maxlength="30" placeholder="Username / ID 6 digit" autocomplete="off"><button id="ps-submit">CARI</button></div><div id="player-search-results"><div class="ps-empty">Ketik username atau ID, lalu kirim permintaan teman.</div></div><div class="ps-section">Permintaan masuk</div><div id="ps-requests">Memuat permintaan…</div>`;
+  const inviteLauncher = document.createElement('button'); inviteLauncher.id = 'ps-invite-launcher'; inviteLauncher.type = 'button'; inviteLauncher.title = 'Teman saya & undang bermain'; inviteLauncher.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3.6"/><circle cx="17" cy="9" r="3"/><path d="M1.5 20c0-4 3-6.5 6.5-6.5s6.5 2.5 6.5 6.5z"/><path d="M15.5 14c3.6-.5 7 1.6 7 5.5h-6z"/></svg>';
   const friendsBox = document.createElement('section'); friendsBox.id = 'player-friends';
-  friendsBox.innerHTML = `<div id="pf-head"><span>✉ TEMAN SAYA · UNDANG MAIN</span><button id="pf-close" title="Tutup">×</button></div><div id="ps-friends">Memuat teman…</div>`;
+  friendsBox.innerHTML = `<div id="pf-head"><span>Teman Saya<small>Ketuk Undang untuk ajak main bareng</small></span><button id="pf-close" title="Tutup">×</button></div><div id="ps-friends">Memuat teman…</div>`;
   document.body.append(launcher, inviteLauncher, box, friendsBox);
   inviteLauncher.onclick = () => { const open = friendsBox.style.display !== 'block'; friendsBox.style.display = open ? 'block' : 'none'; if (open) renderFriendsList(); };
   launcher.onclick = () => { const open = box.style.display !== 'block'; box.style.display = open ? 'block' : 'none'; if (open) renderIncomingFriendRequests(); };
   document.getElementById('ps-close').onclick = () => { box.style.display = 'none'; };
   document.getElementById('pf-close').onclick = () => { friendsBox.style.display = 'none'; };
   const overlay = document.createElement('div'); overlay.id = 'social-invite-overlay';
-  overlay.innerHTML = `<div id="social-invite-card"><h2>🎮 UNDANGAN MAIN</h2><div id="social-invite-name">Pemain mengundangmu</div><div id="social-invite-room">ROOM -----</div><div class="social-invite-actions"><button class="si-decline" id="social-invite-no">TOLAK</button><button class="si-accept" id="social-invite-yes">GABUNG</button></div></div>`;
+  overlay.innerHTML = `<div id="social-invite-card"><div class="si-avatar" id="social-invite-avatar">?</div><div class="si-label">Undangan main</div><div id="social-invite-name">Pemain</div><div class="si-sub">ngajak kamu masuk lobby</div><div id="social-invite-room" style="display:none"></div><div class="social-invite-actions"><button class="si-decline" id="social-invite-no">Nanti aja</button><button class="si-accept" id="social-invite-yes">Gabung</button></div></div>`;
   document.body.appendChild(overlay);
   const input = document.getElementById('ps-query');
   document.getElementById('ps-submit').onclick = () => searchGlobalPlayers(input.value);
@@ -4316,8 +4371,8 @@ function applyFriendPresence() {
   document.querySelectorAll('.ps-dot').forEach(dot => {
     const on = isFriendOnline(dot.dataset.key);
     dot.classList.toggle('on', on); dot.title = on ? 'Online' : 'Offline';
-    const small = dot.closest('.ps-info')?.querySelector('small');
-    if (small) small.dataset.online = on ? '1' : '0';
+    const small = dot.closest('.ps-result')?.querySelector('.ps-info small');
+    if (small) { small.dataset.online = on ? '1' : '0'; small.textContent = on ? 'Online' : 'Offline'; }
   });
 }
 async function presenceTick() {
