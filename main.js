@@ -501,6 +501,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const splashTimer = splash ? setInterval(() => {
     const f = Math.min(1, (performance.now() - splashStartedAt) / SPLASH_DURATION);
     if (splashBar) splashBar.style.width = Math.max(8, f * 100).toFixed(0) + '%';
+    const splashPct = document.getElementById('startup-pct'); if (splashPct) splashPct.textContent = Math.max(8, f * 100).toFixed(0) + '%';
     if (splashStatus && !splashDone) {
       splashStatus.textContent = f < 0.35 ? 'Menyiapkan permainan...'
         : f < 0.7 ? 'Memeriksa akun dan menyiapkan lobby...'
@@ -515,6 +516,7 @@ window.addEventListener('DOMContentLoaded', () => {
       splashDone = true;
       clearInterval(splashTimer);
       if (splashBar) splashBar.style.width = '100%';
+      { const sp = document.getElementById('startup-pct'); if (sp) sp.textContent = '100%'; }
       try { if (afterWait) afterWait(); }
       catch (err) { console.error('Gagal membuka lobby/login setelah splash:', err); setElDisplay('auth-container', 'flex'); }
       finally { hideStartupSplash(); }
@@ -614,15 +616,15 @@ function showLoadingScreen(done) {
   let el = document.getElementById('loading-screen');
   if (!el) {
     const css = document.createElement('style');
-    css.textContent = '#loading-screen{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:radial-gradient(circle at 50% 40%,#2a2f55,#0d0f1f);color:#fff;font-family:sans-serif;transition:opacity .35s}#ls-title{font:900 clamp(28px,8vw,52px) sans-serif;letter-spacing:2px;text-shadow:0 0 24px #3b6cf6}#ls-spin{width:54px;height:54px;border-radius:50%;border:6px solid rgba(255,255,255,.18);border-top-color:#00e0a0;animation:lsspin 0.9s linear infinite}@keyframes lsspin{to{transform:rotate(360deg)}}#ls-barwrap{width:min(78vw,420px);height:16px;border-radius:10px;background:rgba(255,255,255,.14);overflow:hidden}#ls-bar{height:100%;width:0;border-radius:10px;background:linear-gradient(90deg,#3b6cf6,#00e0a0);transition:width .1s linear}#ls-text{font-size:14px;opacity:.9}#ls-tip{max-width:80vw;text-align:center;font-size:13px;color:#ffd166;min-height:34px}';
+    css.textContent = '#loading-screen{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;background:#4f86e8 repeating-linear-gradient(135deg,rgba(255,255,255,.07) 0 28px,transparent 28px 56px);color:#1b1030;font-family:Fredoka,sans-serif;transition:opacity .35s}#ls-card{width:min(88vw,420px);padding:16px 18px 16px;background:#fff8e7;border:4px solid #1b1030;border-radius:20px;box-shadow:0 6px 0 #1b1030}#ls-title{font-size:clamp(26px,8vw,34px);font-weight:700;line-height:1.1;margin-bottom:12px}#ls-barwrap{width:100%;height:24px;border:3px solid #1b1030;border-radius:13px;background:#fff;overflow:hidden}#ls-bar{height:100%;width:0;background:#ff9f43 repeating-linear-gradient(-45deg,rgba(255,255,255,.3) 0 9px,transparent 9px 18px);border-right:3px solid #1b1030;transition:width .1s linear}#ls-text{margin-top:10px;font-size:14px;font-weight:500;color:#5a4f70}#ls-tip{margin-top:12px;padding-top:12px;border-top:3px dashed #d9cfb6;font-size:14px;font-weight:500;line-height:1.35;min-height:38px}#ls-tip::before{content:"TIP";display:inline-block;margin-right:8px;padding:1px 7px;border:2px solid #1b1030;border-radius:7px;background:#3ddc84;font-size:11px;font-weight:700;letter-spacing:.5px;vertical-align:1px}';
     document.head.appendChild(css);
     el = document.createElement('div'); el.id = 'loading-screen';
-    el.innerHTML = '<div id="ls-title">🏃 PARKOUR 3D</div><div id="ls-spin"></div><div id="ls-barwrap"><div id="ls-bar"></div></div><div id="ls-text"></div><div id="ls-tip"></div>';
+    el.innerHTML = '<div id="ls-card"><div id="ls-title">PARKOUR 3D</div><div id="ls-barwrap"><div id="ls-bar"></div></div><div id="ls-text"></div><div id="ls-tip"></div></div>';
     document.body.appendChild(el);
   }
   const bar = document.getElementById('ls-bar'), txt = document.getElementById('ls-text'), tip = document.getElementById('ls-tip');
   const steps = ['Menyiapkan arena...', 'Memasang jebakan...', 'Mengunci laser & penjaga...', 'Membangun labirin...', 'Menyiapkan karakter...', 'Siap!'];
-  const tips = ['💡 Kotak yang berkedip aneh biasanya palsu, jangan percaya!', '💡 Lompat dua kali untuk jarak lebih jauh.', '💡 Di labirin, salah lorong = ditembak NPC.', '💡 Checkpoint hijau menyimpan progresmu.', '💡 Jatuh ke lava? Badanmu hancur, semua pemain bisa lihat 😹'];
+  const tips = ['Kotak yang berkedip aneh biasanya palsu, jangan percaya!', 'Lompat dua kali untuk jarak lebih jauh.', 'Di labirin, salah lorong = ditembak NPC.', 'Checkpoint hijau menyimpan progresmu.', 'Jatuh ke lava? Badanmu hancur, semua pemain bisa lihat.'];
   tip.textContent = tips[Math.floor(Math.random() * tips.length)];
   el.style.opacity = '1'; el.style.display = 'flex';
   try { if (renderer && scene && camera) renderer.compile(scene, camera); } catch (e) { /* abaikan */ }
