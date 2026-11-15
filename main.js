@@ -344,12 +344,12 @@ window.addEventListener('DOMContentLoaded', () => {
     shopModal.style.display = 'flex';
     const firstTab = document.querySelector('.shop-tab-btn');
     if (firstTab && !document.querySelector('.shop-tab-btn[data-cat="aksesoris"]')) {
-      const tb = firstTab.cloneNode(true); tb.dataset.cat = 'aksesoris'; tb.textContent = '🎩 Aksesoris'; tb.classList.remove('active');
+      const tb = firstTab.cloneNode(true); tb.dataset.cat = 'aksesoris'; tb.textContent = 'Aksesoris'; tb.classList.remove('active');
       tb.addEventListener('click', (e) => { document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('active')); e.currentTarget.classList.add('active'); renderShopTab('aksesoris'); });
       firstTab.parentNode.appendChild(tb);
     }
     if (firstTab && !document.querySelector('.shop-tab-btn[data-cat="gamepass"]')) {
-      const gb = firstTab.cloneNode(true); gb.dataset.cat = 'gamepass'; gb.textContent = '🎫 Gamepass'; gb.classList.remove('active');
+      const gb = firstTab.cloneNode(true); gb.dataset.cat = 'gamepass'; gb.textContent = 'Gamepass'; gb.classList.remove('active');
       gb.addEventListener('click', (e) => { document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('active')); e.currentTarget.classList.add('active'); renderShopTab('gamepass'); });
       firstTab.parentNode.appendChild(gb);
     }
@@ -793,7 +793,7 @@ function renderShopTab(category) {
     SHOP_ITEMS.gamepass.forEach(item => {
       const owned = playerData.inventory.includes(item.id);
       const div = document.createElement('div'); div.className = 'shop-item';
-      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div><button class="shop-buy-btn" disabled>AKTIF</button>' : `<div class="item-price">🪙 ${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
+      div.innerHTML = `<div class="shop-preview" style="font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-desc">${item.desc}</div>${owned ? '<div class="owned-tag">Dimiliki</div><button class="shop-buy-btn" disabled>Aktif</button>' : `<div class="item-price"><i class="coin-dot"></i>${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">Beli</button>`}`;
       container.appendChild(div);
     });
     return;
@@ -807,18 +807,18 @@ function renderShopTab(category) {
     const div = document.createElement('div');
     div.className = 'shop-item';
     
-    const previewHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center">${itemIcon(category, item)}</div>`;
+    const previewHTML = `<div class="shop-preview">${itemIcon(category, item)}</div>`;
 
     let btnHTML = '';
     if (isEquipped) {
-      btnHTML = `<button class="shop-buy-btn" disabled>DIPAKAI</button>`;
+      btnHTML = `<button class="shop-buy-btn" disabled>Dipakai</button>`;
     } else if (isOwned) {
-      btnHTML = `<button class="shop-buy-btn" onclick="equipItem('${category}', '${item.id}')">PAKAI</button>`;
+      btnHTML = `<button class="shop-buy-btn equip" onclick="equipItem('${category}', '${item.id}')">Pakai</button>`;
     } else {
-      btnHTML = `<button class="shop-buy-btn" onclick="buyItem('${category}', '${item.id}', ${item.price})">BELI (${item.price})</button>`;
+      btnHTML = `<button class="shop-buy-btn" onclick="buyItem('${category}', '${item.id}', ${item.price})">Beli</button>`;
     }
 
-    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? `<div class="item-price">🪙 ${item.price}</div>` : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
+    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? `<div class="item-price"><i class="coin-dot"></i>${item.price}</div>` : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
     container.appendChild(div);
   });
   if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Semua item kategori ini sudah kamu miliki. Cek Vault!</div>';
@@ -861,20 +861,20 @@ function renderVaultTab(category) {
     visibleCount++;
     const isEquipped = Object.values(playerData.equipped).includes(item.id);
     const div = document.createElement('div'); div.className = 'shop-item';
-    const previewHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center">${itemIcon(category, item)}</div>`;
+    const previewHTML = `<div class="shop-preview">${itemIcon(category, item)}</div>`;
     const btnHTML = isEquipped
-      ? '<button class="shop-buy-btn" disabled>DIPAKAI</button>'
-      : `<button class="shop-buy-btn" onclick="equipItem('${category}', '${item.id}')">PAKAI</button>`;
-    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div><div class="item-price owned-label">SUDAH DIMILIKI</div>${btnHTML}`;
+      ? '<button class="shop-buy-btn" disabled>Dipakai</button>'
+      : `<button class="shop-buy-btn equip" onclick="equipItem('${category}', '${item.id}')">Pakai</button>`;
+    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div><div class="owned-tag">Dimiliki</div>${btnHTML}`;
     container.appendChild(div);
   });
   if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Belum ada item di kategori ini.</div>';
 }
 
 window.buyItem = async function(category, itemId, price) {
-  if (itemId === 'baju_developer') { showToast('🔒 Kostum Developer tidak dijual'); return; }
+  if (itemId === 'baju_developer') { showToast('Kostum Developer tidak dijual'); return; }
   if (playerData.inventory.includes(itemId)) { showToast('Sudah dimiliki'); return; }
-  if (playerData.coins < price) { showToast("❌ Koin kamu tidak cukup!"); return; }
+  if (playerData.coins < price) { showToast("Koin kamu tidak cukup"); return; }
   playerData.coins -= price;
   playerData.inventory.push(itemId);
   if (itemId === 'gp_vip') { try { updateCharacterNameSprite(playerData.username, playerData.isDev); } catch (e) {} }
@@ -1149,7 +1149,7 @@ function itemIcon(cat, it) {
   }
   if (SHAPES[cat]) {
     const col = '#' + it.color.toString(16).padStart(6, '0'), d = SHAPES[cat];
-    inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linejoin="round"/>`;
+    inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="#1b1030" stroke-width="2.2" stroke-linejoin="round"/>`;
     if (it.web) inner += `<g clip-path="url(#cp-${it.id})" stroke="rgba(0,0,0,.5)" stroke-width=".8" fill="none"><path d="M32 4V60M20 4V60M44 4V60M8 4V60M56 4V60M4 16Q32 24 60 16M4 28Q32 36 60 28M4 40Q32 48 60 40M4 52Q32 60 60 52"/></g>`;
     if (it.iron && cat === 'baju') inner += '<path d="M20 8L8 16L13 27L19 24Z" fill="#d4a017"/><path d="M44 8L56 16L51 27L45 24Z" fill="#d4a017"/><circle cx="32" cy="30" r="5" fill="#9ff3ff" stroke="#d4a017" stroke-width="2"/><rect x="19" y="46" width="26" height="4" fill="#d4a017"/>';
     if (it.hulk && cat === 'baju') inner += '<path d="M24 24Q32 34 40 24" stroke="#2c6b27" stroke-width="2" fill="none"/><circle cx="25" cy="28" r="5" fill="#6fd35f"/><circle cx="39" cy="28" r="5" fill="#6fd35f"/><path d="M32 32V46M26 38H38M27 44H37" stroke="#2c6b27" stroke-width="1.5"/><rect x="19" y="47" width="26" height="5" fill="#6b3fa0"/>';
