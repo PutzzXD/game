@@ -299,9 +299,18 @@ async function fetchGlobalChat() {
 
 // ============ 2. FUNGSI NOTIFIKASI CUSTOM (TOAST) ============
 let toastTimer = null;
+// Notifikasi (checkpoint dll) ditaruh kecil di bagian atas layar, bukan besar di tengah.
+let toastStyled = false;
+function styleToastTop() {
+  if (toastStyled) return; toastStyled = true;
+  const st = document.createElement('style');
+  st.textContent = '#custom-toast{top:calc(env(safe-area-inset-top,0px) + 58px)!important;bottom:auto!important;left:50%!important;right:auto!important;margin:0!important;transform:translateX(-50%)!important;width:auto!important;max-width:88vw!important;padding:8px 16px!important;font-size:14px!important;line-height:1.3!important;border-radius:10px!important;text-align:center!important;pointer-events:none!important}';
+  document.head.appendChild(st);
+}
 function showToast(message, duration = 2000) {
   const toast = document.getElementById('custom-toast');
   if (!toast) return;
+  styleToastTop();
   toast.textContent = message;
   toast.classList.add('show');
   if (toastTimer) clearTimeout(toastTimer);
