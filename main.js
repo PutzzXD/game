@@ -232,6 +232,8 @@ const SHOP_ITEMS = {
     { id: 'baju_naruto', name: 'Kostum Naruto', price: 30000, color: 0xe8761a, naruto: true },
     { id: 'baju_luffy', name: 'Kostum Luffy', price: 35000, color: 0xd8262e, luffy: true },
     { id: 'baju_gojo', name: 'Kostum Gojo Satoru', price: 45000, color: 0x1c2238, gojo: true },
+    { id: 'baju_kakashi', name: 'Kostum Kakashi', price: 20000, color: 0x1f2a4d, kakashi: true },
+    { id: 'baju_itachi', name: 'Kostum Itachi (Premium)', price: 20000, color: 0x15151a, itachi: true },
     { id: 'baju_developer', name: 'DEVELOPER — Eksklusif Admin', price: 0, color: 0x101b35, dev: true, suit: 'mail' }
   ],
   celana: [
@@ -344,12 +346,12 @@ window.addEventListener('DOMContentLoaded', () => {
     shopModal.style.display = 'flex';
     const firstTab = document.querySelector('.shop-tab-btn');
     if (firstTab && !document.querySelector('.shop-tab-btn[data-cat="aksesoris"]')) {
-      const tb = firstTab.cloneNode(true); tb.dataset.cat = 'aksesoris'; tb.textContent = 'Aksesoris'; tb.classList.remove('active');
+      const tb = firstTab.cloneNode(true); tb.dataset.cat = 'aksesoris'; tb.textContent = '🎩 Aksesoris'; tb.classList.remove('active');
       tb.addEventListener('click', (e) => { document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('active')); e.currentTarget.classList.add('active'); renderShopTab('aksesoris'); });
       firstTab.parentNode.appendChild(tb);
     }
     if (firstTab && !document.querySelector('.shop-tab-btn[data-cat="gamepass"]')) {
-      const gb = firstTab.cloneNode(true); gb.dataset.cat = 'gamepass'; gb.textContent = 'Gamepass'; gb.classList.remove('active');
+      const gb = firstTab.cloneNode(true); gb.dataset.cat = 'gamepass'; gb.textContent = '🎫 Gamepass'; gb.classList.remove('active');
       gb.addEventListener('click', (e) => { document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('active')); e.currentTarget.classList.add('active'); renderShopTab('gamepass'); });
       firstTab.parentNode.appendChild(gb);
     }
@@ -793,7 +795,7 @@ function renderShopTab(category) {
     SHOP_ITEMS.gamepass.forEach(item => {
       const owned = playerData.inventory.includes(item.id);
       const div = document.createElement('div'); div.className = 'shop-item';
-      div.innerHTML = `<div class="shop-preview" style="font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-desc">${item.desc}</div>${owned ? '<div class="owned-tag">Dimiliki</div><button class="shop-buy-btn" disabled>Aktif</button>' : `<div class="item-price"><i class="coin-dot"></i>${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">Beli</button>`}`;
+      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div><button class="shop-buy-btn" disabled>AKTIF</button>' : `<div class="item-price">🪙 ${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
       container.appendChild(div);
     });
     return;
@@ -807,18 +809,18 @@ function renderShopTab(category) {
     const div = document.createElement('div');
     div.className = 'shop-item';
     
-    const previewHTML = `<div class="shop-preview">${itemIcon(category, item)}</div>`;
+    const previewHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center">${itemIcon(category, item)}</div>`;
 
     let btnHTML = '';
     if (isEquipped) {
-      btnHTML = `<button class="shop-buy-btn" disabled>Dipakai</button>`;
+      btnHTML = `<button class="shop-buy-btn" disabled>DIPAKAI</button>`;
     } else if (isOwned) {
-      btnHTML = `<button class="shop-buy-btn equip" onclick="equipItem('${category}', '${item.id}')">Pakai</button>`;
+      btnHTML = `<button class="shop-buy-btn" onclick="equipItem('${category}', '${item.id}')">PAKAI</button>`;
     } else {
-      btnHTML = `<button class="shop-buy-btn" onclick="buyItem('${category}', '${item.id}', ${item.price})">Beli</button>`;
+      btnHTML = `<button class="shop-buy-btn" onclick="buyItem('${category}', '${item.id}', ${item.price})">BELI (${item.price})</button>`;
     }
 
-    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? `<div class="item-price"><i class="coin-dot"></i>${item.price}</div>` : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
+    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? `<div class="item-price">🪙 ${item.price}</div>` : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
     container.appendChild(div);
   });
   if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Semua item kategori ini sudah kamu miliki. Cek Vault!</div>';
@@ -861,20 +863,20 @@ function renderVaultTab(category) {
     visibleCount++;
     const isEquipped = Object.values(playerData.equipped).includes(item.id);
     const div = document.createElement('div'); div.className = 'shop-item';
-    const previewHTML = `<div class="shop-preview">${itemIcon(category, item)}</div>`;
+    const previewHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center">${itemIcon(category, item)}</div>`;
     const btnHTML = isEquipped
-      ? '<button class="shop-buy-btn" disabled>Dipakai</button>'
-      : `<button class="shop-buy-btn equip" onclick="equipItem('${category}', '${item.id}')">Pakai</button>`;
-    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div><div class="owned-tag">Dimiliki</div>${btnHTML}`;
+      ? '<button class="shop-buy-btn" disabled>DIPAKAI</button>'
+      : `<button class="shop-buy-btn" onclick="equipItem('${category}', '${item.id}')">PAKAI</button>`;
+    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div><div class="item-price owned-label">SUDAH DIMILIKI</div>${btnHTML}`;
     container.appendChild(div);
   });
   if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Belum ada item di kategori ini.</div>';
 }
 
 window.buyItem = async function(category, itemId, price) {
-  if (itemId === 'baju_developer') { showToast('Kostum Developer tidak dijual'); return; }
+  if (itemId === 'baju_developer') { showToast('🔒 Kostum Developer tidak dijual'); return; }
   if (playerData.inventory.includes(itemId)) { showToast('Sudah dimiliki'); return; }
-  if (playerData.coins < price) { showToast("Koin kamu tidak cukup"); return; }
+  if (playerData.coins < price) { showToast("❌ Koin kamu tidak cukup!"); return; }
   playerData.coins -= price;
   playerData.inventory.push(itemId);
   if (itemId === 'gp_vip') { try { updateCharacterNameSprite(playerData.username, playerData.isDev); } catch (e) {} }
@@ -987,12 +989,12 @@ function pickCostume(eq) {
   const pick = (cat, def) => SHOP_ITEMS[cat].find(i => i.id === eq[cat]) || SHOP_ITEMS[cat].find(i => i.id === def);
   const baju = pick('baju', 'baju_default'), iron = !!baju.iron, thor = !!baju.thor, hulk = !!baju.hulk;
   const pac = !!baju.pac, saitama = !!baju.saitama, greenlantern = !!baju.greenlantern, sonic = !!baju.sonic, venom = !!baju.venom, flash = !!baju.flash, ghost = !!baju.ghost;
-  const luffy = !!baju.luffy, gojo = !!baju.gojo, naruto = !!baju.naruto;
-  const celana = luffy ? { color: 0x2f6fe0 } : gojo ? { color: 0x181d30 } : naruto ? { color: 0xe0782f } : ghost ? { color: 0x101014, suit: 'leather' } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0x1d5fd1 } : greenlantern ? { color: 0x10151a } : saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
-  const sepatu = luffy ? { color: 0x6b4a2b } : gojo ? { color: 0x0d0d10 } : naruto ? { color: 0x30343c } : ghost ? { color: 0x14110f } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0xd7263d } : greenlantern ? { color: 0x087d3b } : saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
-  return { baju, celana, sepatu, iron, thor, hulk, saitama, greenlantern, sonic, venom, flash, ghost, luffy, gojo, naruto };
+  const luffy = !!baju.luffy, gojo = !!baju.gojo, naruto = !!baju.naruto, kakashi = !!baju.kakashi, itachi = !!baju.itachi;
+  const celana = itachi ? { color: 0x28345c } : kakashi ? { color: 0x1c2848 } : luffy ? { color: 0x2f6fe0 } : gojo ? { color: 0x181d30 } : naruto ? { color: 0xe0782f } : ghost ? { color: 0x101014, suit: 'leather' } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0x1d5fd1 } : greenlantern ? { color: 0x10151a } : saitama ? { color: 0xc92532, iron: false } : pac ? { color: 0xffd800 } : iron ? { color: 0xb01020, iron: true } : thor ? { color: 0x2a2d33 } : hulk ? { color: 0x6b3fa0 } : pick('celana', 'celana_default');
+  const sepatu = itachi ? { color: 0x3a4a75 } : kakashi ? { color: 0x1f2a4d } : luffy ? { color: 0x6b4a2b } : gojo ? { color: 0x0d0d10 } : naruto ? { color: 0x30343c } : ghost ? { color: 0x14110f } : flash ? { color: 0xb30f1c } : venom ? { color: 0x0a0c14 } : sonic ? { color: 0xd7263d } : greenlantern ? { color: 0x087d3b } : saitama ? { color: 0xc92532 } : pac ? { color: 0x1a1a8c } : iron ? { color: 0xd4a017, iron: true } : thor ? { color: 0x4a3320 } : hulk ? { color: 0x57b84a } : pick('sepatu', 'sepatu_default');
+  return { baju, celana, sepatu, iron, thor, hulk, saitama, greenlantern, sonic, venom, flash, ghost, luffy, gojo, naruto, kakashi, itachi };
 }
-const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [], greenlantern: [], sonic: [], venom: [], flash: [], ghost: [], naruto: [], luffy: [], gojo: [] };
+const costumeParts = { spider: [], bat: [], iron: [], thor: [], hulk: [], ultra: [], godzilla: [], ramen: [], pac: [], saitama: [], greenlantern: [], sonic: [], venom: [], flash: [], ghost: [], naruto: [], luffy: [], gojo: [], kakashi: [], itachi: [] };
 // ===== KOSTUM GHOST RIDER: helper api kepala (dianimasikan lewat userData.fire, jadi ikut ke semua klon avatar) =====
 let localFire = [];
 let ghostFireAssets = null;
@@ -1107,13 +1109,13 @@ function tickGhostFire() {
 }
 
 function setCostumeVis(baju, get) {
-  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac, greenlantern: !!baju.greenlantern, sonic: !!baju.sonic, venom: !!baju.venom, flash: !!baju.flash, ghost: !!baju.ghost, naruto: !!baju.naruto, luffy: !!baju.luffy, gojo: !!baju.gojo };
+  const on = { saitama: !!baju.saitama, spider: baju.id === 'baju_spiderman', bat: baju.id === 'baju_batman', iron: !!baju.iron, thor: !!baju.thor, hulk: !!baju.hulk, ultra: !!baju.ultra, godzilla: !!baju.godzilla, ramen: !!baju.ramen, pac: !!baju.pac, greenlantern: !!baju.greenlantern, sonic: !!baju.sonic, venom: !!baju.venom, flash: !!baju.flash, ghost: !!baju.ghost, naruto: !!baju.naruto, luffy: !!baju.luffy, gojo: !!baju.gojo, kakashi: !!baju.kakashi, itachi: !!baju.itachi };
   for (const k in costumeParts) costumeParts[k].forEach(o => { const n = get(o); if (n) n.visible = on[k]; });
 }
 
 // tubuh Hulk: kulit hijau, otot besar (badan/lengan/kaki melebar), tangan besar
 // Warna rambut khusus kostum karakter anime (null = warna rambut bawaan)
-function costumeHairHex(baju) { return baju.luffy ? 0x15151a : baju.gojo ? 0xf4f6ff : baju.naruto ? 0xf5d142 : 0; }
+function costumeHairHex(baju) { return baju.luffy ? 0x15151a : baju.gojo ? 0xf4f6ff : baju.naruto ? 0xf5d142 : baju.kakashi ? 0xd9dde8 : baju.itachi ? 0x15151c : 0; }
 function applyBodyType(root, P, hulk, skinHex, hairHex) {
   root.traverse(o => {
     if (!o.isMesh) return;
@@ -1149,7 +1151,7 @@ function itemIcon(cat, it) {
   }
   if (SHAPES[cat]) {
     const col = '#' + it.color.toString(16).padStart(6, '0'), d = SHAPES[cat];
-    inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="#1b1030" stroke-width="2.2" stroke-linejoin="round"/>`;
+    inner = `<defs><clipPath id="cp-${it.id}"><path d="${d}"/></clipPath></defs><path d="${d}" fill="${col}" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linejoin="round"/>`;
     if (it.web) inner += `<g clip-path="url(#cp-${it.id})" stroke="rgba(0,0,0,.5)" stroke-width=".8" fill="none"><path d="M32 4V60M20 4V60M44 4V60M8 4V60M56 4V60M4 16Q32 24 60 16M4 28Q32 36 60 28M4 40Q32 48 60 40M4 52Q32 60 60 52"/></g>`;
     if (it.iron && cat === 'baju') inner += '<path d="M20 8L8 16L13 27L19 24Z" fill="#d4a017"/><path d="M44 8L56 16L51 27L45 24Z" fill="#d4a017"/><circle cx="32" cy="30" r="5" fill="#9ff3ff" stroke="#d4a017" stroke-width="2"/><rect x="19" y="46" width="26" height="4" fill="#d4a017"/>';
     if (it.hulk && cat === 'baju') inner += '<path d="M24 24Q32 34 40 24" stroke="#2c6b27" stroke-width="2" fill="none"/><circle cx="25" cy="28" r="5" fill="#6fd35f"/><circle cx="39" cy="28" r="5" fill="#6fd35f"/><path d="M32 32V46M26 38H38M27 44H37" stroke="#2c6b27" stroke-width="1.5"/><rect x="19" y="47" width="26" height="5" fill="#6b3fa0"/>';
@@ -1167,6 +1169,8 @@ function itemIcon(cat, it) {
     if (it.naruto && cat === 'baju') inner += '<path d="M20 8L8 16L13 27L19 24V34H45V24L51 27L56 16L44 8Q32 16 20 8Z" fill="#3b3d48"/><path d="M32 14V56" stroke="#111" stroke-width="2"/><rect x="19" y="46" width="26" height="4" fill="#111"/><rect x="26" y="20" width="12" height="7" rx="1.5" fill="#c9d1d9" stroke="#1c2a56" stroke-width="2"/><circle cx="32" cy="23.5" r="2" fill="none" stroke="#1c2a56" stroke-width="1"/>';
     if (it.luffy && cat === 'baju') inner += '<path d="M24 28H40L38 46H26Z" fill="#ffd1b3"/><path d="M28 31L36 41M36 31L28 41" stroke="#b5654f" stroke-width="1.6"/><circle cx="21.5" cy="32" r="1.6" fill="#d4a017"/><circle cx="21.5" cy="38" r="1.6" fill="#d4a017"/><rect x="19" y="46" width="26" height="5" fill="#f7c81f"/><path d="M32 12Q22 12 22 19H42Q42 12 32 12Z" fill="#e8c15a"/><ellipse cx="32" cy="20" rx="17" ry="3.6" fill="#d9a93f"/><rect x="22" y="17.5" width="20" height="2.4" fill="#c0271f"/>';
     if (it.gojo && cat === 'baju') inner += '<path d="M26 8H38V17H26Z" fill="#10142a"/><circle cx="26.5" cy="25" r="5" fill="#2a3fb0" stroke="#0b0b10" stroke-width="2"/><circle cx="37.5" cy="25" r="5" fill="#2a3fb0" stroke="#0b0b10" stroke-width="2"/><path d="M31.5 25H32.5" stroke="#0b0b10" stroke-width="2"/><path d="M41 20L36 46" stroke="#0a0f1c" stroke-width="1.6"/><circle cx="41" cy="22" r="1.8" fill="#e0b84a"/><circle cx="32" cy="40" r="4.5" fill="#7fd0ff" stroke="#c9ecff" stroke-width="1.5"/>';
+    if (it.kakashi && cat === 'baju') inner += '<path d="M22 10H42L45 52H19Z" fill="#5b7552"/><rect x="24" y="29" width="7" height="9" rx="1" fill="#47593f"/><rect x="33" y="29" width="7" height="9" rx="1" fill="#47593f"/><path d="M32 12V52" stroke="#c9d1d9" stroke-width="1.5"/><path d="M25 6H39V15H25Z" fill="#1a2140"/><circle cx="15" cy="22" r="3" fill="#9b1b30"/>';
+    if (it.itachi && cat === 'baju') inner += '<path d="M19 8H45L40 19H24Z" fill="#8c2230"/><path d="M32 19V54" stroke="#8c2230" stroke-width="2"/><path d="M36 40c0-4 5-5 7-2 3-1 5 3 2 5H36z" fill="#b3262e" stroke="#fff" stroke-width="1.2"/><path d="M7 14l3 3 3-3-1 5h-4z" fill="#111"/><path d="M52 10l3 3 3-3-1 5h-4z" fill="#111"/>';
     if (it.web && cat === 'baju') inner += '<g stroke="#111" stroke-width="1.6" fill="#111" stroke-linecap="round"><ellipse cx="32" cy="35" rx="2.6" ry="5"/><circle cx="32" cy="28.5" r="1.8"/><path fill="none" d="M32 33L24 28M32 35L23 35M32 37L24 42M32 38L25 46M32 33L40 28M32 35L41 35M32 37L40 42M32 38L39 46"/></g>';
   } else if (cat === 'aksesoris') inner = ACC_ICONS[it.id] || '';
   else inner = `<text x="32" y="44" font-size="34" text-anchor="middle">${it.id.includes('api') ? '🔥' : (it.id.includes('_es') ? '❄️' : '✨')}</text>`;
@@ -1184,6 +1188,7 @@ function updateCharacterVisuals() {
     if (child.userData.type === 'sepatu') ap(child, sepatuV);
   });
   setCostumeVis(baju, o => o);
+  localBats = !!baju.itachi;
   localFire = baju.ghost ? collectFire(character) : [];
   character.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash || baju.ghost); });
   applyBodyType(character, { armL: leftArmPivot, armR: rightArmPivot, legL: leftLegPivot, legR: rightLegPivot }, baju.hulk, baju.sonic ? 0x1d5fd1 : baju.venom ? 0x0b0d16 : 0, costumeHairHex(baju));
@@ -1388,14 +1393,15 @@ let MAZE_H = 12, MAZE_Z = -101;
 let zoomDir = 0, guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 // Sistem multi-map (gacha): map aktif + dunia tiap map. Lihat blok SNOW-MODULE.
 let lavaLandWorld = null, lavaLandWorldGroup = null;
+let localBats = false; // kostum Itachi aktif (efek kelelawar)
 let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, snowController = null, angkasaWorld = null, angkasaWorldGroup = null, angkasaController = null, mountainWorld = null, mountainWorldGroup = null, honeyWorld = null, honeyWorldGroup = null, laserWorld = null, laserWorldGroup = null, curGroundPlat = null, gachaBusy = false;
 const ROASTS = {
-  hit: ['Wah, pemain PALING BERUNTUNG hari ini... beruntung kena bola berduri 🍀😹', 'Beruntung banget ya, dilempar sejauh itu. Gratis lho 🚀😹', 'Selamat! Kamu terpilih jadi korban palang berputar 🏆💀', 'Keberuntungan kamu emang nggak ada obat, ketabrak mulu 🍀🤣'],
-  fall: ['Beruntung banget jatuh ke lava, hangat kan? 🔥😹', 'Pemain paling beruntung sedunia: jatuh dari tempat yang sama lagi 🍀💀', 'Mantap, rekor jatuh terbaru! Lava bangga sama kamu 🏅🔥'],
-  fake: ['Beruntung banget ketipu kotak palsu, yang asli malah kamu lewatin 😹🍀', 'Kotak palsu aja kamu percaya, pantes paling beruntung 🤣👻', 'Insting kamu emang paling beruntung... beruntung salah terus 🍀👻'],
-  laser: ['Lasernya nyala sebentar, kamu tetap kena. Bakat langka 🍀💥', 'Kena laser lagi? Rekor kesialan paling beruntung 🏅💥', 'Tinggal lompat doang lho, beruntung banget kamu 😹⚡'],
-  snowshot: ['Ditembak NPC salju! Harusnya ngumpet di balik dinding es 🧊🔫', 'NPC: "waktu habis, sayang" ❄️🔫', 'Berdiri di tempat terbuka pas NPC nembak? Dingin banget 🥶💥', 'Dinding esnya ada buat dipakai, bukan dipandang 🧊😹'],
-  shot: ['Ditembak NPC gara-gara salah belok. Beruntung banget kamu 🍀🔫', 'Peta nggak bisa dibaca, tapi pistolnya akurat. Beruntung kamu 😹🔫', 'NPC: "makasih udah nyasar ke sini" 🔫💀', 'Satu lorong benar, kamu pilih yang salah. Pecah rekor 🏅🔫']
+  hit: ['Kena bola berduri.', 'Terlempar palang berputar.', 'Kena jebakan.', 'Tertabrak palang berputar.'],
+  fall: ['Jatuh ke lava.', 'Terpeleset ke lava.', 'Jatuh dari platform.'],
+  fake: ['Kotak itu palsu.', 'Salah injak, platformnya palsu.', 'Kena kotak palsu.'],
+  laser: ['Kena laser.', 'Telat lompat, kena laser.', 'Laser menyala saat kamu lewat.'],
+  snowshot: ['Ditembak NPC salju.', 'Terlalu lama di tempat terbuka.', 'Ditembak NPC. Berlindunglah di balik dinding es.'],
+  shot: ['Ditembak NPC.', 'Salah lorong, ditembak NPC.', 'Ketahuan NPC.']
 };
 const isAdminUser = () => !!(playerData && (playerData.isDev === true || accountKey() === DEV_USERNAME));
 // Pemain biasa di-roasting; admin/dev tidak (admin cuma dapat pesan biasa)
@@ -2928,6 +2934,143 @@ function init3DGame() {
     mk(new THREE.TorusGeometry(0.13, 0.008, 8, 32), gjBlue, 0, -0.5, 0.2, orb).rotation.x = Math.PI / 2.3;
   }
 
+  // ===== KOSTUM KAKASHI: rambut perak jabrik, masker, ikat kepala, rompi hijau shinobi, perban kaki, kantong senjata =====
+  {
+    const kkHair = accMat(0xd9dde8, { roughness: 0.55 });
+    const kkMask = accMat(0x1a2140, { roughness: 0.7 });
+    const kkNavy = accMat(0x1c2a56, { roughness: 0.5, side: THREE.DoubleSide });
+    const kkNavyLt = accMat(0x2a3866, { roughness: 0.6 });
+    const kkGlove = accMat(0x151b33, { roughness: 0.6 });
+    const kkSteel = accMat(0xc9d1d9, { metalness: 0.85, roughness: 0.25, envMap: envTex, envMapIntensity: 1 });
+    const kkVest = accMat(0x5b7552, { roughness: 0.75 });
+    const kkVestDk = accMat(0x47593f, { roughness: 0.8 });
+    const kkWhite = accMat(0xf1f1f1, { roughness: 0.7 });
+    const kkRed = accMat(0x9b1b30, { roughness: 0.6 });
+    const kkBlack = accMat(0x0f1220, { roughness: 0.55 });
+    const kkParts = costumeParts.kakashi;
+
+    // Kepala: ikat kepala dengan pelat logam, masker menutupi hidung sampai dagu, rambut perak jabrik.
+    const kkHead = grp(headGroup, kkParts);
+    const band = mk(new THREE.CylinderGeometry(0.306, 0.306, 0.09, 32, 1, true), kkNavy, 0, 0.15, 0, kkHead); band.rotation.x = -0.06;
+    mk(new THREE.BoxGeometry(0.24, 0.09, 0.02), kkSteel, 0, 0.15, 0.308, kkHead);
+    mk(new THREE.TorusGeometry(0.022, 0.006, 8, 16), kkBlack, 0, 0.15, 0.32, kkHead);
+    mk(new THREE.SphereGeometry(0.306, 28, 16, -0.3, Math.PI + 0.6, 1.64, Math.PI - 1.64), kkMask, 0, 0, 0, kkHead);
+    [[0, 0.7, -0.5], [0.5, 0.8, -0.3], [-0.5, 0.8, -0.3], [0.3, 0.9, 0.2], [-0.3, 0.9, 0.2], [0.7, 0.6, -0.2], [-0.7, 0.6, -0.2], [0, 0.5, -0.85], [0.6, 0.5, -0.55], [-0.6, 0.5, -0.55], [0, 1, 0]].forEach(([x, y, z]) => {
+      const v = new THREE.Vector3(x, y, z).normalize();
+      const c = mk(new THREE.ConeGeometry(0.07, 0.3, 6), kkHair, v.x * 0.29, 0.02 + v.y * 0.29, v.z * 0.29, kkHead);
+      c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v);
+    });
+    for (const sd of [-1, 1]) { const lock = mk(new THREE.ConeGeometry(0.04, 0.2, 5), kkHair, sd * 0.27, -0.02, 0.08, kkHead); lock.rotation.x = Math.PI; } // rambut samping dekat telinga
+
+    // Badan: rompi hijau dengan kerah tinggi, dua kantong dada, ritsleting, bantalan bahu, lambang pusaran merah di lengan.
+    const kkBody = grp(rig, kkParts);
+    mk(new THREE.CylinderGeometry(0.315, 0.315, 0.62, 28), kkVest, 0, 1.5, 0, kkBody);
+    mk(new THREE.SphereGeometry(0.315, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), kkVest, 0, 1.81, 0, kkBody);
+    mk(new THREE.CylinderGeometry(0.21, 0.24, 0.2, 24, 1, true), accMat(0x5b7552, { roughness: 0.75, side: THREE.DoubleSide }), 0, 1.97, 0, kkBody);
+    mk(new THREE.BoxGeometry(0.012, 0.6, 0.01), kkSteel, 0, 1.5, 0.318, kkBody);
+    for (const sd of [-1, 1]) {
+      mk(new THREE.BoxGeometry(0.15, 0.17, 0.04), kkVestDk, sd * 0.15, 1.5, 0.295, kkBody);
+      const pad = mk(new THREE.SphereGeometry(0.12, 14, 10), kkVest, sd * 0.3, 1.9, 0, kkBody); pad.scale.set(1, 0.45, 1.1);
+    }
+    mk(new THREE.TorusGeometry(0.317, 0.02, 8, 32), kkVestDk, 0, 1.19, 0, kkBody).rotation.x = Math.PI / 2;
+    const patch = grp(leftArmPivot, kkParts);
+    mk(new THREE.TorusGeometry(0.05, 0.012, 8, 20), kkRed, -0.108, -0.1, 0, patch).rotation.y = Math.PI / 2;
+    mk(new THREE.CircleGeometry(0.03, 12), kkRed, -0.109, -0.1, 0, patch).rotation.y = -Math.PI / 2;
+    for (const el of [leftElbow, rightElbow]) { // lipatan lengan & sarung tangan tanpa jari berpelat logam
+      const lo = grp(el, kkParts);
+      mk(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 20), kkNavyLt, 0, -0.26, 0, lo);
+      mk(new THREE.CylinderGeometry(0.093, 0.093, 0.1, 20), kkGlove, 0, -0.38, 0, lo);
+      mk(new THREE.BoxGeometry(0.06, 0.05, 0.015), kkSteel, 0, -0.38, 0.09, lo);
+    }
+    // Kantong senjata + perban di paha kiri (sisi kiri layar), perban putih di pergelangan kaki, sandal ninja biru tua.
+    const pouch = grp(leftLegPivot, kkParts);
+    mk(new THREE.BoxGeometry(0.1, 0.17, 0.12), kkBlack, -0.17, -0.17, 0, pouch);
+    mk(new THREE.CylinderGeometry(0.13, 0.13, 0.11, 24), kkWhite, 0, -0.2, 0, pouch);
+    mk(new THREE.CylinderGeometry(0.133, 0.133, 0.035, 24), kkNavy, 0, -0.2, 0, pouch);
+    for (const leg of [leftKnee, rightKnee]) {
+      const g = grp(leg, kkParts);
+      mk(new THREE.CylinderGeometry(0.106, 0.106, 0.14, 20), kkWhite, 0, -0.26, 0, g);
+      mk(new THREE.CylinderGeometry(0.112, 0.118, 0.1, 20), kkNavyLt, 0, -0.37, 0, g);
+    }
+  }
+
+  // ===== KOSTUM ITACHI (PREMIUM): jubah Akatsuki dengan awan merah, kerah merah tinggi, mata Sharingan, kelelawar beterbangan =====
+  {
+    const itBlack = accMat(0x15151a, { roughness: 0.75, side: THREE.DoubleSide });
+    const itRed = accMat(0x8c2230, { roughness: 0.7, side: THREE.DoubleSide });
+    const itNavy = accMat(0x23305a, { roughness: 0.6 });
+    const itBand = accMat(0x1c2a56, { roughness: 0.5, side: THREE.DoubleSide });
+    const itSteel = accMat(0xc9d1d9, { metalness: 0.85, roughness: 0.25, envMap: envTex, envMapIntensity: 1 });
+    const itHair = accMat(0x15151c, { roughness: 0.5 });
+    const itWhite = accMat(0xf1f1f1, { roughness: 0.7 });
+    const itSharingan = accMat(0xd0182b, { roughness: 0.3, emissive: 0x6a0010, emissiveIntensity: 0.5 });
+    const itLine = accMat(0x4a3a3a, { roughness: 0.9 });
+    const itCuff = accMat(0x4a5a8a, { roughness: 0.7 });
+    const itParts = costumeParts.itachi;
+
+    const mkCanvasTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace; return t; };
+    // Awan merah berpinggiran putih khas jubah Akatsuki.
+    const cloudTex = mkCanvasTex(256, 170, (x) => {
+      const cs = [[60, 100, 40], [105, 72, 46], [160, 74, 42], [200, 106, 36], [130, 116, 50]];
+      for (const [cx, cy, r] of cs) { x.beginPath(); x.arc(cx, cy, r + 5, 0, Math.PI * 2); x.fillStyle = '#e8e8ee'; x.fill(); }
+      for (const [cx, cy, r] of cs) { x.beginPath(); x.arc(cx, cy, r - 4, 0, Math.PI * 2); x.fillStyle = '#b3262e'; x.fill(); }
+      x.strokeStyle = '#e8e8ee'; x.lineWidth = 5; x.lineCap = 'round';
+      for (const [cx, cy, r] of [[105, 72, 20], [160, 74, 16], [130, 118, 22]]) { x.beginPath(); x.arc(cx, cy, r, 0.4, 4.6); x.stroke(); }
+    });
+    const cloudMat = new THREE.MeshStandardMaterial({ map: cloudTex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const netTex = mkCanvasTex(64, 64, (x) => {
+      x.strokeStyle = 'rgba(210,216,226,.9)'; x.lineWidth = 3;
+      for (let i = -64; i < 128; i += 16) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i + 64, 64); x.stroke(); x.beginPath(); x.moveTo(i + 64, 0); x.lineTo(i, 64); x.stroke(); }
+    });
+    const netMat = new THREE.MeshBasicMaterial({ map: netTex, transparent: true, alphaTest: 0.2, side: THREE.DoubleSide });
+
+    // Kepala: ikat kepala bergores, rambut hitam dengan poni panjang & ekor kuda, mata Sharingan, garis di bawah mata.
+    const itHead = grp(headGroup, itParts);
+    const band = mk(new THREE.CylinderGeometry(0.306, 0.306, 0.09, 32, 1, true), itBand, 0, 0.15, 0, itHead); band.rotation.x = -0.06;
+    mk(new THREE.BoxGeometry(0.24, 0.09, 0.02), itSteel, 0, 0.15, 0.308, itHead);
+    mk(new THREE.BoxGeometry(0.2, 0.012, 0.006), itBand, 0, 0.15, 0.32, itHead).rotation.z = -0.5; // goresan di pelat
+    for (const sd of [-1, 1]) {
+      mk(new THREE.SphereGeometry(0.04, 16, 12), itSharingan, sd * 0.1, 0.05, 0.295, itHead);
+      const bang = mk(new THREE.ConeGeometry(0.055, 0.34, 6), itHair, sd * 0.2, -0.02, 0.24, itHead); bang.rotation.set(Math.PI, 0, sd * 0.12);
+      for (const o of [0, 0.03]) {
+        const x = sd * (0.115 + o), y = -0.075, z = Math.sqrt(Math.max(0.0001, 0.09 - x * x - y * y)) + 0.004;
+        mk(new THREE.BoxGeometry(0.008, 0.07, 0.008), itLine, x, y, z, itHead).rotation.y = sd * Math.atan2(Math.abs(x), z) * 0.9;
+      }
+    }
+    mk(new THREE.ConeGeometry(0.06, 0.2, 6), itHair, 0, 0.2, 0.26, itHead).rotation.x = Math.PI; // poni tengah
+    const tail = mk(new THREE.ConeGeometry(0.1, 0.55, 8), itHair, 0, -0.3, -0.3, itHead); tail.rotation.set(Math.PI - 0.25, 0, 0);
+    mk(new THREE.TorusGeometry(0.075, 0.018, 8, 16), itRed, 0, -0.04, -0.3, itHead).rotation.x = Math.PI / 2;
+
+    // Badan: jubah panjang melebar, kerah merah tinggi yang terbuka di depan, awan merah, kaus jaring di leher.
+    const itBody = grp(rig, itParts);
+    const skirt = mk(new THREE.CylinderGeometry(0.34, 0.62, 0.7, 28, 1, true), itBlack, 0, 0.7, 0, itBody);
+    const strip = mk(new THREE.BoxGeometry(0.07, 0.754, 0.012), itRed, 0, 0.7, 0.492, itBody); strip.rotation.x = -0.38;
+    mk(new THREE.BoxGeometry(0.014, 0.74, 0.01), itRed, 0, 1.42, 0.303, itBody);
+    mk(new THREE.CylinderGeometry(0.34, 0.2, 0.32, 24, 1, true, 0.55, Math.PI * 2 - 1.1), itRed, 0, 2.0, 0, itBody);
+    mk(new THREE.PlaneGeometry(0.22, 0.2), itNavy, 0, 1.86, 0.297, itBody);
+    mk(new THREE.PlaneGeometry(0.22, 0.2), netMat, 0, 1.86, 0.3, itBody);
+    const placeCloud = (phi, y, w) => {
+      const r = 0.34 + (1.05 - y) / 0.7 * 0.28 + 0.012, c = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.66), cloudMat);
+      c.rotation.order = 'YXZ'; c.rotation.set(-0.38, phi, 0); c.position.set(Math.sin(phi) * r, y, Math.cos(phi) * r); itBody.add(c);
+    };
+    placeCloud(0.5, 0.62, 0.34); placeCloud(-0.55, 0.72, 0.28);
+    for (const [piv, sd] of [[leftArmPivot, -1], [rightArmPivot, 1]]) {
+      const up = grp(piv, itParts), c = mk(new THREE.PlaneGeometry(0.2, 0.13), cloudMat, sd * 0.113, -0.12, 0, up);
+      c.rotation.y = sd * Math.PI / 2;
+    }
+    for (const el of [leftElbow, rightElbow]) { // lengan jubah lebar berlapis merah di ujungnya
+      const lo = grp(el, itParts);
+      mk(new THREE.CylinderGeometry(0.11, 0.2, 0.26, 20, 1, true), itBlack, 0, -0.27, 0, lo);
+      mk(new THREE.TorusGeometry(0.2, 0.016, 8, 24), itRed, 0, -0.4, 0, lo).rotation.x = Math.PI / 2;
+    }
+    // Kaki: lipatan celana, perban putih setinggi betis, sandal biru.
+    for (const leg of [leftKnee, rightKnee]) {
+      const g = grp(leg, itParts);
+      mk(new THREE.TorusGeometry(0.117, 0.028, 8, 20), itCuff, 0, -0.1, 0, g).rotation.x = Math.PI / 2;
+      mk(new THREE.CylinderGeometry(0.106, 0.106, 0.17, 20), itWhite, 0, -0.27, 0, g);
+    }
+  }
+
   updateCharacterVisuals();
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -3087,11 +3230,12 @@ function showOverlay(title, desc, color) {
   document.getElementById('overlay').style.display = 'flex';
 }
 
-// Pengganti tulisan GAME OVER: kalimat roasting, lalu "Coba lagi" di bawahnya (admin/dev tidak di-roasting)
+// Layar kalah: satu kalimat singkat penyebab kematian; tombol ulang ada di bawahnya.
 function showGameOver(kind) {
   const arr = ROASTS[kind];
-  const msg = isAdminUser() ? '💥 Kena!' : arr[Math.floor(Math.random() * arr.length)];
-  showOverlay(msg, 'Coba lagi 👇', '#ff3333');
+  const msg = isAdminUser() ? 'Kena' : arr[Math.floor(Math.random() * arr.length)];
+  showOverlay(msg, '', '#ff3333');
+  const rb = document.getElementById('btn-restart'); if (rb) rb.textContent = 'Ulangi';
   const t = document.getElementById('overlay-title');
   t.style.fontSize = 'clamp(22px, 6vw, 34px)'; t.style.maxWidth = '90vw'; t.style.textAlign = 'center'; t.style.lineHeight = '1.3';
 }
@@ -3375,7 +3519,7 @@ function honeyEliminateLocal(reason) {
   if (honeyRoundEnded || gameState !== 'PLAYING') return;
   honeyRoundEnded = true; gameState = 'GAMEOVER'; shatterLocal();
   if (myRef) update(myRef, { status: 'ELIMINATED', eliminatedAt: serverNow() }).catch(() => {});
-  showOverlay('YOU LOSE', reason === 'laser' ? 'Kamu kena laser lebih dulu! 🔴' : (currentMap === 'laser' ? 'Kamu jatuh ke slime lebih dulu! 🟢' : currentMap === 'lavaland' ? 'Kamu jatuh ke lava lebih dulu! 🌋' : 'Kamu jatuh lebih dulu! 🍯'), '#ff4242');
+  showOverlay('Kamu kalah', reason === 'laser' ? 'Kena laser.' : (currentMap === 'laser' ? 'Jatuh ke slime.' : currentMap === 'lavaland' ? 'Jatuh ke lava.' : 'Jatuh dari platform.'), '#ff4242');
   { const rb = document.getElementById('btn-restart'); if (rb) rb.style.display = 'none'; } // tanpa tombol coba lagi
   setTimeout(() => { if (gameState === 'GAMEOVER' && isSurvivalMap()) returnToLobby(); }, 1800);
 }
@@ -3449,6 +3593,7 @@ function applyRemoteCostume(u, eq) {
   });
   const vis = (orig, v) => { const c = u.map.get(orig); if (c) c.visible = v; };
   setCostumeVis(baju, o => u.map.get(o));
+  u.bats = !!baju.itachi;
   u.model.traverse(o => { if (o.isMesh && o.userData.type === 'rambut') o.visible = !(baju.saitama || baju.sonic || baju.venom || baju.flash || baju.ghost); });
   applyBodyType(u.model, u.parts, baju.hulk, baju.sonic ? 0x1d5fd1 : baju.venom ? 0x0b0d16 : 0, costumeHairHex(baju));
   const a = eq.aksesoris || 'aks_none';
@@ -4596,6 +4741,56 @@ function updateWinFx(delta) {
   }
 }
 
+// ----- EFEK KOSTUM ITACHI: kelelawar beterbangan mengelilingi pemain + cincin merah gelap di kaki -----
+// Efek hidup di scene (bukan anak karakter) supaya tidak ikut ter-clone ke avatar pemain lain; pemain lain
+// melihatnya karena kostum mereka dibaca dari data equipped yang sama.
+const batFx = new Map();
+let batAssets = null;
+function makeBatSwarm() {
+  const A = batAssets || (batAssets = (() => {
+    const sh = new THREE.Shape();
+    sh.moveTo(0, 0.05); sh.lineTo(0.12, 0.13); sh.lineTo(0.3, 0.05); sh.lineTo(0.25, -0.03); sh.lineTo(0.18, 0.0); sh.lineTo(0.12, -0.09); sh.lineTo(0.05, -0.02); sh.lineTo(0, -0.04); sh.closePath();
+    return {
+      wing: new THREE.ShapeGeometry(sh), body: new THREE.SphereGeometry(0.06, 10, 8), eye: new THREE.SphereGeometry(0.012, 6, 6),
+      dark: new THREE.MeshBasicMaterial({ color: 0x0b0b12, side: THREE.DoubleSide }), red: new THREE.MeshBasicMaterial({ color: 0xff2a3a }),
+      ringGeo: new THREE.TorusGeometry(0.85, 0.02, 8, 48),
+      ringMat: new THREE.MeshBasicMaterial({ color: 0x9b1b30, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending })
+    };
+  })());
+  const g = new THREE.Group(), bats = [], N = 8;
+  for (let i = 0; i < N; i++) {
+    const b = new THREE.Group(), body = new THREE.Mesh(A.body, A.dark); body.scale.set(1, 0.9, 1.5); b.add(body);
+    const pl = new THREE.Group(), pr = new THREE.Group(); pl.position.x = 0.04; pr.position.x = -0.04;
+    const wl = new THREE.Mesh(A.wing, A.dark), wr = new THREE.Mesh(A.wing, A.dark);
+    wl.rotation.x = wr.rotation.x = -Math.PI / 2; wr.scale.x = -1; pl.add(wl); pr.add(wr); b.add(pl, pr);
+    for (const sx of [-1, 1]) { const e = new THREE.Mesh(A.eye, A.red); e.position.set(sx * 0.025, 0.02, 0.08); b.add(e); }
+    b.scale.setScalar(1.3); g.add(b);
+    bats.push({ b, pl, pr, w: 0.9 + Math.random() * 0.8, off: i * Math.PI * 2 / N, ph: Math.random() * 6 });
+  }
+  const ring = new THREE.Mesh(A.ringGeo, A.ringMat); ring.rotation.x = Math.PI / 2; ring.position.y = 0.08; g.add(ring);
+  g.userData = { bats, ring, t: Math.random() * 10 };
+  return g;
+}
+function updateBatFx(delta) {
+  if (!scene) return;
+  const want = new Map();
+  if (character && character.visible && localBats) want.set('me', character);
+  for (const [id, av] of remotePlayers) if (av.userData.bats && av.visible) want.set(id, av);
+  for (const [k, g] of batFx) if (!want.has(k)) { scene.remove(g); batFx.delete(k); }
+  for (const [k, obj] of want) {
+    let g = batFx.get(k); if (!g) { g = makeBatSwarm(); scene.add(g); batFx.set(k, g); }
+    g.position.set(obj.position.x, obj.position.y, obj.position.z);
+    const u = g.userData; u.t += delta; const t = u.t;
+    u.ring.scale.setScalar(1 + Math.sin(t * 2) * 0.05); u.ring.rotation.z += delta * 0.6;
+    u.bats.forEach((o, i) => {
+      const a = t * o.w + o.off, r = 1.0 + 0.35 * Math.sin(t * 0.8 + o.ph), f = Math.sin(t * 16 + i) * 0.8;
+      o.b.position.set(Math.cos(a) * r, 1.35 + 0.95 * Math.sin(t * 1.3 + o.ph), Math.sin(a) * r);
+      o.b.rotation.set(0, Math.atan2(-Math.sin(a), Math.cos(a)), -0.25);
+      o.pl.rotation.z = f; o.pr.rotation.z = -f;
+    });
+  }
+}
+
 // ----- GAMEPASS FREEZE PLAYER -----
 // Pelempar menulis event ke node pemain sendiri (rooms/<kode>/players/<uid>/ice). Semua klien melihat
 // kubus es terbang dari pelempar ke target; hanya korban yang benar-benar membeku di sisinya, lalu
@@ -5206,6 +5401,7 @@ function animate() {
   updateFreezeVisuals(delta);
   updateVipAuras(delta);
   updateWinFx(delta);
+  updateBatFx(delta);
   missionTick(delta);
   if (lobbyAccentRing && gameState === 'LOBBY') lobbyAccentRing.rotation.z += delta * 0.12;
   if (scene && camera) renderer.render(scene, camera);
@@ -5334,7 +5530,7 @@ function animate() {
       const m = groundData.platform.mesh.position;
       checkpoint = { p: groundData.platform, set: true, x: m.x, y: groundData.y, z: m.z };
       if (usedCheckpointMat) groundData.platform.mesh.material = usedCheckpointMat;
-      showToast('✅ Checkpoint tersimpan!');
+      showToast('Checkpoint disimpan');
       if (!roomCode) { // mode solo: posisi checkpoint disimpan ke akun, jadi tetap di sini walau keluar game
         const sv = { px: +m.x.toFixed(3), py: +m.y.toFixed(3), pz: +m.z.toFixed(3), y: +groundData.y.toFixed(3) };
         if (currentMap === 'snow') playerData.savedCheckpointSnow = sv; else if (currentMap === 'mountain') playerData.savedCheckpointMountain = sv; else playerData.savedCheckpoint = sv; // checkpoint tiap map terpisah
