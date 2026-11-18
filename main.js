@@ -782,6 +782,7 @@ function startLobby() {
   document.getElementById('in-game-controls').style.display = 'none'; setLobbyOnlyHud(true);
   document.getElementById('chat-container').style.display = 'flex';
   initNotificationCenter();
+  startGiftPolling();
 
   fetchGlobalChat();
   setInterval(fetchGlobalChat, 3000);
@@ -806,7 +807,7 @@ function renderShopTab(category) {
     SHOP_ITEMS.gamepass.forEach(item => {
       const owned = playerData.inventory.includes(item.id);
       const div = document.createElement('div'); div.className = 'shop-item';
-      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div><button class="shop-buy-btn" disabled>AKTIF</button>' : `<div class="item-price">🪙 ${item.price}</div><button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
+      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? shopPriceRow('gamepass', item, '<div class="item-price owned-label">SUDAH DIMILIKI</div>') + '<button class="shop-buy-btn" disabled>AKTIF</button>' : shopPriceRow('gamepass', item, `<div class="item-price">🪙 ${item.price}</div>`) + `<button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
       container.appendChild(div);
     });
     return;
@@ -814,7 +815,7 @@ function renderShopTab(category) {
   SHOP_ITEMS[category].forEach(item => {
     if (item.adminOnly || item.id === 'baju_developer') return;
     const isOwned = playerData.inventory.includes(item.id);
-    if (isOwned) return; // item yang sudah dibeli pindah ke Vault
+    if (isOwned && !(item.price > 0)) return; // item bawaan gratis tidak ditampilkan; item berbayar yang sudah dimiliki tetap tampil supaya bisa di-Give
     const isEquipped = Object.values(playerData.equipped).includes(item.id);
     visibleCount++;
     const div = document.createElement('div');
@@ -831,10 +832,10 @@ function renderShopTab(category) {
       btnHTML = `<button class="shop-buy-btn" onclick="buyItem('${category}', '${item.id}', ${item.price})">BELI (${item.price})</button>`;
     }
 
-    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? `<div class="item-price">🪙 ${item.price}</div>` : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
+    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? shopPriceRow(category, item, `<div class="item-price">🪙 ${item.price}</div>`) : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
     container.appendChild(div);
   });
-  if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Semua item kategori ini sudah kamu miliki. Cek Vault!</div>';
+  if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Belum ada item di kategori ini.</div>';
 }
 
 function renderStandaloneMusic() {
@@ -913,6 +914,169 @@ window.equipItem = async function(category, itemId) {
   if (document.getElementById('vault-modal').style.display === 'flex') renderVaultTab(category);
   showToast("Item berhasil dipakai!");
 };
+
+// ============ GIVE: BERI BARANG SHOP KE TEMAN ============
+// Pengirim membayar harga barang, hadiah masuk ke kotak `gifts/<kunci teman>` di Firebase, lalu penerima
+// mengklaimnya sendiri. Hanya pemilik akun yang menulis inventory-nya, jadi data tidak saling menimpa.
+// Kalau saat hadiah tiba penerima ternyata sudah punya barangnya, ia mendapat koin seharga barang itu.
+function findShopItem(category, itemId) {
+  return (SHOP_ITEMS[category] || []).find(i => i.id === itemId) || null;
+}
+function canGive(item) { return !!item && item.price > 0 && !item.adminOnly && item.id !== 'baju_developer'; }
+function injectGiveStyles() {
+  if (document.getElementById('give-css')) return;
+  const st = document.createElement('style'); st.id = 'give-css';
+  st.textContent = '.shop-price-row{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}'
+    + '.shop-give-btn{padding:2px 9px;border:1px solid rgba(255,255,255,.4);border-radius:7px;background:rgba(255,255,255,.08);color:#fff;font:600 11px sans-serif;cursor:pointer;touch-action:manipulation}'
+    + '.shop-give-btn:active{background:rgba(255,255,255,.2)}'
+    + '#give-overlay{position:fixed;inset:0;z-index:10050;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.65)}'
+    + '#give-card{width:min(360px,100%);max-height:84vh;display:flex;flex-direction:column;padding:16px;border:1px solid #3b4a78;border-radius:14px;background:#141a2e;color:#fff;font-family:sans-serif;box-sizing:border-box}'
+    + '#give-title{font-size:16px;font-weight:700}#give-sub{margin:3px 0 10px;font-size:13px;color:#ffd76a}'
+    + '#give-list{display:flex;flex-direction:column;gap:6px;overflow-y:auto;min-height:48px;margin-bottom:8px;font-size:13px;color:#aab7cc}'
+    + '.give-friend{display:block;width:100%;padding:10px 12px;border:1px solid #3b4a78;border-radius:9px;background:#0d1224;color:#fff;font:600 14px sans-serif;text-align:left;cursor:pointer}'
+    + '.give-friend.sel{border-color:#7fd6ff;background:#1b2a4a}'
+    + '#give-msg{min-height:18px;margin-bottom:8px;font-size:12px;color:#ff8a8a}'
+    + '#give-actions{display:flex;gap:8px}#give-actions button{flex:1;padding:10px;border:0;border-radius:9px;font:700 14px sans-serif;cursor:pointer}'
+    + '#give-cancel{background:#2a3354;color:#fff}#give-ok{background:#2f9e6e;color:#fff}#give-ok:disabled{opacity:.45;cursor:default}';
+  document.head.appendChild(st);
+}
+function shopPriceRow(category, item, priceHTML) {
+  injectGiveStyles();
+  const give = canGive(item) ? `<button type="button" class="shop-give-btn" onclick="openGiveDialog('${category}','${item.id}')">Give</button>` : '';
+  return `<div class="shop-price-row">${priceHTML}${give}</div>`;
+}
+
+const giveCtx = { category: null, item: null, friendKey: null, friendName: '', busy: false, token: 0 };
+function ensureGiveDialog() {
+  injectGiveStyles();
+  if (document.getElementById('give-overlay')) return;
+  const ov = document.createElement('div'); ov.id = 'give-overlay';
+  ov.innerHTML = '<section id="give-card"><div id="give-title"></div><div id="give-sub"></div><div id="give-list"></div><div id="give-msg"></div><div id="give-actions"><button type="button" id="give-cancel">Batal</button><button type="button" id="give-ok" disabled>Beri</button></div></section>';
+  document.body.appendChild(ov);
+  const close = () => { if (!giveCtx.busy) { giveCtx.token++; ov.style.display = 'none'; } };
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  document.getElementById('give-cancel').onclick = close;
+  document.getElementById('give-ok').onclick = () => sendGift();
+}
+window.openGiveDialog = async function(category, itemId) {
+  const item = findShopItem(category, itemId);
+  if (!canGive(item)) return;
+  ensureGiveDialog();
+  Object.assign(giveCtx, { category, item, friendKey: null, friendName: '' });
+  const token = ++giveCtx.token;
+  const ov = document.getElementById('give-overlay'), list = document.getElementById('give-list'), ok = document.getElementById('give-ok'), msg = document.getElementById('give-msg');
+  document.getElementById('give-title').textContent = `Beri ${item.name} ke teman`;
+  document.getElementById('give-sub').textContent = `Harga 🪙 ${fmtCoins(item.price)} (diambil dari koinmu)`;
+  msg.textContent = ''; ok.disabled = true; ok.textContent = 'Beri';
+  list.textContent = 'Memuat teman…';
+  ov.style.display = 'flex';
+  let friends;
+  try { friends = await loadMyFriends(); }
+  catch (e) { if (token === giveCtx.token) list.textContent = 'Gagal memuat daftar teman.'; return; }
+  if (token !== giveCtx.token) return;
+  const entries = Object.entries(friends || {});
+  if (!entries.length) { list.textContent = 'Kamu belum punya teman. Tambah teman lewat tombol cari di lobby.'; return; }
+  list.textContent = '';
+  entries.forEach(([key, f]) => {
+    const name = String((f && f.username) || key);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'give-friend'; b.textContent = name;
+    b.onclick = () => {
+      if (giveCtx.busy) return;
+      list.querySelectorAll('.give-friend').forEach(x => x.classList.remove('sel'));
+      b.classList.add('sel');
+      giveCtx.friendKey = key; giveCtx.friendName = name;
+      msg.textContent = ''; ok.disabled = false; ok.textContent = `Beri ke ${name}`;
+    };
+    list.appendChild(b);
+  });
+};
+async function sendGift() {
+  const c = giveCtx;
+  if (!c.item || !c.friendKey || c.busy) return;
+  const msg = document.getElementById('give-msg'), ok = document.getElementById('give-ok');
+  const enc = encodeURIComponent, price = c.item.price, me = accountKey();
+  if (!me || c.friendKey === me) return;
+  if ((Number(playerData.coins) || 0) < price) { msg.textContent = 'Koin kamu tidak cukup'; return; }
+  c.busy = true; ok.disabled = true; msg.style.color = '#9ad7ff'; msg.textContent = 'Memproses…';
+  let charged = false, sent = false;
+  try {
+    const [inv, pending] = await Promise.all([socialGet(`players/${enc(c.friendKey)}/inventory`), socialGet(`gifts/${enc(c.friendKey)}`)]);
+    const owned = Array.isArray(inv) ? inv : Object.values(inv || {});
+    if (owned.includes(c.item.id)) { msg.style.color = '#ff8a8a'; msg.textContent = `${c.friendName} sudah punya barang ini`; return; }
+    if (Object.values(pending || {}).some(g => g && g.itemId === c.item.id)) { msg.style.color = '#ff8a8a'; msg.textContent = 'Hadiah yang sama masih menunggu diterima'; return; }
+    playerData.coins = (Number(playerData.coins) || 0) - price; charged = true;
+    await updatePlayerFirebase();
+    const res = await fetch(socialUrl(`gifts/${enc(c.friendKey)}`), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: me, fromName: String(playerData.username || me), itemId: c.item.id, category: c.category, price, sentAt: Date.now() })
+    });
+    if (!res.ok) throw new Error('Gagal mengirim hadiah');
+    sent = true;
+    document.getElementById('coin-amount').textContent = playerData.coins;
+    document.getElementById('give-overlay').style.display = 'none';
+    showToast(`🎁 ${c.item.name} terkirim ke ${c.friendName}`, 2600);
+    renderShopTab(c.category);
+  } catch (e) {
+    if (charged && !sent) { // hadiah tidak terkirim: koin dikembalikan
+      playerData.coins += price;
+      document.getElementById('coin-amount').textContent = playerData.coins;
+      updatePlayerFirebase().catch(() => {});
+    }
+    msg.style.color = '#ff8a8a'; msg.textContent = e.message || 'Gagal memberi hadiah';
+  } finally {
+    c.busy = false; ok.disabled = !c.friendKey;
+  }
+}
+
+// Penerima: cek kotak hadiah berkala, lalu masukkan ke inventory.
+const giveClaiming = new Set();
+let giveClaimTimer = null, giveClaimBusy = false;
+function startGiftPolling() {
+  if (giveClaimTimer) return;
+  giveClaimTimer = setInterval(pollGifts, 4000);
+  pollGifts();
+}
+async function pollGifts() {
+  const me = accountKey();
+  if (!me || giveClaimBusy || gameState === 'LOGIN') return;
+  giveClaimBusy = true;
+  try {
+    const data = await socialGet(`gifts/${encodeURIComponent(me)}`);
+    for (const [gid, g] of Object.entries(data || {})) {
+      if (!g || !g.itemId || giveClaiming.has(gid)) continue;
+      giveClaiming.add(gid);
+      await claimGift(me, gid, g);
+    }
+  } catch (e) { console.warn('Cek hadiah gagal:', e); }
+  finally { giveClaimBusy = false; }
+}
+async function claimGift(me, gid, g) {
+  const url = socialUrl(`gifts/${encodeURIComponent(me)}/${encodeURIComponent(gid)}`);
+  const item = findShopItem(g.category, g.itemId);
+  try {
+    const del = await fetch(url, { method: 'DELETE' }); // ambil hadiah dulu supaya tidak diproses dua kali
+    if (!del.ok) throw new Error('Gagal mengambil hadiah');
+  } catch (e) { giveClaiming.delete(gid); return; }
+  if (!item) return;
+  const from = String(g.fromName || g.from || 'Temanmu').slice(0, 24);
+  let note;
+  if (playerData.inventory.includes(item.id)) { // sudah punya: ganti dengan koin seharga barang
+    const refund = Math.max(0, Math.floor(Number(g.price) || item.price || 0));
+    playerData.coins = (Number(playerData.coins) || 0) + refund;
+    note = `🎁 ${from} memberi ${item.name}, tapi kamu sudah punya. Kamu dapat 🪙 ${fmtCoins(refund)}`;
+  } else {
+    playerData.inventory.push(item.id);
+    note = `🎁 ${from} memberimu ${item.name}!`;
+    if (item.id === 'gp_vip') { try { updateCharacterNameSprite(playerData.username, playerData.isDev); } catch (e) {} }
+  }
+  try { await updatePlayerFirebase(); } catch (e) { console.warn('Simpan hadiah gagal, akan ikut tersimpan di penyimpanan berikutnya:', e); }
+  const ce = document.getElementById('coin-amount'); if (ce) ce.textContent = playerData.coins;
+  showToast(note, 4000);
+  const shop = document.getElementById('shop-modal');
+  if (shop && shop.style.display === 'flex') { const tab = document.querySelector('.shop-tab-btn.active'); renderShopTab(tab && tab.dataset.cat ? tab.dataset.cat : g.category); }
+  const vault = document.getElementById('vault-modal');
+  if (vault && vault.style.display === 'flex') { const vt = document.querySelector('.vault-tab-btn.active'); renderVaultTab(vt && vt.dataset.cat ? vt.dataset.cat : g.category); }
+}
 
 async function updatePlayerFirebase() {
   const userKey = accountKey(); // kunci akun permanen (bukan nama tampilan)
