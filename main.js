@@ -807,7 +807,7 @@ function renderShopTab(category) {
     SHOP_ITEMS.gamepass.forEach(item => {
       const owned = playerData.inventory.includes(item.id);
       const div = document.createElement('div'); div.className = 'shop-item';
-      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? shopPriceRow('gamepass', item, '<div class="item-price owned-label">SUDAH DIMILIKI</div>') + '<button class="shop-buy-btn" disabled>AKTIF</button>' : shopPriceRow('gamepass', item, `<div class="item-price">🪙 ${item.price}</div>`) + `<button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI (${item.price})</button>`}`;
+      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div>' + shopBtnRow(shopGiveBtn('gamepass', item)) : `<div class="item-price">🪙 ${item.price}</div>` + shopBtnRow(`<button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI</button>`, shopGiveBtn('gamepass', item))}`;
       container.appendChild(div);
     });
     return;
@@ -816,23 +816,18 @@ function renderShopTab(category) {
     if (item.adminOnly || item.id === 'baju_developer') return;
     const isOwned = playerData.inventory.includes(item.id);
     if (isOwned && !(item.price > 0)) return; // item bawaan gratis tidak ditampilkan; item berbayar yang sudah dimiliki tetap tampil supaya bisa di-Give
-    const isEquipped = Object.values(playerData.equipped).includes(item.id);
     visibleCount++;
     const div = document.createElement('div');
     div.className = 'shop-item';
-    
+
     const previewHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center">${itemIcon(category, item)}</div>`;
 
-    let btnHTML = '';
-    if (isEquipped) {
-      btnHTML = `<button class="shop-buy-btn" disabled>DIPAKAI</button>`;
-    } else if (isOwned) {
-      btnHTML = `<button class="shop-buy-btn" onclick="equipItem('${category}', '${item.id}')">PAKAI</button>`;
-    } else {
-      btnHTML = `<button class="shop-buy-btn" onclick="buyItem('${category}', '${item.id}', ${item.price})">BELI (${item.price})</button>`;
-    }
+    // Shop hanya untuk beli & give. Barang yang sudah dimiliki: tombol diganti Give (pakai barang lewat Vault).
+    const btnHTML = isOwned
+      ? shopBtnRow(shopGiveBtn(category, item))
+      : shopBtnRow(`<button class="shop-buy-btn" onclick="buyItem('${category}', '${item.id}', ${item.price})">BELI</button>`, shopGiveBtn(category, item));
 
-    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? shopPriceRow(category, item, `<div class="item-price">🪙 ${item.price}</div>`) : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
+    div.innerHTML = `${previewHTML}<div class="item-name">${item.name}</div>${item.price > 0 ? `<div class="item-price">🪙 ${item.price}</div>` : '<div class="item-price">GRATIS</div>'}${btnHTML}`;
     container.appendChild(div);
   });
   if (!visibleCount) container.innerHTML = '<div class="inventory-empty">Belum ada item di kategori ini.</div>';
@@ -926,24 +921,27 @@ function canGive(item) { return !!item && item.price > 0 && !item.adminOnly && i
 function injectGiveStyles() {
   if (document.getElementById('give-css')) return;
   const st = document.createElement('style'); st.id = 'give-css';
-  st.textContent = '.shop-price-row{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}'
-    + '.shop-give-btn{padding:2px 9px;border:1px solid rgba(255,255,255,.4);border-radius:7px;background:rgba(255,255,255,.08);color:#fff;font:600 11px sans-serif;cursor:pointer;touch-action:manipulation}'
-    + '.shop-give-btn:active{background:rgba(255,255,255,.2)}'
-    + '#give-overlay{position:fixed;inset:0;z-index:10050;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.65)}'
-    + '#give-card{width:min(360px,100%);max-height:84vh;display:flex;flex-direction:column;padding:16px;border:1px solid #3b4a78;border-radius:14px;background:#141a2e;color:#fff;font-family:sans-serif;box-sizing:border-box}'
-    + '#give-title{font-size:16px;font-weight:700}#give-sub{margin:3px 0 10px;font-size:13px;color:#ffd76a}'
-    + '#give-list{display:flex;flex-direction:column;gap:6px;overflow-y:auto;min-height:48px;margin-bottom:8px;font-size:13px;color:#aab7cc}'
-    + '.give-friend{display:block;width:100%;padding:10px 12px;border:1px solid #3b4a78;border-radius:9px;background:#0d1224;color:#fff;font:600 14px sans-serif;text-align:left;cursor:pointer}'
-    + '.give-friend.sel{border-color:#7fd6ff;background:#1b2a4a}'
-    + '#give-msg{min-height:18px;margin-bottom:8px;font-size:12px;color:#ff8a8a}'
-    + '#give-actions{display:flex;gap:8px}#give-actions button{flex:1;padding:10px;border:0;border-radius:9px;font:700 14px sans-serif;cursor:pointer}'
-    + '#give-cancel{background:#2a3354;color:#fff}#give-ok{background:#2f9e6e;color:#fff}#give-ok:disabled{opacity:.45;cursor:default}';
+  st.textContent = '.shop-btn-row{display:flex;gap:6px}'
+    + '.shop-btn-row .shop-buy-btn{width:auto;flex:1;min-width:0;padding-left:4px;padding-right:4px}'
+    + '.shop-give-btn{background:#4f86e8!important;color:#fff!important}'
+    + '#give-overlay{position:fixed;inset:0;z-index:10050;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(27,16,48,.62)}'
+    + '#give-card{width:min(360px,100%);max-height:84vh;display:flex;flex-direction:column;padding:16px;border:4px solid #1b1030;border-radius:20px;background:#fff8e7;color:#1b1030;box-shadow:0 6px 0 #1b1030;font-family:inherit;box-sizing:border-box}'
+    + '#give-title{font-size:18px;font-weight:900}#give-sub{margin:3px 0 10px;font-size:13px;font-weight:700;color:#7a6f8f}'
+    + '#give-list{display:flex;flex-direction:column;gap:7px;overflow-y:auto;min-height:48px;margin-bottom:8px;font-size:13px;font-weight:700;color:#7a6f8f}'
+    + '.give-friend{display:block;width:100%;padding:10px 12px;border:3px solid #1b1030;border-radius:12px;background:#fff;color:#1b1030;font:inherit;font-size:15px;font-weight:800;text-align:left;cursor:pointer}'
+    + '.give-friend.sel{background:#cfe0ff}'
+    + '#give-msg{min-height:18px;margin-bottom:8px;font-size:12px;font-weight:700;color:#d6334f}'
+    + '#give-actions{display:flex;gap:8px}#give-actions button{flex:1;padding:10px;border:3px solid #1b1030;border-radius:12px;font:inherit;font-size:14px;font-weight:900;color:#1b1030;box-shadow:0 3px 0 #1b1030;cursor:pointer}'
+    + '#give-actions button:active{transform:translateY(3px);box-shadow:none}'
+    + '#give-cancel{background:#fff}#give-ok{background:#3ddc84}#give-ok:disabled{background:#d8d0e6;color:#7a6f8f;cursor:default}';
   document.head.appendChild(st);
 }
-function shopPriceRow(category, item, priceHTML) {
+function shopGiveBtn(category, item) {
+  return canGive(item) ? `<button type="button" class="shop-buy-btn shop-give-btn" onclick="openGiveDialog('${category}','${item.id}')">GIVE</button>` : '';
+}
+function shopBtnRow(...btns) {
   injectGiveStyles();
-  const give = canGive(item) ? `<button type="button" class="shop-give-btn" onclick="openGiveDialog('${category}','${item.id}')">Give</button>` : '';
-  return `<div class="shop-price-row">${priceHTML}${give}</div>`;
+  return `<div class="shop-btn-row">${btns.join('')}</div>`;
 }
 
 const giveCtx = { category: null, item: null, friendKey: null, friendName: '', busy: false, token: 0 };
@@ -997,13 +995,13 @@ async function sendGift() {
   const enc = encodeURIComponent, price = c.item.price, me = accountKey();
   if (!me || c.friendKey === me) return;
   if ((Number(playerData.coins) || 0) < price) { msg.textContent = 'Koin kamu tidak cukup'; return; }
-  c.busy = true; ok.disabled = true; msg.style.color = '#9ad7ff'; msg.textContent = 'Memproses…';
+  c.busy = true; ok.disabled = true; msg.style.color = '#4f86e8'; msg.textContent = 'Memproses…';
   let charged = false, sent = false;
   try {
     const [inv, pending] = await Promise.all([socialGet(`players/${enc(c.friendKey)}/inventory`), socialGet(`gifts/${enc(c.friendKey)}`)]);
     const owned = Array.isArray(inv) ? inv : Object.values(inv || {});
-    if (owned.includes(c.item.id)) { msg.style.color = '#ff8a8a'; msg.textContent = `${c.friendName} sudah punya barang ini`; return; }
-    if (Object.values(pending || {}).some(g => g && g.itemId === c.item.id)) { msg.style.color = '#ff8a8a'; msg.textContent = 'Hadiah yang sama masih menunggu diterima'; return; }
+    if (owned.includes(c.item.id)) { msg.style.color = '#d6334f'; msg.textContent = `${c.friendName} sudah punya barang ini`; return; }
+    if (Object.values(pending || {}).some(g => g && g.itemId === c.item.id)) { msg.style.color = '#d6334f'; msg.textContent = 'Hadiah yang sama masih menunggu diterima'; return; }
     playerData.coins = (Number(playerData.coins) || 0) - price; charged = true;
     await updatePlayerFirebase();
     const res = await fetch(socialUrl(`gifts/${enc(c.friendKey)}`), {
@@ -1022,7 +1020,7 @@ async function sendGift() {
       document.getElementById('coin-amount').textContent = playerData.coins;
       updatePlayerFirebase().catch(() => {});
     }
-    msg.style.color = '#ff8a8a'; msg.textContent = e.message || 'Gagal memberi hadiah';
+    msg.style.color = '#d6334f'; msg.textContent = e.message || 'Gagal memberi hadiah';
   } finally {
     c.busy = false; ok.disabled = !c.friendKey;
   }
