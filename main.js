@@ -275,6 +275,23 @@ const SHOP_ITEMS = {
   ]
 };
 
+// ============ SENSOR CHAT GLOBAL ============
+// Kata tidak pantas diganti bintang. Dicek saat KIRIM (yang tersimpan sudah bersih) dan saat TAMPIL
+// (pesan lama / dari klien lain ikut tersensor). Memakai daftar kata yang sama dengan filter nama.
+function censorChat(text) {
+  const parts = String(text ?? '').split(/(\s+)/); // selang-seling kata dan spasi
+  const stars = w => '*'.repeat(w.length);
+  for (let i = 0; i < parts.length; i += 2) if (parts[i] && findBadName(parts[i])) parts[i] = stars(parts[i]);
+  for (let i = 0; i < parts.length; i += 2) { // huruf dipisah spasi: "k o n t o l"
+    if (parts[i].length !== 1) continue;
+    let j = i, joined = '';
+    while (j < parts.length && parts[j].length === 1) { joined += parts[j]; j += 2; }
+    if (j - i >= 6 && findBadName(joined)) for (let k = i; k < j; k += 2) parts[k] = '*';
+    i = j - 2;
+  }
+  return parts.join('');
+}
+
 // ============ FUNGSI FETCH GLOBAL CHAT ============
 async function fetchGlobalChat() {
   try {
@@ -288,7 +305,7 @@ async function fetchGlobalChat() {
       Object.values(data).forEach(msg => {
         const div = document.createElement('div');
         div.className = 'chat-msg';
-        div.innerHTML = `${msg.vip ? '<span style="background:linear-gradient(#ffe27a,#ff9f1c);color:#3a2300;border-radius:6px;padding:0 5px;margin-right:4px;font-size:11px;font-weight:800">VIP</span>' : ''}<span class="name ${msg.isDev ? 'dev' : ''}"${msg.vip && !msg.isDev ? ' style="color:#ffd166"' : ''}>${msg.name}: </span><span class="text">${msg.text}</span>`;
+        div.innerHTML = `${msg.vip ? '<span style="background:linear-gradient(#ffe27a,#ff9f1c);color:#3a2300;border-radius:6px;padding:0 5px;margin-right:4px;font-size:11px;font-weight:800">VIP</span>' : ''}<span class="name ${msg.isDev ? 'dev' : ''}"${msg.vip && !msg.isDev ? ' style="color:#ffd166"' : ''}>${safeSocialText(censorChat(msg.name))}: </span><span class="text">${safeSocialText(censorChat(msg.text))}</span>`;
         chatMessages.appendChild(div);
       });
       chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -337,7 +354,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('chat-send').addEventListener('click', () => {
     const input = document.getElementById('chat-input');
-    const text = input.value.trim();
+    const text = censorChat(input.value.trim());
     if (text.length === 0) return;
     const payload = { name: playerData.username, isDev: playerData.isDev, vip: hasVip(), text: text, time: Date.now() };
     fetch(`${FIREBASE_URL}chats.json`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -435,24 +452,22 @@ window.addEventListener('DOMContentLoaded', () => {
     if (username.length < 3) return fail("Username minimal 3 karakter!");
     if (pin.length !== 6 || isNaN(pin)) return fail("PIN harus 6 angka!");
     if (pin !== pinConfirm) return fail("PIN tidak cocok!");
-    const badWord = findBadName(username); // nama jorok: akun tetap dibuat tapi langsung di-ban
-    if (!badWord) { const v = validateNewName(username, true); if (!v.ok) return fail(v.msg); }
+    const v = validateNewName(username, true); if (!v.ok) return fail(v.msg);
+    const badWord = findBadName(username); // nama jorok: tetap boleh daftar & masuk, ban jatuh 3 menit setelah masuk lobby
 
     regMsg.textContent = "Mendaftarkan..."; regMsg.className = "msg";
     regBtn.disabled = true;
 
     try {
       const enc = encodeURIComponent;
-      let userKey = username.toLowerCase(); // kunci akun = nama huruf kecil; nama jorok bisa berisi simbol, jadi kuncinya dibersihkan
-      if (badWord) { userKey = userKey.replace(/[^a-z0-9 _-]/g, '').trim().slice(0, 18); if (userKey.length < 3) userKey = 'banned' + Math.floor(1000 + Math.random() * 9000); }
+      const userKey = username.toLowerCase(); // kunci akun = nama huruf kecil
       // Nama dianggap dipakai jika sudah jadi kunci akun ATAU pernah dipakai akun lain lewat ganti nama (tidak pernah dilepas lagi).
       const [existing, alias] = await Promise.all([socialGet(`players/${enc(userKey)}`), socialGet(`usernames/${enc(userKey)}`)]);
       if (existing || alias) return fail("Username sudah dipakai!");
 
       const playerId = userKey === DEV_USERNAME ? ADMIN_PLAYER_ID : await createUniquePlayerId();
-      const ban = badWord ? makeNameBan(username, badWord) : null;
-      const newPlayerData = { username: badWord ? (username.replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 18) || userKey) : username, pin, playerId, isDev: (userKey === DEV_USERNAME), coins: 0, inventory: playerData.inventory, equipped: playerData.equipped };
-      if (ban) newPlayerData.ban = ban;
+      const newPlayerData = { username, pin, playerId, isDev: (userKey === DEV_USERNAME), coins: 0, inventory: playerData.inventory, equipped: playerData.equipped };
+      if (badWord && userKey !== DEV_USERNAME) newPlayerData.pendingBan = makeNameBan(username, badWord, null); // tenggat 3 menit baru dihitung saat masuk pertama
       const saveRes = await fetch(socialUrl(`players/${enc(userKey)}`), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newPlayerData) });
       if (!saveRes.ok) throw new Error('Gagal menyimpan akun');
       // Dua orang daftar nama yang sama di detik yang sama: yang datanya tertimpa harus tahu bahwa namanya hilang.
@@ -460,7 +475,6 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!saved || String(saved.playerId) !== playerId) return fail("Username sudah dipakai!");
 
       ['reg-username', 'reg-pin', 'reg-pin-confirm'].forEach(id => { document.getElementById(id).value = ''; });
-      if (ban) { writeDeviceBan(userKey, ban); regBtn.disabled = false; showBanScreen(ban); return; }
       regMsg.textContent = "Registrasi berhasil! Silakan Masuk."; regMsg.className = "msg success";
       setTimeout(() => { document.getElementById('tab1').checked = true; }, 1500);
     } catch(e) {
@@ -493,10 +507,8 @@ window.addEventListener('DOMContentLoaded', () => {
         loginMsg.textContent = "PIN salah! Coba lagi."; loginMsg.className = "msg error";
         document.getElementById('btn-login').disabled = false; return;
       }
-      if (data.ban) { // akun diblokir: tampilkan alasannya, jangan masuk lobby
-        writeDeviceBan(userKey, data.ban); showBanScreen(data.ban);
-        document.getElementById('btn-login').disabled = false; return;
-      }
+      const ban = await resolveBan(userKey, data); // akun diblokir: tampilkan alasannya, jangan masuk lobby
+      if (ban) { showBanScreen(ban); document.getElementById('btn-login').disabled = false; return; }
       const verifiedData = await ensurePlayerId(userKey, data);
       playerData = { ...playerData, ...verifiedData, inventory: verifiedData.inventory || playerData.inventory, equipped: verifiedData.equipped || playerData.equipped };
       playerData.userKey = userKey; // kunci akun permanen
@@ -543,52 +555,45 @@ window.addEventListener('DOMContentLoaded', () => {
     }, wait);
   }
 
-  // Perangkat yang pernah kena ban tidak boleh lanjut, walau login pakai akun lain.
-  const startNormal = () => {
-    const savedSession = localStorage.getItem('parkour_user');
-    if (savedSession) {
-      let session = null;
-      try { session = JSON.parse(savedSession); }
-      catch (e) { localStorage.removeItem('parkour_user'); }
+  const savedSession = localStorage.getItem('parkour_user');
+  if (savedSession) {
+    let session = null;
+    try { session = JSON.parse(savedSession); }
+    catch (e) { localStorage.removeItem('parkour_user'); }
 
-      if (session && session.username) {
-        const sessAbort = new AbortController();
-        const sessTimeout = setTimeout(() => sessAbort.abort(), 8000);
-        fetch(`${FIREBASE_URL}players/${String(session.username).toLowerCase()}.json`, { signal: sessAbort.signal })
-          .then(res => {
-            clearTimeout(sessTimeout);
-            if (!res.ok) throw new Error('Gagal memeriksa sesi akun');
-            return res.json();
-          })
-          .then(async data => {
-            if (!data) {
-              localStorage.removeItem('parkour_user');
-              finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
-              return;
-            }
-            if (data.ban) { // akun diblokir
-              writeDeviceBan(String(session.username).toLowerCase(), data.ban);
-              finishSplash(() => showBanScreen(data.ban));
-              return;
-            }
-            const verifiedData = await ensurePlayerId(String(session.username).toLowerCase(), data);
-            playerData = { ...playerData, ...verifiedData, inventory: verifiedData.inventory || playerData.inventory, equipped: verifiedData.equipped || playerData.equipped };
-            playerData.userKey = String(session.username).toLowerCase(); // kunci akun permanen
-            if (splashStatus) splashStatus.textContent = 'Lobby siap! Memasuki permainan...';
-            finishSplash(() => { startLobby(); });
-          })
-          .catch(err => {
-            console.warn('Auto-login gagal:', err);
+    if (session && session.username) {
+      const sessAbort = new AbortController();
+      const sessTimeout = setTimeout(() => sessAbort.abort(), 8000);
+      fetch(`${FIREBASE_URL}players/${String(session.username).toLowerCase()}.json`, { signal: sessAbort.signal })
+        .then(res => {
+          clearTimeout(sessTimeout);
+          if (!res.ok) throw new Error('Gagal memeriksa sesi akun');
+          return res.json();
+        })
+        .then(async data => {
+          if (!data) {
+            localStorage.removeItem('parkour_user');
             finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
-          });
-      } else {
-        finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
-      }
+            return;
+          }
+          const ban = await resolveBan(String(session.username).toLowerCase(), data); // akun diblokir
+          if (ban) { finishSplash(() => showBanScreen(ban)); return; }
+          const verifiedData = await ensurePlayerId(String(session.username).toLowerCase(), data);
+          playerData = { ...playerData, ...verifiedData, inventory: verifiedData.inventory || playerData.inventory, equipped: verifiedData.equipped || playerData.equipped };
+          playerData.userKey = String(session.username).toLowerCase(); // kunci akun permanen
+          if (splashStatus) splashStatus.textContent = 'Lobby siap! Memasuki permainan...';
+          finishSplash(() => { startLobby(); });
+        })
+        .catch(err => {
+          console.warn('Auto-login gagal:', err);
+          finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
+        });
     } else {
       finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
     }
-  };
-  currentDeviceBan().then(ban => { if (ban) finishSplash(() => showBanScreen(ban)); else startNormal(); });
+  } else {
+    finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
+  }
 });
 
 // ============ KELUAR KE LOBBY (tombol kecil kanan atas saat bermain) ============
@@ -800,6 +805,7 @@ function startLobby() {
   document.getElementById('chat-container').style.display = 'flex';
   initNotificationCenter();
   startGiftPolling();
+  armPendingBan();
 
   fetchGlobalChat();
   setInterval(fetchGlobalChat, 3000);
@@ -4236,28 +4242,40 @@ function findBadName(raw) { // kata jorok yang ketemu, atau null kalau bersih
   }
   return null;
 }
-const makeNameBan = (name, word) => ({ type: 'name', reason: 'Membuat nama pengguna yang jorok / tidak pantas.', name: String(name || '').slice(0, 40), word, at: Date.now() });
+const NAME_BAN_DELAY_MS = 3 * 60 * 1000;
+const makeNameBan = (name, word, at = Date.now()) => ({ type: 'name', reason: 'Membuat nama pengguna yang jorok / tidak pantas.', name: String(name || '').slice(0, 40), word, at });
 
-// Ban disimpan di akun (`players/<kunci>/ban`) dan di perangkat. Admin bisa membukanya lewat Admin Panel.
-const DEVICE_BAN_KEY = 'parkour_device_ban_v1';
-function readDeviceBan() { try { const v = JSON.parse(localStorage.getItem(DEVICE_BAN_KEY) || 'null'); return v && v.ban ? v : null; } catch (e) { return null; } }
-function writeDeviceBan(key, ban) { try { localStorage.setItem(DEVICE_BAN_KEY, JSON.stringify({ key, ban })); } catch (e) {} }
-function clearDeviceBan() { try { localStorage.removeItem(DEVICE_BAN_KEY); } catch (e) {} }
-async function currentDeviceBan() { // perangkat yang pernah kena ban: tanya server. Sudah dibuka admin -> kunci dihapus. Server tak terjangkau -> tetap terkunci.
-  const d = readDeviceBan(); if (!d) return null;
-  if (!d.key) return d.ban;
-  try {
-    const ban = await socialGet(`players/${encodeURIComponent(d.key)}/ban`);
-    if (ban) return ban;
-    clearDeviceBan(); return null;
-  } catch (e) { return d.ban; }
-}
-async function banAccount(key, name, word) {
-  const ban = makeNameBan(name, word);
-  writeDeviceBan(key, ban); // simpan di perangkat dulu supaya tetap terkunci walau jaringan putus
-  try { await socialPatch(`players/${encodeURIComponent(key)}`, { ban }); } catch (e) { console.warn('Ban gagal disimpan ke server:', e); }
+// Nama jorok TIDAK langsung di-ban: pemain masuk seperti biasa, ban jatuh 3 menit setelah masuk lobby.
+// Tenggatnya disimpan di akun (`players/<kunci>/pendingBan.at`, waktu absolut) jadi menutup game tidak menghindarinya.
+// Ban yang sudah jatuh ada di `players/<kunci>/ban`. Admin bisa membukanya lewat Admin Panel.
+let pendingBanTimer = null;
+async function banAccount(key, ban) {
+  playerData.pendingBan = null;
+  try { await socialPatch(`players/${encodeURIComponent(key)}`, { ban, pendingBan: null }); } catch (e) { console.warn('Ban gagal disimpan ke server:', e); }
   showBanScreen(ban);
-  return ban;
+}
+async function resolveBan(key, data) { // ban akun ini (kalau ada) saat login; ban tertunda yang sudah lewat tenggat langsung dijatuhkan
+  if (data.ban) return data.ban;
+  const p = data.pendingBan;
+  if (!p || !p.at || p.at > Date.now()) return null;
+  try { await socialPatch(`players/${encodeURIComponent(key)}`, { ban: p, pendingBan: null }); } catch (e) { console.warn('Ban gagal disimpan ke server:', e); }
+  return p;
+}
+async function armPendingBan() { // dipanggil setiap masuk lobby
+  clearTimeout(pendingBanTimer); pendingBanTimer = null;
+  const p = playerData.pendingBan, key = accountKey();
+  if (!p || !key) return;
+  if (!p.at) { // nama jorok dari pendaftaran: hitung 3 menit mulai masuk pertama
+    p.at = Date.now() + NAME_BAN_DELAY_MS;
+    try { await socialPatch(`players/${encodeURIComponent(key)}/pendingBan`, { at: p.at }); } catch (e) { console.warn('Tenggat ban gagal disimpan:', e); }
+  }
+  pendingBanTimer = setTimeout(() => banAccount(key, { ...p, at: Date.now() }), Math.max(0, p.at - Date.now()));
+}
+function armNameBan(key, name, word) { // nama jorok lewat ganti nama
+  if (playerData.pendingBan) return;
+  playerData.pendingBan = makeNameBan(name, word, Date.now() + NAME_BAN_DELAY_MS);
+  socialPatch(`players/${encodeURIComponent(key)}`, { pendingBan: playerData.pendingBan }).catch(e => console.warn('Ban tertunda gagal disimpan:', e));
+  armPendingBan();
 }
 function showBanScreen(ban) {
   if (!document.getElementById('ban-css')) {
@@ -4269,24 +4287,29 @@ function showBanScreen(ban) {
       + '.ban-row{margin-bottom:10px;padding:10px 12px;border:3px solid #1b1030;border-radius:12px;background:#fff;text-align:left}'
       + '.ban-row small{display:block;margin-bottom:2px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#7a6f8f}'
       + '.ban-row span{font-size:15px;font-weight:800;word-break:break-word}'
-      + '#ban-foot{margin:4px 0 0;font-size:12px;font-weight:700;color:#7a6f8f}';
+      + '#ban-foot{margin:10px 0 0;font-size:12px;font-weight:700;color:#7a6f8f}'
+      + '#ban-logout{width:100%;margin-top:4px;padding:12px;border:3px solid #1b1030;border-radius:14px;background:#3ddc84;box-shadow:0 4px 0 #1b1030;color:#1b1030;font:inherit;font-size:15px;font-weight:900;cursor:pointer;touch-action:manipulation}'
+      + '#ban-logout:active{transform:translateY(4px);box-shadow:none}';
     document.head.appendChild(st);
   }
   let ov = document.getElementById('ban-screen');
   if (!ov) {
     ov = document.createElement('div'); ov.id = 'ban-screen';
-    ov.innerHTML = '<section id="ban-card"><h1 id="ban-title">Akun kamu diblokir</h1><p id="ban-sub">Kamu tidak bisa bermain dengan akun ini.</p>'
+    ov.innerHTML = '<section id="ban-card"><h1 id="ban-title">Akun kamu diblokir</h1><p id="ban-sub">Kamu tidak bisa bermain dengan akun ini. Kamu masih bisa masuk ke akun lain atau daftar akun baru.</p>'
       + '<div class="ban-row"><small>Alasan</small><span id="ban-reason"></span></div>'
       + '<div class="ban-row"><small>Nama yang dipakai</small><span id="ban-name"></span></div>'
       + '<div class="ban-row"><small>Waktu</small><span id="ban-time"></span></div>'
+      + '<button type="button" id="ban-logout">Keluar / Ganti Akun</button>'
       + '<p id="ban-foot">Merasa ini kesalahan? Hubungi admin game.</p></section>';
     document.body.appendChild(ov);
+    ov.querySelector('#ban-logout').onclick = () => { try { localStorage.removeItem('parkour_user'); } catch (e) {} location.reload(); };
   }
   const b = ban || {};
   ov.querySelector('#ban-reason').textContent = b.reason || 'Melanggar aturan game.';
   ov.querySelector('#ban-name').textContent = b.name || '-';
   ov.querySelector('#ban-time').textContent = b.at ? new Date(b.at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
   ov.style.display = 'flex';
+  clearTimeout(pendingBanTimer); pendingBanTimer = null;
   gameState = 'BANNED';
   if (roomCode) leaveRoom(true).catch(() => {});
 }
@@ -4304,8 +4327,8 @@ function setupAdminUnban(panel) {
     try {
       const key = await resolveUserKey(typed), acc = await socialGet(`players/${encodeURIComponent(key)}`);
       if (!acc) { showToast('Username tidak ditemukan'); return; }
-      if (!acc.ban) { showToast('Akun itu tidak sedang di-ban'); return; }
-      await socialPatch(`players/${encodeURIComponent(key)}`, { ban: null });
+      if (!acc.ban && !acc.pendingBan) { showToast('Akun itu tidak sedang di-ban'); return; }
+      await socialPatch(`players/${encodeURIComponent(key)}`, { ban: null, pendingBan: null });
       input.value = '';
       showToast(`✅ Ban ${key} dibuka`);
     } catch (e) { showToast('Gagal membuka ban'); }
@@ -4344,8 +4367,6 @@ function validateNewName(raw, allowDevExact) { // allowDevExact: hanya saat daft
 let renameBusy = false;
 async function changeDisplayName(rawName) {
   if (renameBusy) return { ok: false, msg: 'Sedang memproses…' };
-  { const who = accountKey(), badWord = who && who !== DEV_USERNAME && !playerData.isDev ? findBadName(rawName) : null;
-    if (badWord) { renameBusy = true; try { await banAccount(who, String(rawName).trim(), badWord); } finally { renameBusy = false; } return { ok: false, msg: 'Akun diblokir: nama tidak pantas' }; } }
   const v = validateNewName(rawName);
   if (!v.ok) return v;
   const me = accountKey();
@@ -4373,6 +4394,7 @@ async function changeDisplayName(rawName) {
     claimed = false;                                           // berhasil: pemesanan nama dipertahankan
     playerData.username = v.name; playerData.coins = newCoins; playerData.nameChanges = newCount;
     refreshNameUI();
+    { const badWord = findBadName(v.name); if (badWord) armNameBan(me, v.name, badWord); }
     propagateNewName(me, v.name).catch(e => console.warn('Sebar nama baru sebagian gagal:', e));
     return { ok: true, name: v.name, cost };
   } catch (e) {
