@@ -426,43 +426,47 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // --- PROSES REGISTRASI & LOGIN ---
   document.getElementById('btn-register').addEventListener('click', async () => {
-    const username = document.getElementById('reg-username').value.trim();
+    const username = document.getElementById('reg-username').value.replace(/\s+/g, ' ').trim();
     const pin = document.getElementById('reg-pin').value.trim();
     const pinConfirm = document.getElementById('reg-pin-confirm').value.trim();
+    const regBtn = document.getElementById('btn-register');
+    const fail = (msg) => { regMsg.textContent = msg; regMsg.className = "msg error"; regBtn.disabled = false; };
 
-    if (username.length < 3) { regMsg.textContent = "Username minimal 3 karakter!"; regMsg.className = "msg error"; return; }
-    if (pin.length !== 6 || isNaN(pin)) { regMsg.textContent = "PIN harus 6 angka!"; regMsg.className = "msg error"; return; }
-    if (pin !== pinConfirm) { regMsg.textContent = "PIN tidak cocok!"; regMsg.className = "msg error"; return; }
+    if (username.length < 3) return fail("Username minimal 3 karakter!");
+    if (pin.length !== 6 || isNaN(pin)) return fail("PIN harus 6 angka!");
+    if (pin !== pinConfirm) return fail("PIN tidak cocok!");
+    const badWord = findBadName(username); // nama jorok: akun tetap dibuat tapi langsung di-ban
+    if (!badWord) { const v = validateNewName(username, true); if (!v.ok) return fail(v.msg); }
 
     regMsg.textContent = "Mendaftarkan..."; regMsg.className = "msg";
-    document.getElementById('btn-register').disabled = true;
-
-    const userKey = username.toLowerCase();
-    const firebaseUrl = `${FIREBASE_URL}players/${userKey}.json`;
+    regBtn.disabled = true;
 
     try {
-      const checkRes = await fetch(firebaseUrl);
-      const existing = await checkRes.json();
-      if (existing) {
-        regMsg.textContent = "Username sudah dipakai!"; regMsg.className = "msg error";
-        document.getElementById('btn-register').disabled = false; return;
-      }
-      { const ar = await fetch(`${FIREBASE_URL}usernames/${encodeURIComponent(userKey)}.json`, { cache: 'no-store' }); // nama yang sudah dipakai lewat ganti nama
-        if (ar.ok && await ar.json()) { regMsg.textContent = "Username sudah dipakai!"; regMsg.className = "msg error"; document.getElementById('btn-register').disabled = false; return; } }
-      const playerId = userKey === DEV_USERNAME ? ADMIN_PLAYER_ID : await createUniquePlayerId();
-      const newPlayerData = { username, pin, playerId, isDev: (userKey === DEV_USERNAME), coins: 0, inventory: playerData.inventory, equipped: playerData.equipped };
-      const saveRes = await fetch(firebaseUrl, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newPlayerData) });
-      if (!saveRes.ok) throw new Error('Gagal menyimpan akun');
+      const enc = encodeURIComponent;
+      let userKey = username.toLowerCase(); // kunci akun = nama huruf kecil; nama jorok bisa berisi simbol, jadi kuncinya dibersihkan
+      if (badWord) { userKey = userKey.replace(/[^a-z0-9 _-]/g, '').trim().slice(0, 18); if (userKey.length < 3) userKey = 'banned' + Math.floor(1000 + Math.random() * 9000); }
+      // Nama dianggap dipakai jika sudah jadi kunci akun ATAU pernah dipakai akun lain lewat ganti nama (tidak pernah dilepas lagi).
+      const [existing, alias] = await Promise.all([socialGet(`players/${enc(userKey)}`), socialGet(`usernames/${enc(userKey)}`)]);
+      if (existing || alias) return fail("Username sudah dipakai!");
 
+      const playerId = userKey === DEV_USERNAME ? ADMIN_PLAYER_ID : await createUniquePlayerId();
+      const ban = badWord ? makeNameBan(username, badWord) : null;
+      const newPlayerData = { username: badWord ? (username.replace(/[^A-Za-z0-9 _-]/g, '').slice(0, 18) || userKey) : username, pin, playerId, isDev: (userKey === DEV_USERNAME), coins: 0, inventory: playerData.inventory, equipped: playerData.equipped };
+      if (ban) newPlayerData.ban = ban;
+      const saveRes = await fetch(socialUrl(`players/${enc(userKey)}`), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newPlayerData) });
+      if (!saveRes.ok) throw new Error('Gagal menyimpan akun');
+      // Dua orang daftar nama yang sama di detik yang sama: yang datanya tertimpa harus tahu bahwa namanya hilang.
+      const saved = await socialGet(`players/${enc(userKey)}`);
+      if (!saved || String(saved.playerId) !== playerId) return fail("Username sudah dipakai!");
+
+      ['reg-username', 'reg-pin', 'reg-pin-confirm'].forEach(id => { document.getElementById(id).value = ''; });
+      if (ban) { writeDeviceBan(userKey, ban); regBtn.disabled = false; showBanScreen(ban); return; }
       regMsg.textContent = "Registrasi berhasil! Silakan Masuk."; regMsg.className = "msg success";
-      document.getElementById('reg-username').value = '';
-      document.getElementById('reg-pin').value = '';
-      document.getElementById('reg-pin-confirm').value = '';
       setTimeout(() => { document.getElementById('tab1').checked = true; }, 1500);
     } catch(e) {
       regMsg.textContent = "Gagal daftar. Cek koneksi."; regMsg.className = "msg error";
     }
-    document.getElementById('btn-register').disabled = false;
+    regBtn.disabled = false;
   });
 
   document.getElementById('btn-login').addEventListener('click', async () => {
@@ -487,6 +491,10 @@ window.addEventListener('DOMContentLoaded', () => {
       }
       if (data.pin !== pin) {
         loginMsg.textContent = "PIN salah! Coba lagi."; loginMsg.className = "msg error";
+        document.getElementById('btn-login').disabled = false; return;
+      }
+      if (data.ban) { // akun diblokir: tampilkan alasannya, jangan masuk lobby
+        writeDeviceBan(userKey, data.ban); showBanScreen(data.ban);
         document.getElementById('btn-login').disabled = false; return;
       }
       const verifiedData = await ensurePlayerId(userKey, data);
@@ -535,43 +543,52 @@ window.addEventListener('DOMContentLoaded', () => {
     }, wait);
   }
 
-  const savedSession = localStorage.getItem('parkour_user');
-  if (savedSession) {
-    let session = null;
-    try { session = JSON.parse(savedSession); }
-    catch (e) { localStorage.removeItem('parkour_user'); }
+  // Perangkat yang pernah kena ban tidak boleh lanjut, walau login pakai akun lain.
+  const startNormal = () => {
+    const savedSession = localStorage.getItem('parkour_user');
+    if (savedSession) {
+      let session = null;
+      try { session = JSON.parse(savedSession); }
+      catch (e) { localStorage.removeItem('parkour_user'); }
 
-    if (session && session.username) {
-      const sessAbort = new AbortController();
-      const sessTimeout = setTimeout(() => sessAbort.abort(), 8000);
-      fetch(`${FIREBASE_URL}players/${String(session.username).toLowerCase()}.json`, { signal: sessAbort.signal })
-        .then(res => {
-          clearTimeout(sessTimeout);
-          if (!res.ok) throw new Error('Gagal memeriksa sesi akun');
-          return res.json();
-        })
-        .then(async data => {
-          if (!data) {
-            localStorage.removeItem('parkour_user');
+      if (session && session.username) {
+        const sessAbort = new AbortController();
+        const sessTimeout = setTimeout(() => sessAbort.abort(), 8000);
+        fetch(`${FIREBASE_URL}players/${String(session.username).toLowerCase()}.json`, { signal: sessAbort.signal })
+          .then(res => {
+            clearTimeout(sessTimeout);
+            if (!res.ok) throw new Error('Gagal memeriksa sesi akun');
+            return res.json();
+          })
+          .then(async data => {
+            if (!data) {
+              localStorage.removeItem('parkour_user');
+              finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
+              return;
+            }
+            if (data.ban) { // akun diblokir
+              writeDeviceBan(String(session.username).toLowerCase(), data.ban);
+              finishSplash(() => showBanScreen(data.ban));
+              return;
+            }
+            const verifiedData = await ensurePlayerId(String(session.username).toLowerCase(), data);
+            playerData = { ...playerData, ...verifiedData, inventory: verifiedData.inventory || playerData.inventory, equipped: verifiedData.equipped || playerData.equipped };
+            playerData.userKey = String(session.username).toLowerCase(); // kunci akun permanen
+            if (splashStatus) splashStatus.textContent = 'Lobby siap! Memasuki permainan...';
+            finishSplash(() => { startLobby(); });
+          })
+          .catch(err => {
+            console.warn('Auto-login gagal:', err);
             finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
-            return;
-          }
-          const verifiedData = await ensurePlayerId(String(session.username).toLowerCase(), data);
-          playerData = { ...playerData, ...verifiedData, inventory: verifiedData.inventory || playerData.inventory, equipped: verifiedData.equipped || playerData.equipped };
-          playerData.userKey = String(session.username).toLowerCase(); // kunci akun permanen
-          if (splashStatus) splashStatus.textContent = 'Lobby siap! Memasuki permainan...';
-          finishSplash(() => { startLobby(); });
-        })
-        .catch(err => {
-          console.warn('Auto-login gagal:', err);
-          finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
-        });
+          });
+      } else {
+        finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
+      }
     } else {
       finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
     }
-  } else {
-    finishSplash(() => { document.getElementById('auth-container').style.display = 'flex'; });
-  }
+  };
+  currentDeviceBan().then(ban => { if (ban) finishSplash(() => showBanScreen(ban)); else startNormal(); });
 });
 
 // ============ KELUAR KE LOBBY (tombol kecil kanan atas saat bermain) ============
@@ -1036,7 +1053,7 @@ function startGiftPolling() {
 }
 async function pollGifts() {
   const me = accountKey();
-  if (!me || giveClaimBusy || gameState === 'LOGIN') return;
+  if (!me || giveClaimBusy || gameState === 'LOGIN' || gameState === 'BANNED') return;
   giveClaimBusy = true;
   try {
     const data = await socialGet(`gifts/${encodeURIComponent(me)}`);
@@ -1610,6 +1627,7 @@ function setupAdminPanel() {
   fc.innerHTML = '<button id="fly-up">▲</button><button id="fly-down">▼</button>';
   wrap.append(btn, panel); document.body.append(wrap, fc);
   setupAdminAnnouncementComposer(panel);
+  setupAdminUnban(panel);
 
   // Geser panel: tahan & seret tombol Admin atau judul panel
   let moved = false;
@@ -3375,6 +3393,67 @@ function hideWinUi() {
   if (winUiTimer) { clearTimeout(winUiTimer); winUiTimer = null; }
   const b = document.getElementById('win-banner'); if (b) b.style.display = 'none';
   const l = document.getElementById('btn-win-lobby'); if (l) l.style.display = 'none';
+  hideSpectate();
+}
+
+// ===== PENONTON: setelah finish, tonton pemain yang masih main =====
+// Muncul bersama tombol "Kembali Lobby" (5 detik setelah menang) bila masih ada pemain room yang belum finish.
+// Panah ‹ › ganti pemain yang ditonton; kamera ikut bergerak bersama dia. Kalau semua sudah selesai, mode ini mati sendiri.
+let specOn = false, specId = null, specShown = '';
+const specPrev = new THREE.Vector3(), specGoal = new THREE.Vector3(), specMove = new THREE.Vector3();
+function specCandidates() {
+  if (!roomCode || !roomStartAt || isSurvivalMap()) return [];
+  return sortedIds().filter(id => {
+    const p = roomPlayers[id];
+    return id !== mpUid && p && String(p.status || '').toUpperCase() === 'PLAYING' && p.finishMs == null && p.out !== roomStartAt && remotePlayers.has(id);
+  });
+}
+function ensureSpectateUi() {
+  if (document.getElementById('spectate-bar')) return;
+  const st = document.createElement('style');
+  st.textContent = '#spectate-bar{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:75;display:none;align-items:center;gap:10px;padding:6px 8px;border-radius:16px;background:rgba(0,0,0,.6);border:2px solid #ffd166;color:#fff;font:700 14px sans-serif;max-width:94vw;box-sizing:border-box}'
+    + '#spectate-bar button{width:38px;height:38px;border:0;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font:700 22px/1 sans-serif;touch-action:manipulation;-webkit-tap-highlight-color:transparent}'
+    + '#spectate-bar button:active{background:rgba(255,255,255,.34)}'
+    + '#spec-info{min-width:110px;max-width:46vw;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+    + '#spec-info small{display:block;color:#ffd166;font:600 11px sans-serif}';
+  document.head.appendChild(st);
+  const bar = document.createElement('div'); bar.id = 'spectate-bar';
+  bar.innerHTML = '<button type="button" id="spec-prev" aria-label="Pemain sebelumnya">‹</button><div id="spec-info"><small>Menonton</small><span id="spec-name"></span></div><button type="button" id="spec-next" aria-label="Pemain berikutnya">›</button>';
+  document.body.appendChild(bar);
+  bar.querySelector('#spec-prev').onclick = () => specStep(-1);
+  bar.querySelector('#spec-next').onclick = () => specStep(1);
+}
+function specStep(dir) {
+  const c = specCandidates(); if (!c.length) return;
+  const i = c.indexOf(specId);
+  specId = c[i < 0 ? 0 : (i + dir + c.length) % c.length];
+}
+function startSpectate() {
+  if (gameState !== 'WIN' || !specCandidates().length) return;
+  ensureSpectateUi();
+  specOn = true; specId = null; specShown = '';
+  document.getElementById('spectate-bar').style.display = 'flex';
+}
+function hideSpectate() {
+  specOn = false; specId = null;
+  const bar = document.getElementById('spectate-bar'); if (bar) bar.style.display = 'none';
+}
+function tickSpectate(delta) {
+  const cands = specCandidates();
+  if (!cands.length) { hideSpectate(); showToast('🏁 Semua pemain sudah selesai'); return; }
+  if (!cands.includes(specId)) specId = cands[0]; // yang ditonton sudah finish / keluar: pindah ke pemain lain
+  const av = remotePlayers.get(specId), d = roomPlayers[specId] || {};
+  const label = String(d.username || 'Pemain').slice(0, 14) + (cands.length > 1 ? `  ${cands.indexOf(specId) + 1}/${cands.length}` : '');
+  if (label !== specShown) {
+    specShown = label;
+    document.getElementById('spec-name').textContent = label;
+    document.getElementById('spec-prev').style.display = document.getElementById('spec-next').style.display = cands.length > 1 ? '' : 'none';
+  }
+  specGoal.copy(av.position); specGoal.y += 1.5;
+  specPrev.copy(controls.target);
+  controls.target.lerp(specGoal, 1 - Math.exp(-delta * 6));
+  camera.position.add(specMove.copy(controls.target).sub(specPrev)); // kamera ikut bergerak bersama pemain yang ditonton
+  controls.update();
 }
 function showWinBanner(detail) {
   const ov = document.getElementById('overlay'); if (ov) ov.style.display = 'none';
@@ -3396,7 +3475,7 @@ function showWinBanner(detail) {
   }
   l.style.display = 'none';
   if (winUiTimer) clearTimeout(winUiTimer);
-  winUiTimer = setTimeout(() => { winUiTimer = null; if (gameState === 'WIN') l.style.display = 'block'; }, 5000);
+  winUiTimer = setTimeout(() => { winUiTimer = null; if (gameState === 'WIN') { l.style.display = 'block'; startSpectate(); } }, 5000);
 }
 
 function showOverlay(title, desc, color) {
@@ -4128,10 +4207,116 @@ async function socialPatch(path, data) {
 }
 function safeSocialText(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+// ===== FILTER NAMA JOROK + SISTEM BAN =====
+// Nama jorok (saat daftar atau ganti nama) = akun langsung di-ban + perangkat dikunci, lengkap dengan alasannya.
+// BAGIAN: kata yang hampir tidak pernah muncul di nama biasa, kena walau menempel ("xkontolx").
+// UTUH: kata pendek/ambigu, hanya kena sebagai kata sendiri ("AsuGaming", "asu_123" kena; "Asus", "Class" aman).
+// Pengecohan seperti k0nt0l, k.o.n.t.o.l, kontoool ikut terbaca. Daftar ini awalan, tambah sendiri bila perlu.
+const badWordSpec = w => ({ w, dbl: /(.)\1/.test(w) });
+const BAD_NAME_PART = ('kontol memek ngentot ngentod ngewe jancok jancuk jancik bangsat bajingan anjing anjink pelacur pepek bokep colmek ngocok jembut pantek pukimak lonte jablay sundal goblok tolol bugil cabul perkosa fuck bitch pussy nigger nigga faggot whore dildo vagina boobs porn').split(' ').map(badWordSpec);
+const BAD_NAME_WORD = ('asu taik taek babi anjg kntl mmk ngntd peler tetek toket puki kimak entot kampang ass dick cock cunt shit fck fvck fuk slut sex cum anal rape rapist tits twat bastard xnxx penis').split(' ').map(badWordSpec);
+const NAME_LEET = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't', '@': 'a', '$': 's', '!': 'i' };
+function badNameTokens(raw) { // pecah nama jadi kata: angka dibaca huruf (k0nt0l) DAN angka dibuang (asu123)
+  const base = String(raw || '').normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').toLowerCase();
+  const out = new Set();
+  for (const s of [base.replace(/[013457@$!]/g, c => NAME_LEET[c]), base]) {
+    const toks = s.split(/[^a-z]+/).filter(Boolean);
+    toks.forEach(t => out.add(t));
+    let run = ''; // huruf yang dipisah-pisah: "k o n t o l"
+    for (const t of [...toks, '']) { if (t.length === 1) run += t; else { if (run.length > 1) out.add(run); run = ''; } }
+  }
+  return [...out];
+}
+function findBadName(raw) { // kata jorok yang ketemu, atau null kalau bersih
+  for (const t of badNameTokens(raw)) {
+    const c1 = t.replace(/(.)\1+/g, '$1'), c2 = t.replace(/(.)\1{2,}/g, '$1$1'); // kontoool -> kontol (kata berhuruf kembar: assss -> ass)
+    for (const b of BAD_NAME_PART) if ((b.dbl ? c2 : c1).includes(b.w)) return b.w;
+    for (const b of BAD_NAME_WORD) if ((b.dbl ? c2 : c1) === b.w) return b.w;
+  }
+  return null;
+}
+const makeNameBan = (name, word) => ({ type: 'name', reason: 'Membuat nama pengguna yang jorok / tidak pantas.', name: String(name || '').slice(0, 40), word, at: Date.now() });
+
+// Ban disimpan di akun (`players/<kunci>/ban`) dan di perangkat. Admin bisa membukanya lewat Admin Panel.
+const DEVICE_BAN_KEY = 'parkour_device_ban_v1';
+function readDeviceBan() { try { const v = JSON.parse(localStorage.getItem(DEVICE_BAN_KEY) || 'null'); return v && v.ban ? v : null; } catch (e) { return null; } }
+function writeDeviceBan(key, ban) { try { localStorage.setItem(DEVICE_BAN_KEY, JSON.stringify({ key, ban })); } catch (e) {} }
+function clearDeviceBan() { try { localStorage.removeItem(DEVICE_BAN_KEY); } catch (e) {} }
+async function currentDeviceBan() { // perangkat yang pernah kena ban: tanya server. Sudah dibuka admin -> kunci dihapus. Server tak terjangkau -> tetap terkunci.
+  const d = readDeviceBan(); if (!d) return null;
+  if (!d.key) return d.ban;
+  try {
+    const ban = await socialGet(`players/${encodeURIComponent(d.key)}/ban`);
+    if (ban) return ban;
+    clearDeviceBan(); return null;
+  } catch (e) { return d.ban; }
+}
+async function banAccount(key, name, word) {
+  const ban = makeNameBan(name, word);
+  writeDeviceBan(key, ban); // simpan di perangkat dulu supaya tetap terkunci walau jaringan putus
+  try { await socialPatch(`players/${encodeURIComponent(key)}`, { ban }); } catch (e) { console.warn('Ban gagal disimpan ke server:', e); }
+  showBanScreen(ban);
+  return ban;
+}
+function showBanScreen(ban) {
+  if (!document.getElementById('ban-css')) {
+    const st = document.createElement('style'); st.id = 'ban-css';
+    st.textContent = '#ban-screen{position:fixed;inset:0;z-index:100000;display:none;align-items:center;justify-content:center;padding:16px;background:#1b1030;color:#1b1030}'
+      + '#ban-card{width:min(420px,100%);max-height:92vh;overflow-y:auto;padding:20px;border:4px solid #1b1030;border-radius:22px;background:#fff8e7;box-shadow:0 6px 0 #d6334f;box-sizing:border-box;text-align:center}'
+      + '#ban-title{margin:0 0 4px;font-size:24px;font-weight:900;color:#d6334f}'
+      + '#ban-sub{margin:0 0 14px;font-size:13px;font-weight:700;color:#7a6f8f}'
+      + '.ban-row{margin-bottom:10px;padding:10px 12px;border:3px solid #1b1030;border-radius:12px;background:#fff;text-align:left}'
+      + '.ban-row small{display:block;margin-bottom:2px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#7a6f8f}'
+      + '.ban-row span{font-size:15px;font-weight:800;word-break:break-word}'
+      + '#ban-foot{margin:4px 0 0;font-size:12px;font-weight:700;color:#7a6f8f}';
+    document.head.appendChild(st);
+  }
+  let ov = document.getElementById('ban-screen');
+  if (!ov) {
+    ov = document.createElement('div'); ov.id = 'ban-screen';
+    ov.innerHTML = '<section id="ban-card"><h1 id="ban-title">Akun kamu diblokir</h1><p id="ban-sub">Kamu tidak bisa bermain dengan akun ini.</p>'
+      + '<div class="ban-row"><small>Alasan</small><span id="ban-reason"></span></div>'
+      + '<div class="ban-row"><small>Nama yang dipakai</small><span id="ban-name"></span></div>'
+      + '<div class="ban-row"><small>Waktu</small><span id="ban-time"></span></div>'
+      + '<p id="ban-foot">Merasa ini kesalahan? Hubungi admin game.</p></section>';
+    document.body.appendChild(ov);
+  }
+  const b = ban || {};
+  ov.querySelector('#ban-reason').textContent = b.reason || 'Melanggar aturan game.';
+  ov.querySelector('#ban-name').textContent = b.name || '-';
+  ov.querySelector('#ban-time').textContent = b.at ? new Date(b.at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+  ov.style.display = 'flex';
+  gameState = 'BANNED';
+  if (roomCode) leaveRoom(true).catch(() => {});
+}
+function setupAdminUnban(panel) {
+  panel.insertAdjacentHTML('beforeend',
+    '<hr style="width:100%;border-color:#46516b"><b>BUKA BAN PEMAIN</b>' +
+    '<label>Username pemain<input id="ad-unban-user" type="text" maxlength="18" placeholder="username / nama" autocomplete="off" style="width:100%;padding:7px;border-radius:6px"></label>' +
+    '<button id="ad-unban" type="button">Buka ban</button>');
+  const input = document.getElementById('ad-unban-user');
+  ['keydown', 'keyup', 'keypress'].forEach(ev => input.addEventListener(ev, e => e.stopPropagation()));
+  document.getElementById('ad-unban').onclick = async () => {
+    if (!isAdminUser()) return;
+    const typed = input.value.replace(/\s+/g, ' ').trim();
+    if (!typed) { showToast('Masukkan username'); return; }
+    try {
+      const key = await resolveUserKey(typed), acc = await socialGet(`players/${encodeURIComponent(key)}`);
+      if (!acc) { showToast('Username tidak ditemukan'); return; }
+      if (!acc.ban) { showToast('Akun itu tidak sedang di-ban'); return; }
+      await socialPatch(`players/${encodeURIComponent(key)}`, { ban: null });
+      input.value = '';
+      showToast(`✅ Ban ${key} dibuka`);
+    } catch (e) { showToast('Gagal membuka ban'); }
+  };
+}
+
 // ===== GANTI NAMA PROFIL =====
 // Akun punya dua hal: KUNCI AKUN (permanen: dipakai pertemanan, leaderboard, presence, undangan, inventory, koin)
 // dan NAMA TAMPILAN (bisa diganti). Ganti nama hanya mengubah nama tampilan -> semua data & pertemanan tetap utuh.
 // Nama baru juga bisa dipakai untuk login (indeks `usernames/<nama>` -> kunci akun); nama lama tetap bisa dipakai login.
+// Nama yang pernah dipakai sebuah akun TIDAK PERNAH dilepas: akun lain tidak bisa memakainya lagi, hanya pemilik awalnya.
 // Ganti nama pertama GRATIS, kedua dan seterusnya 10.000 koin.
 const RENAME_COST = 10000, NAME_MIN = 3, NAME_MAX = 18;
 function accountKey() { return String((playerData && (playerData.userKey || playerData.username)) || '').trim().toLowerCase(); }
@@ -4147,18 +4332,20 @@ async function resolveUserKey(name) { // nama (asli atau hasil ganti nama) -> ku
 const fmtCoins = (n) => Number(n || 0).toLocaleString('id-ID');
 const renameCount = () => Math.max(0, Math.floor(Number(playerData.nameChanges) || 0));
 const nextRenameCost = () => renameCount() === 0 ? 0 : RENAME_COST;
-function validateNewName(raw) {
+function validateNewName(raw, allowDevExact) { // allowDevExact: hanya saat daftar, supaya akun admin sendiri bisa dibuat
   const name = String(raw || '').replace(/\s+/g, ' ').trim();
   if (name.length < NAME_MIN) return { ok: false, msg: `Nama minimal ${NAME_MIN} karakter` };
   if (name.length > NAME_MAX) return { ok: false, msg: `Nama maksimal ${NAME_MAX} karakter` };
   if (!/^[A-Za-z0-9_ -]+$/.test(name)) return { ok: false, msg: 'Hanya huruf, angka, spasi, _ dan -' };
   const key = name.toLowerCase();
-  if (key.replace(/[ _-]/g, '').includes(DEV_USERNAME)) return { ok: false, msg: 'Nama itu tidak boleh dipakai' };
+  if (key.replace(/[ _-]/g, '').includes(DEV_USERNAME) && !(allowDevExact && key === DEV_USERNAME)) return { ok: false, msg: 'Nama itu tidak boleh dipakai' };
   return { ok: true, name, key };
 }
 let renameBusy = false;
 async function changeDisplayName(rawName) {
   if (renameBusy) return { ok: false, msg: 'Sedang memproses…' };
+  { const who = accountKey(), badWord = who && who !== DEV_USERNAME && !playerData.isDev ? findBadName(rawName) : null;
+    if (badWord) { renameBusy = true; try { await banAccount(who, String(rawName).trim(), badWord); } finally { renameBusy = false; } return { ok: false, msg: 'Akun diblokir: nama tidak pantas' }; } }
   const v = validateNewName(rawName);
   if (!v.ok) return v;
   const me = accountKey();
@@ -4168,7 +4355,7 @@ async function changeDisplayName(rawName) {
   const cost = nextRenameCost(), coins = Math.floor(Number(playerData.coins) || 0);
   if (coins < cost) return { ok: false, msg: `❌ Koin tidak cukup (butuh 🪙 ${fmtCoins(cost)})` };
   renameBusy = true;
-  const enc = encodeURIComponent, oldName = String(playerData.username || ''), oldNameKey = oldName.trim().toLowerCase();
+  const enc = encodeURIComponent;
   const json = { 'Content-Type': 'application/json' };
   let claimed = false;
   try {
@@ -4186,7 +4373,7 @@ async function changeDisplayName(rawName) {
     claimed = false;                                           // berhasil: pemesanan nama dipertahankan
     playerData.username = v.name; playerData.coins = newCoins; playerData.nameChanges = newCount;
     refreshNameUI();
-    propagateNewName(me, v.name, oldNameKey, v.key).catch(e => console.warn('Sebar nama baru sebagian gagal:', e));
+    propagateNewName(me, v.name).catch(e => console.warn('Sebar nama baru sebagian gagal:', e));
     return { ok: true, name: v.name, cost };
   } catch (e) {
     if (claimed) fetch(socialUrl(`usernames/${enc(v.key)}`), { method: 'DELETE' }).catch(() => {});
@@ -4201,11 +4388,8 @@ function refreshNameUI() { // perbarui semua tampilan nama milik sendiri
   try { if (nameSprite) updateCharacterNameSprite(playerData.username, playerData.isDev); } catch (e) {}
   ensureRenameProfileUI();
 }
-async function propagateNewName(me, name, oldNameKey, newKey) { // nama baru tampil di teman, leaderboard, presence, room
-  const enc = encodeURIComponent, json = { 'Content-Type': 'application/json' }, tasks = [];
-  if (oldNameKey && oldNameKey !== me && oldNameKey !== newKey) { // lepas nama lama hasil ganti nama sebelumnya
-    tasks.push(socialGet(`usernames/${enc(oldNameKey)}`).then(cur => cur === me ? fetch(socialUrl(`usernames/${enc(oldNameKey)}`), { method: 'DELETE' }) : null));
-  }
+async function propagateNewName(me, name) { // nama baru tampil di teman, leaderboard, presence, room (nama lama tetap terkunci untuk akun ini)
+  const enc = encodeURIComponent, tasks = [];
   const friends = await socialGet(`friends/${enc(me)}`).catch(() => null);
   for (const fk of Object.keys(friends || {})) { // catatan "temanku" di sisi teman, hanya jika masih ada (tidak menghidupkan lagi pertemanan yang sudah dihapus)
     tasks.push(socialGet(`friends/${enc(fk)}/${enc(me)}`).then(e => e ? socialPatch(`friends/${enc(fk)}/${enc(me)}`, { username: name }) : null));
@@ -5632,6 +5816,7 @@ function animate() {
     return;
   }
 
+  if (gameState === 'WIN' && specOn) { tickSpectate(delta); return; }
   if (gameState !== 'PLAYING') return;
 
   const speed = flyMode ? flySpeed : (isRunning ? 9 : 5);
