@@ -267,11 +267,12 @@ const SHOP_ITEMS = {
     { id: 'aks_jubah', name: 'Jubah Merah', price: 350 }
   ],
   gamepass: [
-    { id: 'gp_dorong', name: 'Gamepass Tinju Teman', price: 10000000, gamepass: true, emoji: '🥊', desc: 'Tinju teman saat balapan (tombol 🥊)' },
-    { id: 'gp_vip', name: 'Gamepass VIP', price: 800000, gamepass: true, emoji: '👑', desc: 'Nama khusus VIP, tag VIP di chat, dan aura emas eksklusif' },
-    { id: 'gp_2xcoin', name: 'Gamepass 2x Koin', price: 900000, gamepass: true, emoji: '🪙', desc: 'Koin hadiah saat bermain & menang jadi 2 kali lipat' },
-    { id: 'gp_winfx', name: 'Gamepass Animasi Menang', price: 1200000, gamepass: true, emoji: '🏆', desc: 'Mahkota emas, kembang api & confetti saat menang, dilihat semua pemain' },
-    { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 15000000, gamepass: true, icon: './ice_cube.jpg', emoji: '🧊', desc: 'Lempar es ke pemain terdekat: membeku 7 detik. Cooldown 5 detik' }
+    { id: 'gp_dorong', name: 'Gamepass Tinju Teman', price: 10000000, gamepass: true, desc: 'Tinju teman saat balapan. Tombol muncul di layar atau tekan E.' },
+    { id: 'gp_vip', name: 'Gamepass VIP', price: 800000, gamepass: true, desc: 'Nama khusus VIP, tag VIP di chat, dan aura emas eksklusif' },
+    { id: 'gp_2xcoin', name: 'Gamepass 2x Koin', price: 900000, gamepass: true, desc: 'Koin hadiah saat bermain & menang jadi 2 kali lipat' },
+    { id: 'gp_winfx', name: 'Gamepass Animasi Menang', price: 1200000, gamepass: true, desc: 'Mahkota emas, kembang api & confetti saat menang, dilihat semua pemain' },
+    { id: 'gp_speed', name: 'Gamepass Lari 2x', price: 100000, gamepass: true, desc: 'Kecepatan lari 2 kali lipat' },
+    { id: 'gp_freeze', name: 'Gamepass Freeze Player', price: 15000000, gamepass: true, icon: './ice_cube.jpg', desc: 'Lempar es ke pemain terdekat: membeku 7 detik. Cooldown 5 detik' }
   ]
 };
 
@@ -378,7 +379,7 @@ window.addEventListener('DOMContentLoaded', () => {
       firstTab.parentNode.appendChild(tb);
     }
     if (firstTab && !document.querySelector('.shop-tab-btn[data-cat="gamepass"]')) {
-      const gb = firstTab.cloneNode(true); gb.dataset.cat = 'gamepass'; gb.textContent = '🎫 Gamepass'; gb.classList.remove('active');
+      const gb = firstTab.cloneNode(true); gb.dataset.cat = 'gamepass'; gb.textContent = 'Gamepass'; gb.classList.remove('active');
       gb.addEventListener('click', (e) => { document.querySelectorAll('.shop-tab-btn').forEach(b => b.classList.remove('active')); e.currentTarget.classList.add('active'); renderShopTab('gamepass'); });
       firstTab.parentNode.appendChild(gb);
     }
@@ -830,7 +831,9 @@ function renderShopTab(category) {
     SHOP_ITEMS.gamepass.forEach(item => {
       const owned = playerData.inventory.includes(item.id);
       const div = document.createElement('div'); div.className = 'shop-item';
-      div.innerHTML = `<div class="color-preview" style="background:#2a2f45;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:44px">${item.icon ? `<img src="${item.icon}" alt="" style="width:76px;height:76px;object-fit:contain;border-radius:12px" onerror="this.outerHTML='${item.emoji || '🎫'}'">` : (item.emoji || '🫸')}</div><div class="item-name">${item.name}</div><div class="item-price" style="font-size:11px">${item.desc}</div>${owned ? '<div class="item-price owned-label">SUDAH DIMILIKI</div>' + shopBtnRow(shopGiveBtn('gamepass', item)) : `<div class="item-price">🪙 ${item.price}</div>` + shopBtnRow(`<button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">BELI</button>`, shopGiveBtn('gamepass', item))}`;
+      const gpName = item.name.replace(/^Gamepass\s+/, '');
+      const gpArt = item.icon ? `<img src="${item.icon}" alt="" style="width:64px;height:64px;object-fit:contain;border-radius:8px" onerror="this.outerHTML=gpIconSvg('${item.id}')">` : gpIconSvg(item.id);
+      div.innerHTML = `<div class="color-preview" style="background:#1f2533;border-radius:10px;display:flex;align-items:center;justify-content:center">${gpArt}</div><div class="item-name">${gpName}</div><div class="item-price" style="font-size:12px;color:#9aa4b8">${item.desc}</div>${owned ? '<div class="item-price owned-label">Dimiliki</div>' + shopBtnRow(shopGiveBtn('gamepass', item)) : `<div class="item-price">${Number(item.price).toLocaleString('id-ID')} koin</div>` + shopBtnRow(`<button class="shop-buy-btn" onclick="buyItem('gamepass', '${item.id}', ${item.price})">Beli</button>`, shopGiveBtn('gamepass', item))}`;
       container.appendChild(div);
     });
     return;
@@ -5035,6 +5038,7 @@ const hasGp = (id) => !!(playerData && playerData.inventory && playerData.invent
 const hasVip = () => hasGp('gp_vip');
 const hasCoin2x = () => hasGp('gp_2xcoin');
 const hasWinFx = () => hasGp('gp_winfx');
+const hasSpeed2x = () => hasGp('gp_speed');
 const coinX = (n) => hasCoin2x() ? n * 2 : n; // semua koin yang didapat dikali 2 kalau punya gamepass 2x
 
 // Nama VIP di label 3D: lencana "VIP" emas + nama bergradasi emas + bingkai emas.
@@ -5396,6 +5400,7 @@ function buildLeaveGroupButton() {
 function buildRoomUI() {
   buildLeaveGroupButton();
   buildMissionsUI();
+  buildGraphicsUI();
   // UI room/mabar disembunyikan. Room dibuat otomatis saat pemain mengundang teman.
   buildPlayerSearchUI();
   if (document.getElementById('countdown')) return;
@@ -5785,6 +5790,76 @@ function refreshMissionsModal(force) {
     row.append(info, act); list.appendChild(row);
   }
 }
+// ============ PENGATURAN GRAFIK ============
+// Smooth = paling ringan (tanpa bayangan, resolusi turun), Standar = bawaan game, Ultra = HD (resolusi & bayangan lebih tajam).
+// Pilihan disimpan di perangkat ini (localStorage) dan dipakai lagi saat game dibuka berikutnya.
+const GFX_LEVELS = {
+  smooth:   { label: 'Smooth',  shadow: 0, pixel: (d) => Math.min(d, 1) * 0.85, desc: 'Paling ringan. Tanpa bayangan dan resolusi diturunkan. Untuk HP lama atau game yang patah-patah.' },
+  standard: { label: 'Standar', shadow: 1, pixel: (d) => Math.min(d, 2),         desc: 'Seimbang antara tampilan dan performa. Pengaturan bawaan.' },
+  ultra:    { label: 'Ultra',   shadow: 2, pixel: (d) => Math.max(Math.min(d, 3), 1.5), desc: 'Paling tajam (HD). Bayangan lebih detail dan resolusi lebih tinggi. Butuh perangkat yang kuat.' }
+};
+let gfxLevel = 'standard';
+try { const v = localStorage.getItem('parkour_gfx'); if (GFX_LEVELS[v]) gfxLevel = v; } catch (e) {}
+function applyGraphics(level, save) {
+  const g = GFX_LEVELS[level]; if (!g || !renderer) return false;
+  gfxLevel = level;
+  if (save) { try { localStorage.setItem('parkour_gfx', level); } catch (e) {} }
+  renderer.setPixelRatio(g.pixel(window.devicePixelRatio || 1));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if (scene) scene.traverse(o => {
+    if (!o.isDirectionalLight) return;
+    if (!o.userData.gfxOrig) o.userData.gfxOrig = { cast: o.castShadow, size: o.shadow.mapSize.x };
+    const orig = o.userData.gfxOrig, want = g.shadow === 2 ? Math.min(4096, orig.size * 2) : orig.size;
+    o.castShadow = g.shadow ? orig.cast : false;
+    if (o.shadow.mapSize.x !== want) { o.shadow.mapSize.set(want, want); if (o.shadow.map) { o.shadow.map.dispose(); o.shadow.map = null; } }
+  });
+  return true;
+}
+function buildGraphicsUI() {
+  if (document.getElementById('btn-gfx')) return;
+  const st = document.createElement('style');
+  st.textContent = '#btn-gfx{position:fixed;top:180px;right:16px;z-index:59;height:30px;padding:0 12px;border:1px solid #3a4258;border-radius:8px;background:#1b2030;color:#e6e9f2;font:600 13px sans-serif;display:none;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.4)}#btn-gfx:active{background:#242b40}' +
+    '#gfx-modal{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}' +
+    '#gfx-card{width:min(380px,calc(100vw - 24px));padding:16px;border-radius:12px;background:#171b27;border:1px solid #2d3446;color:#e6e9f2;font-family:sans-serif}' +
+    '#gfx-card h3{margin:0 0 10px;font-size:17px;font-weight:700}' +
+    '.gfx-opt{display:block;width:100%;text-align:left;margin-bottom:8px;padding:10px 12px;border:1px solid #2d3446;border-radius:8px;background:transparent;color:#e6e9f2;font-family:sans-serif}.gfx-opt b{font-size:14px}.gfx-opt span{display:block;font-size:12px;color:#8b94a8;margin-top:2px}.gfx-opt.on{border-color:#5b8def;background:#1d2538}' +
+    '#gfx-close{width:100%;margin-top:4px;padding:9px;border:1px solid #2d3446;border-radius:6px;background:transparent;color:#c9ced9;font:600 13px sans-serif}';
+  document.head.appendChild(st);
+  const b = document.createElement('button'); b.id = 'btn-gfx'; b.type = 'button'; b.textContent = 'Grafik';
+  const box = document.createElement('div'); box.id = 'gfx-modal';
+  box.innerHTML = '<div id="gfx-card"><h3>Grafik</h3><div id="gfx-list"></div><button id="gfx-close" type="button">Tutup</button></div>';
+  const list = box.querySelector('#gfx-list');
+  const paint = () => { list.innerHTML = ''; for (const k of Object.keys(GFX_LEVELS)) {
+    const o = document.createElement('button'); o.type = 'button'; o.className = 'gfx-opt' + (k === gfxLevel ? ' on' : ''); o.dataset.k = k;
+    o.innerHTML = '<b></b><span></span>'; o.querySelector('b').textContent = GFX_LEVELS[k].label; o.querySelector('span').textContent = GFX_LEVELS[k].desc; list.appendChild(o);
+  } };
+  const close = () => { box.style.display = 'none'; };
+  b.addEventListener('click', () => { paint(); box.style.display = 'flex'; });
+  box.addEventListener('click', e => { if (e.target === box) close(); const o = e.target.closest && e.target.closest('.gfx-opt'); if (o) { applyGraphics(o.dataset.k, true); paint(); } });
+  box.querySelector('#gfx-close').addEventListener('click', close);
+  document.body.appendChild(b); document.body.appendChild(box);
+  let applied = false;
+  setInterval(() => {
+    if (!applied && renderer && scene) { applied = applyGraphics(gfxLevel, false); if (applied) setTimeout(() => applyGraphics(gfxLevel, false), 5000); }
+    b.style.display = (gameState === 'LOBBY' && playerData && playerData.username) ? 'flex' : 'none';
+    if (gameState !== 'LOBBY') close();
+  }, 1000);
+}
+
+// Ikon garis untuk kartu gamepass di shop (tanpa emoji).
+function gpIconSvg(id) {
+  const P = {
+    gp_vip: '<path d="M8 34L6 14l9 8 9-12 9 12 9-8-2 20z"/><path d="M8 40h32"/>',
+    gp_2xcoin: '<circle cx="24" cy="24" r="16"/><text x="24" y="30" text-anchor="middle" font-size="16" font-weight="700" font-family="sans-serif" fill="#d7ddec" stroke="none">2x</text>',
+    gp_winfx: '<path d="M16 8h16v12a8 8 0 0 1-16 0z"/><path d="M16 12H9c0 6 3 9 7 9M32 12h7c0 6-3 9-7 9"/><path d="M24 28v8M17 40h14M20 36h8"/>',
+    gp_speed: '<path d="M10 12l12 12-12 12M24 12l12 12-12 12"/>',
+    gp_freeze: '<path d="M24 6v36M8.4 15l31.2 18M8.4 33l31.2-18"/><path d="M20 9l4 4 4-4M20 39l4-4 4 4"/>',
+    gp_dorong: '<rect x="12" y="16" width="24" height="18" rx="6"/><path d="M20 16v8M28 16v8M12 26H8v-6a4 4 0 0 1 4-4"/>'
+  };
+  return '<svg width="52" height="52" viewBox="0 0 48 48" fill="none" stroke="#d7ddec" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' + (P[id] || '<circle cx="24" cy="24" r="14"/>') + '</svg>';
+}
+window.gpIconSvg = gpIconSvg;
+
 function buildMissionsUI() {
   if (document.getElementById('btn-missions')) return;
   const st = document.createElement('style');
@@ -5875,7 +5950,7 @@ function animate() {
   if (gameState === 'WIN' && specOn) { tickSpectate(delta); return; }
   if (gameState !== 'PLAYING') return;
 
-  const speed = flyMode ? flySpeed : (isRunning ? 9 : 5);
+  const speed = flyMode ? flySpeed : (isRunning ? 9 : 5) * (hasSpeed2x() ? 2 : 1); // gamepass Lari 2x
   let isMoving = false;
 
   platforms.forEach(p => {
@@ -6043,7 +6118,7 @@ function animate() {
     lA = rA = up ? -1.7 : -1.0; lE = rE = -0.5; armZ = up ? 0.5 : 0.8;
     lean = 0.1 + THREE.MathUtils.clamp(-physics.velocityY * 0.004, -0.1, 0.12);
   } else if (isMoving) {
-    walkTime += delta * hSpeed * 1.7;
+    walkTime += delta * Math.min(hSpeed, 12) * 1.7; // animasi kaki dibatasi agar tidak terlalu cepat saat gamepass Lari 2x
     const s = Math.sin(walkTime), c = Math.cos(walkTime), amp = 0.55 + runK * 0.4;
     lH = s * amp; rH = -s * amp;
     lK = Math.max(0, -c) * (0.7 + runK * 0.8) + 0.08; rK = Math.max(0, c) * (0.7 + runK * 0.8) + 0.08;
