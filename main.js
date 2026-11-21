@@ -267,7 +267,7 @@ const SHOP_ITEMS = {
     { id: 'aks_jubah', name: 'Jubah Merah', price: 350 }
   ],
   gamepass: [
-    { id: 'gp_dorong', name: 'Gamepass Dorong Teman', price: 10000000, gamepass: true, desc: 'Dorong teman saat balapan (tombol🫸' },
+    { id: 'gp_dorong', name: 'Gamepass Tinju Teman', price: 10000000, gamepass: true, emoji: '🥊', desc: 'Tinju teman saat balapan (tombol 🥊)' },
     { id: 'gp_vip', name: 'Gamepass VIP', price: 800000, gamepass: true, emoji: '👑', desc: 'Nama khusus VIP, tag VIP di chat, dan aura emas eksklusif' },
     { id: 'gp_2xcoin', name: 'Gamepass 2x Koin', price: 900000, gamepass: true, emoji: '🪙', desc: 'Koin hadiah saat bermain & menang jadi 2 kali lipat' },
     { id: 'gp_winfx', name: 'Gamepass Animasi Menang', price: 1200000, gamepass: true, emoji: '🏆', desc: 'Mahkota emas, kembang api & confetti saat menang, dilihat semua pemain' },
@@ -3947,7 +3947,7 @@ function animateRemotePlayers(delta) {
       const pu = d.push;
       if (pu && pu.seq !== u.pushSeen) { u.pushSeen = pu.seq; if (Math.abs(Date.now() - (Number(pu.t) || 0)) < 3000) u.pushStart = now; }
       if (u.pushStart != null) { const pp = (now - u.pushStart) / (PUSH_ANIM_MS / 1000);
-        if (pp >= 0 && pp < 1) { const Q = pushPose(pp); lA = rA = Q.arm; lE = rE = Q.el; armZ = Q.armZ; lean = Q.lean; bob = Q.bob; } }
+        if (pp >= 0 && pp < 1) { const Q = punchPose(pp); lA = Q.leftArm; rA = Q.rightArm; lE = Q.leftEl; rE = Q.rightEl; armZ = Q.armZ; lean = Q.lean; bob = Q.bob; } }
     }
     const dm = (o, key, v) => { if (o) o[key] += (v - o[key]) * k; };
     dm(P.legL.rotation, 'x', lH); dm(P.legR.rotation, 'x', rH); dm(P.knL.rotation, 'x', lK); dm(P.knR.rotation, 'x', rK);
@@ -4939,18 +4939,51 @@ function startPresenceSystem() {
   buildFreezeButton();
 }
 
-// ----- GAMEPASS DORONG TEMAN -----
-// Dorongan dikirim lewat node pemain sendiri (rooms/<kode>/players/<uid>/push), lalu korban
-// yang membaca dan menerapkan hentakan di sisinya (memakai vektor 'knock' yang sudah ada).
+// ----- GAMEPASS TINJU TEMAN -----
+// Efek gameplay tetap memakai jalur Firebase 'push' agar pembelian lama dan multiplayer
+// tetap kompatibel. Nama internal gp_dorong juga sengaja dipertahankan.
 const PUSH_RANGE = 3.2, PUSH_COOLDOWN = 1500, PUSH_FORCE = 30;
-// Animasi dorong: tangan ditarik ke belakang (ancang-ancang), lalu dihentakkan lurus ke depan.
-const PUSH_ANIM_MS = 520;
+const PUSH_ANIM_MS = 620;
 let pushAnimStart = -1e9;
-function pushPose(p) { // p = 0..1 progres animasi
+let punchGLBMixer = null, punchGLBAction = null;
+
+// Sambungan animasi GLB: setelah GLB dimuat, daftarkan mixer dan AnimationAction-nya di sini.
+// Contoh pemakaian nanti: window.registerPunchGLBAnimation(mixer, mixer.clipAction(punchClip));
+window.registerPunchGLBAnimation = function(mixer, action) {
+  if (!mixer || !action || typeof action.play !== 'function') {
+    console.warn('Animasi tinju GLB: mixer/action tidak valid');
+    return false;
+  }
+  punchGLBMixer = mixer;
+  punchGLBAction = action;
+  return true;
+};
+
+function playPunchAnimation() {
+  pushAnimStart = performance.now(); // fallback pose tetap berjalan jika GLB belum dipasang
+  if (!punchGLBAction) return;
+  punchGLBAction.reset();
+  punchGLBAction.enabled = true;
+  punchGLBAction.setLoop(THREE.LoopOnce, 1);
+  punchGLBAction.clampWhenFinished = true;
+  punchGLBAction.setEffectiveWeight(1);
+  punchGLBAction.fadeIn(0.08);
+  punchGLBAction.play();
+}
+
+// Pose fallback bergaya game: satu tangan melakukan pukulan kartun, tangan lain menjaga.
+function punchPose(p) {
   const ease = (x) => x * x * (3 - 2 * x);
-  if (p < 0.25) { const w = ease(p / 0.25); return { arm: 0.7 * w, el: -1.3 * w, armZ: 0.12, lean: -0.1 * w, bob: -0.02 * w }; }
-  const w = ease(Math.min(1, (p - 0.25) / 0.3));
-  return { arm: 0.7 - 2.3 * w, el: -1.3 + 1.25 * w, armZ: 0.12, lean: -0.1 + 0.52 * w, bob: 0.03 * w };
+  if (p < 0.24) {
+    const w = ease(p / 0.24);
+    return { leftArm: 0.18, rightArm: 0.65 * w, leftEl: -0.45, rightEl: -1.25 * w, armZ: 0.12, lean: -0.08 * w, bob: -0.015 * w };
+  }
+  if (p < 0.58) {
+    const w = ease((p - 0.24) / 0.34);
+    return { leftArm: 0.18, rightArm: 0.65 - 2.15 * w, leftEl: -0.45, rightEl: -1.25 + 1.15 * w, armZ: 0.12, lean: -0.08 + 0.28 * w, bob: 0.02 * w };
+  }
+  const w = 1 - ease((p - 0.58) / 0.42);
+  return { leftArm: 0.18 * w, rightArm: -1.5 * w, leftEl: -0.45 * w, rightEl: -0.1 * w, armZ: 0.12, lean: 0.20 * w, bob: 0.02 * w };
 }
 let pushSeq = 0, lastPushAt = 0;
 const handledPush = new Map(); // uid pendorong -> seq terakhir
@@ -4971,7 +5004,7 @@ function tryPushNearestFriend() {
   lastPushAt = now; pushSeq++;
   { const tav = remotePlayers.get(best); // hadap ke teman lalu mainkan animasi dorong
     if (tav) character.rotation.y = Math.atan2(tav.position.x - character.position.x, tav.position.z - character.position.z);
-    pushAnimStart = performance.now(); }
+    playPunchAnimation(); }
   const btn = document.getElementById('btn-push'); if (btn) { btn.classList.add('cd'); setTimeout(() => btn.classList.remove('cd'), PUSH_COOLDOWN); }
   update(myRef, { push: { target: best, seq: pushSeq, t: Date.now() } }).catch(() => {});
 }
@@ -4990,7 +5023,7 @@ function applyIncomingPushes() {
 }
 function buildPushButton() {
   if (document.getElementById('btn-push')) return;
-  const b = document.createElement('button'); b.id = 'btn-push'; b.type = 'button'; b.textContent = '🫸'; b.title = 'Dorong teman';
+  const b = document.createElement('button'); b.id = 'btn-push'; b.type = 'button'; b.textContent = '🥊'; b.title = 'Tinju teman';
   b.addEventListener('pointerdown', (e) => { e.preventDefault(); tryPushNearestFriend(); });
   document.body.appendChild(b);
   window.addEventListener('keydown', (e) => { if (e.code === 'KeyE' && !e.repeat && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) tryPushNearestFriend(); });
@@ -5782,6 +5815,7 @@ function animate() {
   requestAnimationFrame(animate);
   if (!renderer) return;
   const delta = Math.min(clock.getDelta(), 0.1);
+  if (punchGLBMixer) punchGLBMixer.update(delta); // jalankan clip tinju GLB yang sudah didaftarkan
   const t = roomStartAt ? Math.max(0, (serverNow() - roomStartAt) / 1000) : clock.getElapsedTime();
   // Timer visual di HUD dihapus: progres kemenangan menggunakan mahkota.
   tickMultiplayer();
@@ -6022,8 +6056,8 @@ function animate() {
     bob = br * 0.008; lA = Math.sin(t * 1.3) * 0.04; rA = -lA; armZ = 0.1 + br * 0.015;
     lE = rE = -0.12; sway = Math.sin(t * 0.8) * 0.015; headY = Math.sin(t * 0.5) * 0.35;
   }
-  { const pp = (performance.now() - pushAnimStart) / PUSH_ANIM_MS; // animasi dorong (menimpa pose jalan/idle)
-    if (pp >= 0 && pp < 1) { const Q = pushPose(pp); lA = rA = Q.arm; lE = rE = Q.el; armZ = Q.armZ; lean = Q.lean; bob = Q.bob; } }
+  { const pp = (performance.now() - pushAnimStart) / PUSH_ANIM_MS; // animasi tinju (menimpa pose jalan/idle)
+    if (pp >= 0 && pp < 1) { const Q = punchPose(pp); lA = Q.leftArm; rA = Q.rightArm; lE = Q.leftEl; rE = Q.rightEl; armZ = Q.armZ; lean = Q.lean; bob = Q.bob; } }
   damp(leftLegPivot.rotation, 'x', lH); damp(rightLegPivot.rotation, 'x', rH);
   damp(leftKnee.rotation, 'x', lK); damp(rightKnee.rotation, 'x', rK);
   damp(leftArmPivot.rotation, 'x', lA); damp(rightArmPivot.rotation, 'x', rA);
