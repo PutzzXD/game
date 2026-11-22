@@ -6,7 +6,6 @@ import { buildHoneyWorld } from './honey.js';
 import { buildLaserWorld } from './laser.js';
 import { buildLavaLandWorld, showLavaLandIntro } from './lavaland.js';
 import { buildTempleWorld } from './temple.js';
-import { buildPulauWorld } from './pulau.js';
 import './lobbyui.js'; // tema tombol & HUD lobby
 import { buildLavaMap, updateLavaMap } from './lava.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -428,7 +427,7 @@ window.addEventListener('DOMContentLoaded', () => {
     shopModal.style.display = 'none';
     // GACHA MAP: room memakai hasil gacha host (tersimpan di meta.map) agar semua pemain satu map.
     const roomMap = roomMeta && roomMeta.map;
-    const pickedMap = (roomCode && roomStartAt) ? ((roomMap === 'snow' && snowWorld) ? 'snow' : (roomMap === 'angkasa' && angkasaWorld) ? 'angkasa' : (roomMap === 'mountain' && mountainWorld) ? 'mountain' : (roomMap === 'honey' && honeyWorld) ? 'honey' : (roomMap === 'laser' && laserWorld) ? 'laser' : (roomMap === 'lavaland' && lavaLandWorld) ? 'lavaland' : (roomMap === 'temple' && templeWorld) ? 'temple' : (roomMap === 'pulau' && pulauWorld) ? 'pulau' : 'lava') : rollMap();
+    const pickedMap = (roomCode && roomStartAt) ? ((roomMap === 'snow' && snowWorld) ? 'snow' : (roomMap === 'angkasa' && angkasaWorld) ? 'angkasa' : (roomMap === 'mountain' && mountainWorld) ? 'mountain' : (roomMap === 'honey' && honeyWorld) ? 'honey' : (roomMap === 'laser' && laserWorld) ? 'laser' : (roomMap === 'lavaland' && lavaLandWorld) ? 'lavaland' : (roomMap === 'temple' && templeWorld) ? 'temple' : 'lava') : rollMap();
     gachaBusy = true;
     playMapGacha(pickedMap, roomCode ? 900 : 1500, () => {
       gachaBusy = false;
@@ -635,7 +634,6 @@ async function returnToLobby() {
   if (laserWorldGroup) laserWorldGroup.visible = false;
   if (lavaLandWorldGroup) lavaLandWorldGroup.visible = false;
   if (templeWorldGroup) templeWorldGroup.visible = false;
-  if (pulauWorldGroup) pulauWorldGroup.visible = false;
   if (angkasaController) angkasaController.reset(physics);
   if (lobbyWorldGroup) lobbyWorldGroup.visible = true;
   if (scene) { scene.background = new THREE.Color(LOBBY_BG); scene.fog = new THREE.Fog(LOBBY_BG, 45, 110); }
@@ -1595,7 +1593,6 @@ let zoomDir = 0, guards = [], mazeHinted = false, WIN = { x: 0, y: 0, z: -77 };
 // Sistem multi-map (gacha): map aktif + dunia tiap map. Lihat blok SNOW-MODULE.
 let lavaLandWorld = null, lavaLandWorldGroup = null;
 let templeWorld = null, templeWorldGroup = null;
-let pulauWorld = null, pulauWorldGroup = null;
 let localBats = false; // kostum Itachi aktif (efek kelelawar)
 let currentMap = 'lava', lavaWorld = null, snowWorld = null, snowWorldGroup = null, snowController = null, angkasaWorld = null, angkasaWorldGroup = null, angkasaController = null, mountainWorld = null, mountainWorldGroup = null, honeyWorld = null, honeyWorldGroup = null, laserWorld = null, laserWorldGroup = null, curGroundPlat = null, gachaBusy = false;
 const ROASTS = {
@@ -2175,8 +2172,6 @@ function init3DGame() {
   catch (e) { console.error('Map Lava Land gagal dibuat:', e); lavaLandWorld = null; lavaLandWorldGroup = null; }
   try { const builtTemple = buildTempleWorld(THREE, scene, { showToast }); templeWorld = builtTemple.world; templeWorldGroup = builtTemple.group; templeWorldGroup.visible = false; }
   catch (e) { console.error('Map Lost Temple gagal dibuat:', e); templeWorld = null; if (templeWorldGroup) { scene.remove(templeWorldGroup); templeWorldGroup = null; } }
-  try { pulauWorld = buildPulauWorld(THREE, scene); pulauWorldGroup = pulauWorld.group; pulauWorldGroup.visible = false; }
-  catch (e) { console.error('Map Pulau gagal dibuat:', e); pulauWorld = null; pulauWorldGroup = null; }
 
   lobbyWorldGroup = new THREE.Group();
   lobbyWorldGroup.name = 'LOBBY_PLAZA';
@@ -3682,7 +3677,6 @@ function onGameBegin() {
   if (laserWorldGroup) laserWorldGroup.visible = currentMap === 'laser';
   if (lavaLandWorldGroup) lavaLandWorldGroup.visible = currentMap === 'lavaland';
   if (templeWorldGroup) templeWorldGroup.visible = currentMap === 'temple';
-  if (pulauWorldGroup) pulauWorldGroup.visible = currentMap === 'pulau';
   if (lobbyWorldGroup) lobbyWorldGroup.visible = false;
   if (scene) {
     if (currentMap === 'snow') {
@@ -3702,8 +3696,6 @@ function onGameBegin() {
       lavaLandWorld.applyEnvironment(scene);
     } else if (currentMap === 'temple' && templeWorld) {
       templeWorld.applyEnvironment(scene);
-    } else if (currentMap === 'pulau' && pulauWorld) {
-      pulauWorld.applyEnvironment(scene);
     } else {
       scene.background = new THREE.Color(0x1a1a24);
       scene.fog = new THREE.Fog(0x1a1a24, 20, 150);
@@ -3721,7 +3713,6 @@ function onGameBegin() {
   if (camera && controls) { camera.position.set(0, 4, 8); controls.target.set(0, 1.5, 0); }
   if (currentMap === 'honey' && honeyWorld) honeyWorld.reset();
   if (currentMap === 'laser' && laserWorld) laserWorld.reset();
-  if (currentMap === 'pulau' && pulauWorld) pulauWorld.reset();
   if (currentMap === 'lavaland' && lavaLandWorld) { lavaLandWorld.reset(); showLavaLandIntro(); }
   if (roomCode && roomStartAt) {
     const idx = Math.max(0, sortedIds().indexOf(mpUid)), sp = SPAWN[idx % SPAWN.length];
@@ -3735,7 +3726,7 @@ function onGameBegin() {
 }
 // Pulihkan checkpoint terakhir (mode solo): karakter muncul di checkpoint tersimpan, bukan di awal.
 function restoreSavedCheckpoint() {
-  const sc = currentMap === 'pulau' ? playerData.savedCheckpointPulau : currentMap === 'temple' ? playerData.savedCheckpointTemple : currentMap === 'snow' ? playerData.savedCheckpointSnow : (currentMap === 'mountain' ? playerData.savedCheckpointMountain : playerData.savedCheckpoint); // checkpoint tiap map terpisah
+  const sc = currentMap === 'temple' ? playerData.savedCheckpointTemple : currentMap === 'snow' ? playerData.savedCheckpointSnow : (currentMap === 'mountain' ? playerData.savedCheckpointMountain : playerData.savedCheckpoint); // checkpoint tiap map terpisah
   if (!sc || roomCode) return;
   const pl = platforms.find(p => p.checkpoint && Math.abs(p.mesh.position.x - sc.px) < 0.06 && Math.abs(p.mesh.position.y - sc.py) < 0.06 && Math.abs(p.mesh.position.z - sc.pz) < 0.06);
   if (!pl) return;
@@ -5432,10 +5423,10 @@ window.addEventListener('pagehide', () => { if (myRef) remove(myRef).catch(() =>
 // sehingga seluruh sistem lama (kontrol, kamera, respawn, multiplayer) tetap
 // memakai kode yang sama.
 // =====================================================================
-const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' }, angkasa: { icon: '🚀', name: 'MAP ANGKASA', color: '#a78bfa' }, mountain: { icon: '🏔️', name: 'MAP GUNUNG', color: '#65c987' }, honey: { icon: '🍯', name: 'HONEY DROP', color: '#ffc53a' }, laser: { icon: '🔴', name: 'LASER LAB', color: '#ff3a8a' }, lavaland: { icon: '🌋', name: 'LAVA LAND', color: '#ff5a2a' }, temple: { icon: '🏛️', name: 'LOST TEMPLE', color: '#e0a060' }, pulau: { icon: '🏝️', name: 'MAP PULAU', color: '#29c6c1' } };
+const MAP_LABELS = { lava: { icon: '🌋', name: 'MAP LAVA', color: '#ff6a2a' }, snow: { icon: '❄️', name: 'MAP SALJU', color: '#7fd6ff' }, angkasa: { icon: '🚀', name: 'MAP ANGKASA', color: '#a78bfa' }, mountain: { icon: '🏔️', name: 'MAP GUNUNG', color: '#65c987' }, honey: { icon: '🍯', name: 'HONEY DROP', color: '#ffc53a' }, laser: { icon: '🔴', name: 'LASER LAB', color: '#ff3a8a' }, lavaland: { icon: '🌋', name: 'LAVA LAND', color: '#ff5a2a' }, temple: { icon: '🏛️', name: 'LOST TEMPLE', color: '#e0a060' } };
 
 // Gacha: hanya memilih map yang benar-benar tersedia.
-function rollMap(multi) { const available = ['lava']; if (snowWorld) available.push('snow'); if (angkasaWorld) available.push('angkasa'); if (mountainWorld) available.push('mountain'); if (templeWorld) available.push('temple'); if (pulauWorld) available.push('pulau'); if (honeyWorld && multi) available.push('honey'); if (laserWorld && multi) available.push('laser'); if (lavaLandWorld && multi) available.push('lavaland'); /* Honey Drop: hanya room 2+ pemain */ return available[Math.floor(Math.random() * available.length)]; }
+function rollMap(multi) { const available = ['lava']; if (snowWorld) available.push('snow'); if (angkasaWorld) available.push('angkasa'); if (mountainWorld) available.push('mountain'); if (templeWorld) available.push('temple'); if (honeyWorld && multi) available.push('honey'); if (laserWorld && multi) available.push('laser'); if (lavaLandWorld && multi) available.push('lavaland'); /* Honey Drop: hanya room 2+ pemain */ return available[Math.floor(Math.random() * available.length)]; }
 
 // Animasi gacha horizontal: kartu map bergeser dari kanan ke kiri lalu berhenti tepat di hasil.
 function playMapGacha(result, spinMs, done) {
@@ -5455,7 +5446,6 @@ function playMapGacha(result, spinMs, done) {
     if (angkasaWorld) keys.push('angkasa');
     if (mountainWorld) keys.push('mountain');
     if (templeWorld) keys.push('temple');
-    if (pulauWorld) keys.push('pulau');
     // Pool survival multiplayer. Jangan hanya bergantung pada roomCode di sini:
     // pada pergantian state room, roomCode bisa sesaat belum terbaca saat roulette dibuat.
     // Jika hasil host sudah lavaland, kartu Lava Land wajib masuk agar tidak fallback ke MAP LAVA.
@@ -5603,8 +5593,7 @@ function applyMap(id) {
   if (id === 'laser' && !laserWorld) id = 'lava';
   if (id === 'lavaland' && !lavaLandWorld) id = 'lava';
   if (id === 'temple' && !templeWorld) id = 'lava';
-  if (id === 'pulau' && !pulauWorld) id = 'lava';
-  const w = id === 'pulau' ? pulauWorld : id === 'temple' ? templeWorld : id === 'lavaland' ? lavaLandWorld : id === 'laser' ? laserWorld : id === 'honey' ? honeyWorld : (id === 'snow' ? snowWorld : (id === 'angkasa' ? angkasaWorld : (id === 'mountain' ? mountainWorld : lavaWorld)));
+  const w = id === 'temple' ? templeWorld : id === 'lavaland' ? lavaLandWorld : id === 'laser' ? laserWorld : id === 'honey' ? honeyWorld : (id === 'snow' ? snowWorld : (id === 'angkasa' ? angkasaWorld : (id === 'mountain' ? mountainWorld : lavaWorld)));
   if (!w) return;
   currentMap = id;
 
@@ -5625,7 +5614,6 @@ function applyMap(id) {
   if (laserWorldGroup) laserWorldGroup.visible = id === 'laser';
   if (lavaLandWorldGroup) lavaLandWorldGroup.visible = id === 'lavaland';
   if (templeWorldGroup) templeWorldGroup.visible = id === 'temple';
-  if (pulauWorldGroup) pulauWorldGroup.visible = id === 'pulau';
   if (id === 'snow' && snowController) snowController.reset();
   if (angkasaController) angkasaController.reset(physics);
   if (id === 'angkasa' && scene) {
@@ -5642,8 +5630,6 @@ function applyMap(id) {
     lavaLandWorld.applyEnvironment(scene);
   } else if (id === 'temple' && scene) {
     templeWorld.applyEnvironment(scene);
-  } else if (id === 'pulau' && scene) {
-    pulauWorld.applyEnvironment(scene);
   } else if (scene) {
     // Kembalikan latar default game untuk Lava/Snow; efek khusus map tetap
     // dikelola oleh modul map masing-masing.
@@ -5988,7 +5974,6 @@ function animate() {
   });
   if (currentMap === 'mountain' && mountainWorld?.swingPlanks) mountainWorld.swingPlanks.forEach(p => { p.mesh.rotation.z = Math.sin(t * p.speed + p.phase) * 0.08; });
   if (currentMap === 'honey' && honeyWorld) honeyWorld.update(delta, character.position);
-  if (currentMap === 'pulau' && pulauWorld) pulauWorld.update(t);
   if (currentMap === 'lavaland' && lavaLandWorld) lavaLandWorld.update(delta, character.position, roomStartAt ? (serverNow() - roomStartAt) / 1000 : undefined);
   if (currentMap === 'laser' && laserWorld) { // waktu laser = detik sejak ronde mulai (sama di semua pemain room)
     const laserHit = laserWorld.update(delta, character.position, roomStartAt ? (serverNow() - roomStartAt) / 1000 : undefined);
@@ -6048,7 +6033,7 @@ function animate() {
       showToast('Checkpoint disimpan');
       if (!roomCode) { // mode solo: posisi checkpoint disimpan ke akun, jadi tetap di sini walau keluar game
         const sv = { px: +m.x.toFixed(3), py: +m.y.toFixed(3), pz: +m.z.toFixed(3), y: +groundData.y.toFixed(3) };
-        if (currentMap === 'temple') playerData.savedCheckpointTemple = sv; else if (currentMap === 'pulau') playerData.savedCheckpointPulau = sv; else if (currentMap === 'snow') playerData.savedCheckpointSnow = sv; else if (currentMap === 'mountain') playerData.savedCheckpointMountain = sv; else playerData.savedCheckpoint = sv; // checkpoint tiap map terpisah
+        if (currentMap === 'temple') playerData.savedCheckpointTemple = sv; else if (currentMap === 'snow') playerData.savedCheckpointSnow = sv; else if (currentMap === 'mountain') playerData.savedCheckpointMountain = sv; else playerData.savedCheckpoint = sv; // checkpoint tiap map terpisah
         updatePlayerFirebase().catch(() => {});
       }
     }
@@ -6101,7 +6086,7 @@ function animate() {
 
   // JIKA JATUH KE LAVA
   if (godMode && character.position.y < -3) { character.position.set(checkpoint.x, checkpoint.y + 0.3, checkpoint.z); physics.velocityY = 0; }
-  const fallLimit = currentMap === 'pulau' ? pulauWorld.fallLimit : (currentMap === 'honey' ? honeyWorld.FIN_Y : (currentMap === 'laser' ? laserWorld.fallLimit : (currentMap === 'lavaland' ? lavaLandWorld.fallLimit : -3)));
+  const fallLimit = currentMap === 'honey' ? honeyWorld.FIN_Y : (currentMap === 'laser' ? laserWorld.fallLimit : (currentMap === 'lavaland' ? lavaLandWorld.fallLimit : -3));
   if (!godMode && !flyMode && character.position.y < fallLimit) {
     if (isSurvivalMap()) honeyEliminateLocal('fall');
     else { gameState = 'GAMEOVER'; shatterLocal(); setTimeout(() => { if (gameState === 'GAMEOVER') showGameOver('fall'); }, 900); }
@@ -6112,7 +6097,7 @@ function animate() {
     gameState = 'WIN'; 
     const winCoins = coinX(1000);
     playerData.coins = (playerData.coins || 0) + winCoins;
-    if (currentMap === 'pulau') playerData.savedCheckpointPulau = null; else if (currentMap === 'temple') playerData.savedCheckpointTemple = null; else if (currentMap === 'snow') playerData.savedCheckpointSnow = null; else if (currentMap === 'mountain') playerData.savedCheckpointMountain = null; else playerData.savedCheckpoint = null; // selesai: progres checkpoint map ini direset
+    if (currentMap === 'temple') playerData.savedCheckpointTemple = null; else if (currentMap === 'snow') playerData.savedCheckpointSnow = null; else if (currentMap === 'mountain') playerData.savedCheckpointMountain = null; else playerData.savedCheckpoint = null; // selesai: progres checkpoint map ini direset
     updatePlayerFirebase();
     document.getElementById('coin-amount').textContent = playerData.coins;
     onFinish();
